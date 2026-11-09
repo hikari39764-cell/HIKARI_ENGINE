@@ -473,42 +473,49 @@ struct MassRenderSyncContext {
     uint64_t frameIndex = 0u;
 };
 
-bool AddMassStore(const MassRenderSyncContext& context, const WorldMassRenderStoreView& store,
-                  const ResolvedMassRenderModel& resolved, uint64_t typeId, uint32_t primitiveIndex,
-                  uint32_t materialIndex) {
-    const GameProjectWorldMassRenderProxyDesc& proxy = *store.proxy;
-    return context.registry->AddStore(RENDER3D::GPUDRIVEN::MassGpuSceneStoreInput{
-        {typeId, resolved.model, proxy.meshIndex, primitiveIndex, materialIndex,
-         (proxy.flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow)) != 0u,
-         (proxy.flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::SkipRayTracing)) == 0u,
-         resolved.clusteredGeometryPath},
-        store.instances,
-        store.dirtyRanges,
-        store.layoutVersion,
-        store.sourceVersion,
-        store.dirtyBaseSourceVersion});
-}
+using MassModelParts = std::vector<std::pair<uint32_t, uint32_t>>;
 
-// 網の全部の部品を、同じ個体の列を共有する別々の種類として足す。同じ部品を複数の節が使っていても一度だけ。
-bool AddMassStoreParts(const MassRenderSyncContext& context, const WorldMassRenderStoreView& store,
-                       const ResolvedMassRenderModel& resolved) {
+// 描く部品（primitive と material の組）。「全部の部品」は網の中の部品を、同じ部品を複数の節が使っていても一度だけ。
+MassModelParts CollectMassParts(const MassRenderSyncContext& context, const GameProjectWorldMassRenderProxyDesc& proxy,
+                                const ResolvedMassRenderModel& resolved) {
+    if (proxy.primitiveIndex != kGameProjectWorldMassAllPrimitives) {
+        return {{proxy.primitiveIndex, proxy.materialIndex}};
+    }
+    MassModelParts parts{};
     const RENDER3D::RUNTIME::RenderModelAsset* renderModel = context.renderModelCache->GetOrCreate(*resolved.model);
     if (renderModel == nullptr || !renderModel->valid) {
-        return false;
+        return parts;
     }
-    std::vector<std::pair<uint32_t, uint32_t>> added{};
     for (const RENDER3D::RUNTIME::RenderSurfaceRecord& surface : renderModel->surfaces) {
         const std::pair part{surface.primitiveIndex, surface.materialIndex};
-        if (surface.meshIndex != store.proxy->meshIndex || std::find(added.begin(), added.end(), part) != added.end()) {
-            continue;
+        if (surface.meshIndex == proxy.meshIndex && std::find(parts.begin(), parts.end(), part) == parts.end()) {
+            parts.push_back(part);
         }
-        const uint64_t typeId = store.typeId.value + (added.size() * 0x9E3779B97F4A7C15ull);
-        if (!AddMassStore(context, store, resolved, typeId, part.first, part.second)) {
+    }
+    return parts;
+}
+
+// 部品ごとに、同じ個体の列を共有する別々の種類として足す。
+bool AddMassParts(const MassRenderSyncContext& context, const WorldMassRenderStoreView& store,
+                  const GameProjectWorldMassRenderProxyDesc& proxy, const ResolvedMassRenderModel& resolved,
+                  const MassModelParts& parts, uint64_t firstTypeId, float screenSwitch) {
+    uint64_t typeId = firstTypeId;
+    for (const auto& [primitiveIndex, materialIndex] : parts) {
+        if (!context.registry->AddStore(RENDER3D::GPUDRIVEN::MassGpuSceneStoreInput{
+                {typeId, resolved.model, proxy.meshIndex, primitiveIndex, materialIndex,
+                 (proxy.flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow)) != 0u,
+                 (proxy.flags & static_cast<uint32_t>(GameProjectWorldMassRenderFlags::SkipRayTracing)) == 0u,
+                 resolved.clusteredGeometryPath, screenSwitch},
+                store.instances,
+                store.dirtyRanges,
+                store.layoutVersion,
+                store.sourceVersion,
+                store.dirtyBaseSourceVersion})) {
             return false;
         }
-        added.push_back(part);
+        typeId += 0x9E3779B97F4A7C15ull;
     }
-    return !added.empty();
+    return true;
 }
 
 bool SyncMassRenderStores(void* rawContext, const WorldMassRenderPublicationReceipt& receipt,
@@ -533,19 +540,34 @@ bool SyncMassRenderStores(void* rawContext, const WorldMassRenderPublicationRece
                                         resolved)) {
                 continue;
             }
-            const bool added = store.proxy->primitiveIndex == kGameProjectWorldMassAllPrimitives
-                                   ? AddMassStoreParts(context, store, resolved)
-                                   : AddMassStore(context, store, resolved, store.typeId.value,
-                                                  store.proxy->primitiveIndex, store.proxy->materialIndex);
-            if (!added) {
-                // 個体の総数が上限を超えた時など。全部消えるので、理由を一度だけ書く。
+            const MassModelParts parts = CollectMassParts(context, *store.proxy, resolved);
+            if (parts.empty()) {
+                continue;
+            }
+            // 遠景模型がまだ読めていない間は本来の模型だけで全部描く（遠くに穴を開けない）。
+            ResolvedMassRenderModel farResolved{};
+            MassModelParts farParts{};
+            if (store.farProxy != nullptr &&
+                ResolveMassRenderModel(*store.farProxy, context.assetRegistry, context.modelManager,
+                                       *context.projectRoot, farResolved)) {
+                farParts = CollectMassParts(context, *store.farProxy, farResolved);
+            }
+            // 上限を超える種類だけ飛ばす。先に入った種類まで道連れに消さない。
+            if (!context.registry->CanAdd((parts.size() + farParts.size()) * store.instances.size())) {
                 static bool reported = false;
                 if (!reported) {
                     reported = true;
-                    HIKARI_LOG_ERROR("[MassRender] mass instances are not drawn: over the capacity of " +
+                    HIKARI_LOG_ERROR("[MassRender] an instance set is not drawn: over the capacity of " +
                                      std::to_string(RENDER3D::GPUDRIVEN::kMassGpuSceneMaximumSourceInstanceCount) +
                                      " instances counting each model part");
                 }
+                continue;
+            }
+            // 拡縮 1、視角 60 度で farDistance の距離になる画面上の大きさ（投影の係数 1.732）。
+            const float screenSwitch = farParts.empty() ? 0.0f : 1.732f / store.farDistance;
+            if (!AddMassParts(context, store, *store.proxy, resolved, parts, store.typeId.value, screenSwitch) ||
+                !AddMassParts(context, store, *store.farProxy, farResolved, farParts,
+                              store.typeId.value ^ 0xFA12F00D5EEDBA5Eull, -screenSwitch)) {
                 context.registry->Clear();
                 return false;
             }

@@ -187,6 +187,8 @@ static const uint HIKARI_RAY_REPORT_BACKFACES = 2u;
 // おおよその距離だけが要る ray に使う。材質を読む命令は呼び出しごとに展開されるので、大きな shader では
 // これだけで重さが変わる（動的 GI の更新の相機 ray をこれにして約 0.35 ms 軽くなった）。
 static const uint HIKARI_RAY_GEOMETRY_ONLY = 4u;
+// 大量配置を見ない（kRuntimeRayTracingMassMask のビットを外す）。
+static const uint HIKARI_RAY_SKIP_MASS = 8u;
 // 一本の光線が面を復元して材質を調べる候補の上限。これを超えた候補は当たりとして止める。森の中を斜めに抜ける光線は
 // 葉の板を何百枚も通るので、上限が無いと一回の更新が数十 ms 跳ね、GPU が応答しなくなる危険もある。
 static const uint HIKARI_RAY_MAX_MATERIAL_TESTS = 16u;
@@ -210,7 +212,8 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
     RayQuery<RAY_FLAG_NONE> query;
     // 裏面を切るのは代理だけに効く（他の instance は TRIANGLE_CULL_DISABLE）。粗い代理の下から出る光線を止めない。
     const uint backFaces = (queryFlags & HIKARI_RAY_REPORT_BACKFACES) != 0u ? RAY_FLAG_NONE : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
-    query.TraceRayInline(gRuntimeRayScene, backFaces | (shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE), 0xff, ray);
+    query.TraceRayInline(gRuntimeRayScene, backFaces | (shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE),
+        (queryFlags & HIKARI_RAY_SKIP_MASS) != 0u ? 0xfdu : 0xffu, ray);
     uint materialTests = 0u;
     while (query.Proceed())
     {
@@ -339,11 +342,12 @@ bool HikariTraceRuntimeProxyOccluded(RayDesc ray)
 
 // 太陽などへの影の光線の通る割合（不透明に当たれば 0、半透明は透過率の積）。
 float HikariTraceRuntimeShadowTransmittance(RayDesc ray, uint hitRecordCount, uint materialCount, float4 time,
-    SamplerState materialSampler)
+    SamplerState materialSampler, bool skipMass)
 {
     float transmittance = 1.0f;
     HikariRaySurface ignored;
-    return HikariTraceRuntimeSceneCore(ray, hitRecordCount, materialCount, time, materialSampler, HIKARI_RAY_SHADOW,
-        ignored, 0.0f.xx, transmittance) ? 0.0f : transmittance;
+    return HikariTraceRuntimeSceneCore(ray, hitRecordCount, materialCount, time, materialSampler,
+        HIKARI_RAY_SHADOW | (skipMass ? HIKARI_RAY_SKIP_MASS : 0u), ignored, 0.0f.xx, transmittance)
+        ? 0.0f : transmittance;
 }
 #endif

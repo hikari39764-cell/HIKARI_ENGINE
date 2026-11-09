@@ -82,6 +82,9 @@ struct WorldMassRenderStoreView {
     uint64_t layoutVersion = 0u;
     uint64_t sourceVersion = 0u;
     uint64_t dirtyBaseSourceVersion = 0u;
+    // 遠景模型（無ければ nullptr）。farDistance より遠い個体をこちらで描く。
+    const GameProjectWorldMassRenderProxyDesc* farProxy = nullptr;
+    float farDistance = 0.0f;
 };
 
 struct WorldMassRenderPublicationReceipt {

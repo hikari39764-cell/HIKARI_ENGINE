@@ -394,6 +394,14 @@ private:
         ui.InputFloat("instanceTint", "Color Variation", &instanceTint_);
         ui.InputFloat("instanceWind", "Wind", &instanceWind_);
         ui.InputFloat("instanceMinScreen", "Hide Below Screen Height", &instanceMinScreen_);
+        ui.InputText("instanceFarModel", "Far Model Asset GUID", instanceFarModel_.data(), instanceFarModel_.size());
+        ui.InputFloat("instanceFarDistance", "Far Model Distance (m, at scale 1)", &instanceFarDistance_);
+        if (ui.Button("instanceBakeFar", "Bake Far Model From Model") && shared_->services != nullptr) {
+            if (!shared_->services->BakeFarModel(instanceModel_.data(), instanceFarModel_.data(),
+                                                 instanceFarModel_.size())) {
+                Report("The far model bake failed: it needs a model GUID, see the log.");
+            }
+        }
         ui.Checkbox("instanceRay", "Ray Traced", &instanceRayTraced_);
         if (ui.Button("instanceAdd", "Add Set")) {
             GameProjectWorldInstanceSetDesc desc{};
@@ -408,6 +416,9 @@ private:
             desc.tintVariation = instanceTint_;
             desc.windStrength = instanceWind_;
             desc.minScreenHeight = instanceMinScreen_;
+            std::memcpy(desc.farModelAssetGuid, instanceFarModel_.data(),
+                        (std::min)(instanceFarModel_.size(), sizeof(desc.farModelAssetGuid) - 1u));
+            desc.farDistance = instanceFarDistance_;
             if (world.AddInstanceSet(desc)) {
                 shared_->selectedInstanceSet = MakeComponentTypeId(desc.name).value;
             } else {
@@ -667,7 +678,9 @@ private:
     std::array<char, 95> instanceModel_{};
     float instanceTint_ = 0.3f;
     float instanceWind_ = 0.0f;
-    float instanceMinScreen_ = 0.001f;
+    float instanceMinScreen_ = 0.005f;
+    std::array<char, 95> instanceFarModel_{};
+    float instanceFarDistance_ = 180.0f;
     size_t selectedScatter_ = 0u;
     bool instanceRayTraced_ = true;
 };

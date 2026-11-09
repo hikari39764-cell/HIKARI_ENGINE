@@ -16,7 +16,7 @@
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
 inline constexpr size_t kMassGpuSceneMinimumCapacity = 16384u;
-inline constexpr size_t kMassGpuSceneMaximumCapacity = 131072u;
+inline constexpr size_t kMassGpuSceneMaximumCapacity = 524288u;
 static_assert(kMassGpuSceneMaximumCapacity == kMassGpuSceneMaximumSourceInstanceCount);
 
 struct MassGpuSceneFrameBufferStats {

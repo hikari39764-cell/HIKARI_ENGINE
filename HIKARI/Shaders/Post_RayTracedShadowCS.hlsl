@@ -31,11 +31,10 @@ SamplerState gPointClamp : register(s2);
 
 // GeometryAux の面の記述にある着色の法線（法線地図・デカール込み）。不透明面の画素は必ず書かれている。
 // 深度の差分の法線は細い物や輪郭で奥の面を拾って向きを誤り、影の中に光が漏れたので使わない。
-float3 SurfaceNormal(uint2 pixel)
+float3 SurfaceNormal(uint2 pixel, out float metallic)
 {
     float3 normal;
     float roughness;
-    float metallic;
     HikariUnpackSceneSurface(gSceneSurface.Load(int3(pixel, 0)), normal, roughness, metallic);
     return normal;
 }
@@ -59,7 +58,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         gVisibility[pixel] = 1.0f;
         return;
     }
-    const float3 normal = SurfaceNormal(pixel);
+    float metallic;
+    const float3 normal = SurfaceNormal(pixel, metallic);
     const float3 toSun = gSunCone.xyz;
     const float cosine = dot(normal, toSun);
     // 光に背く面は影（Forward の N・L も同じ法線で 0 になる）。
@@ -87,7 +87,7 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         ray.TMax = max(gRayParams.x, 0.1f);
         // 半透明（ガラスなど）は透過率の分だけ光を通す。
         float through = HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
-            gRayLighting.time, gMaterialWrap);
+            gRayLighting.time, gMaterialWrap, HikariIsFarModelSurface(metallic));
         // 影の距離より先は代理（地形）だけを見る。低い太陽の山の影は距離の設定に関わらず届く。
         if (through > 0.0f && gInputFlags.y > ray.TMax)
         {
@@ -151,7 +151,8 @@ void CSFilter(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint thr
     {
         return;
     }
-    const float3 normal = SurfaceNormal(pixel);
+    float metallic;
+    const float3 normal = SurfaceNormal(pixel, metallic);
     const float distanceToCamera = length(position - gCameraPosition.xyz);
     if (distanceToCamera >= 65000.0f) return;
     const float2 encodedNormal = HikariEncodeOctahedralDirection(normal);

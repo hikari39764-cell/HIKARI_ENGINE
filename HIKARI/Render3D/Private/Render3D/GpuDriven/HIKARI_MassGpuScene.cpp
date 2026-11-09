@@ -141,7 +141,7 @@ bool IsSupportedTemplateInstance(const RUNTIME::SurfaceGpuSceneInstance& instanc
 
 RUNTIME::MassRenderProxyGpuRecord BuildMassRecord(const RUNTIME::MassRenderTransform& transform,
                                                   const RUNTIME::SurfaceGpuSceneInstance& proxy,
-                                                  uint32_t sourceRecordIndex) noexcept {
+                                                  uint32_t sourceRecordIndex, float screenSwitch) noexcept {
     using Flag = RUNTIME::SurfaceGpuSceneInstanceFlags;
     const uint32_t keptFlags = static_cast<uint32_t>(Flag::ReceiveShadow) | static_cast<uint32_t>(Flag::DoubleSided) |
                                static_cast<uint32_t>(Flag::AlphaMasked) | static_cast<uint32_t>(Flag::ClusterMainline) |
@@ -171,6 +171,7 @@ RUNTIME::MassRenderProxyGpuRecord BuildMassRecord(const RUNTIME::MassRenderTrans
     record.clusterLodRangeCount = proxy.clusterLodRangeCount;
     record.clusterSelectedLodIndex = proxy.clusterSelectedLodIndex;
     record.clusterLodFlags = proxy.clusterLodFlags;
+    record.reserved = std::bit_cast<uint32_t>(screenSwitch); // HikariClusterCullInstanceHidden が読む
     return record;
 }
 
@@ -380,6 +381,15 @@ void MassGpuSceneRegistry::BeginSync(uint64_t worldIdentity, uint64_t publicatio
     impl_->pendingValid = worldIdentity != 0u && publicationGeneration != 0u;
 }
 
+bool MassGpuSceneRegistry::CanAdd(size_t instanceCount) const noexcept {
+    size_t pendingInstanceCount = 0u;
+    for (const Impl::PendingStore& store : impl_->pending) {
+        pendingInstanceCount += store.input.transforms.size();
+    }
+    return pendingInstanceCount <= kMassGpuSceneMaximumSourceInstanceCount &&
+           instanceCount <= kMassGpuSceneMaximumSourceInstanceCount - pendingInstanceCount;
+}
+
 bool MassGpuSceneRegistry::AddStore(const MassGpuSceneStoreInput& input) {
     size_t pendingInstanceCount = 0u;
     for (const Impl::PendingStore& store : impl_->pending) {
@@ -464,8 +474,8 @@ bool MassGpuSceneRegistry::EndSync(RUNTIME::RenderModelCache& renderModelCache) 
                 const Impl::PendingStore& store = impl_->pending[storeIndex];
                 const RUNTIME::SurfaceGpuSceneInstance& renderTemplate = store.renderTemplate->instances.front();
                 for (size_t localIndex = 0u; localIndex < store.input.transforms.size(); ++localIndex) {
-                    impl_->source.instances[cursor + localIndex] =
-                        BuildMassRecord(store.input.transforms[localIndex], renderTemplate, storeIndex);
+                    impl_->source.instances[cursor + localIndex] = BuildMassRecord(
+                        store.input.transforms[localIndex], renderTemplate, storeIndex, store.input.proxy.screenSwitch);
                 }
                 RUNTIME::SurfaceGpuSceneMaterialSource material = store.renderTemplate->materials.front();
                 material.sourceRecordIndex = storeIndex;
@@ -515,8 +525,9 @@ bool MassGpuSceneRegistry::EndSync(RUNTIME::RenderModelCache& renderModelCache) 
                     const RUNTIME::SurfaceGpuSceneInstance& renderTemplate = store.renderTemplate->instances.front();
                     for (uint32_t localOffset = 0u; localOffset < range.instanceCount; ++localOffset) {
                         const uint32_t localIndex = range.firstInstance + localOffset;
-                        impl_->source.instances[globalFirst + localOffset] = BuildMassRecord(
-                            store.input.transforms[localIndex], renderTemplate, static_cast<uint32_t>(storeIndex));
+                        impl_->source.instances[globalFirst + localOffset] =
+                            BuildMassRecord(store.input.transforms[localIndex], renderTemplate,
+                                            static_cast<uint32_t>(storeIndex), store.input.proxy.screenSwitch);
                     }
                     AppendDirtyRange(changed, globalFirst, range.instanceCount);
                 }

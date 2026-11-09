@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstring>
 #include <exception>
 #include <numbers>
 
@@ -125,6 +126,15 @@ void ModuleEditorExtensions::RecordUndo(std::string_view label,
     if (undoRecorder_ && entry != nullptr) {
         undoRecorder_(std::string(label), std::move(entry));
     }
+}
+
+bool ModuleEditorExtensions::BakeFarModel(std::string_view modelAssetGuid, char* outFarModelGuid, size_t capacity) {
+    const std::string guid = farModelBaker_ ? farModelBaker_(modelAssetGuid) : std::string{};
+    if (guid.empty() || guid.size() >= capacity) {
+        return false;
+    }
+    std::memcpy(outFarModelGuid, guid.c_str(), guid.size() + 1u);
+    return true;
 }
 
 void ModuleEditorExtensions::SetSceneListener(EDITOR_PROJECT::IEditorSceneListener* listener) {

@@ -16,7 +16,7 @@ void ExpandPageTasksCS(uint3 dispatchThreadId : SV_DispatchThreadID)
     HikariSurfaceGpuSceneInstance instance =
         HikariGetSurfaceGpuSceneInstanceAt(surfaceGpuSceneIndex);
     if (!HikariClusterCullIsGpuSceneCandidate(instance) ||
-        HikariClusterCullInstanceTooSmall(surfaceGpuSceneIndex, instance))
+        HikariClusterCullInstanceHidden(surfaceGpuSceneIndex, instance))
     {
         return;
     }

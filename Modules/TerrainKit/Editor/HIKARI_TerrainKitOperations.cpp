@@ -822,6 +822,8 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                       if (const GameProjectWorldInstanceSetDesc* set = world.FindInstanceSet(ids[index])) {
                           sets.push_back({{"name", set->name},
                                           {"modelAssetGuid", set->modelAssetGuid},
+                                          {"farModelAssetGuid", set->farModelAssetGuid},
+                                          {"farDistance", set->farDistance},
                                           {"instances", world.GetInstanceCount(ids[index])}});
                       }
                   }
@@ -835,12 +837,18 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                   {"tintVariation", Type::Number, "Per-instance color variation, 0..1."},
                   {"windStrength", Type::Number, "How much instances sway in the wind, 0..1."},
                   {"minScreenHeight", Type::Number,
-                   "Instances smaller than this share of the screen height are not drawn. 0 always draws."}},
+                   "Instances smaller than this share of the screen height are not drawn. 0 always draws."},
+                  {"farModelAssetGuid", Type::String, "Low detail model drawn beyond farDistance; omit for none."},
+                  {"farDistance", Type::Number,
+                   "Distance in meters where a scale 1 instance switches to the far model; larger instances switch "
+                   "later."}},
                  [](const Json& parameters, Sink& result) {
                      GameProjectWorldInstanceSetDesc desc{};
                      const std::string name = parameters.at("name").get<std::string>();
                      const std::string model = parameters.value("modelAssetGuid", std::string{});
-                     if (name.size() >= sizeof(desc.name) || model.size() >= sizeof(desc.modelAssetGuid)) {
+                     const std::string farModel = parameters.value("farModelAssetGuid", std::string{});
+                     if (name.size() >= sizeof(desc.name) || model.size() >= sizeof(desc.modelAssetGuid) ||
+                         farModel.size() >= sizeof(desc.farModelAssetGuid)) {
                          Fail(result, "NAME_TOO_LONG", "The set name or model GUID is too long.");
                          return;
                      }
@@ -855,6 +863,8 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                      desc.tintVariation = parameters.value("tintVariation", desc.tintVariation);
                      desc.windStrength = parameters.value("windStrength", desc.windStrength);
                      desc.minScreenHeight = parameters.value("minScreenHeight", desc.minScreenHeight);
+                     std::memcpy(desc.farModelAssetGuid, farModel.data(), farModel.size());
+                     desc.farDistance = parameters.value("farDistance", desc.farDistance);
                      if (!TerrainStore::Get().World().AddInstanceSet(desc)) {
                          Fail(result, "INVALID_SET", "The instance set is not valid.");
                          return;

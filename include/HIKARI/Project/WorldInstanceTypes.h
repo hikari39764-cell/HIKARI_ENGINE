@@ -14,7 +14,7 @@
 namespace HIKARI {
 
 inline constexpr uint32_t kGameProjectWorldInstanceVersion = 1u;
-inline constexpr uint32_t kGameProjectWorldInstanceSetDescV1Size = 232u;
+inline constexpr uint32_t kGameProjectWorldInstanceSetDescV1Size = 332u;
 inline constexpr uint32_t kGameProjectWorldInstanceNameCapacity = 96u;
 
 enum class GameProjectWorldInstanceFlags : uint16_t {
@@ -60,6 +60,10 @@ struct GameProjectWorldInstanceSetDesc {
     // 画面の高さに対する個体の大きさの割合がこれより小さければ描かない（0 は常に描く）。上限 0.0255。
     // 0.001 は 1440p で約 1.4 画素。小さな物から先に消えるので、距離を種類ごとに決めなくてよい。
     float minScreenHeight = 0.001f;
+    // 遠景模型（面の少ない替身）。farDistance [m、拡縮 1 の個体、視角 60 度の時] より遠い個体はこちらで描く。
+    // 大きな個体ほど遠くで替わる。空か 0 なら替えない。光線追跡には入れない（本来の模型が入る）。
+    char farModelAssetGuid[kGameProjectWorldInstanceNameCapacity]{};
+    float farDistance = 0.0f;
 };
 
 static_assert(std::is_trivially_copyable_v<GameProjectWorldInstance>);

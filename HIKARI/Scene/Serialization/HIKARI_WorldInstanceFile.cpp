@@ -194,7 +194,9 @@ bool WriteWorldInstanceSetsFile(const std::filesystem::path& path,
                         {"materialIndex", set.materialIndex},
                         {"tintVariation", set.tintVariation},
                         {"windStrength", set.windStrength},
-                        {"minScreenHeight", set.minScreenHeight}});
+                        {"minScreenHeight", set.minScreenHeight},
+                        {"farModelAssetGuid", set.farModelAssetGuid},
+                        {"farDistance", set.farDistance}});
     }
     const nlohmann::json document = {{"version", kSetsFileVersion}, {"sets", std::move(list)}};
     std::error_code ec{};
@@ -230,7 +232,8 @@ bool ReadWorldInstanceSetsFile(const std::filesystem::path& path, std::vector<Ga
         for (const nlohmann::json& entry : document.at("sets")) {
             GameProjectWorldInstanceSetDesc set{};
             if (!CopyFixedText(entry.at("name").get<std::string>(), set.name) ||
-                !CopyFixedText(entry.at("modelAssetGuid").get<std::string>(), set.modelAssetGuid)) {
+                !CopyFixedText(entry.at("modelAssetGuid").get<std::string>(), set.modelAssetGuid) ||
+                !CopyFixedText(entry.value("farModelAssetGuid", std::string{}), set.farModelAssetGuid)) {
                 outError = path.generic_string() + ": a name is too long";
                 outSets.clear();
                 return false;
@@ -243,6 +246,7 @@ bool ReadWorldInstanceSetsFile(const std::filesystem::path& path, std::vector<Ga
             set.tintVariation = entry.at("tintVariation").get<float>();
             set.windStrength = entry.at("windStrength").get<float>();
             set.minScreenHeight = entry.at("minScreenHeight").get<float>();
+            set.farDistance = entry.value("farDistance", 0.0f);
             outSets.push_back(set);
         }
     } catch (const nlohmann::json::exception& exception) {

@@ -41,20 +41,7 @@ float HikariClusterCullProjectedScreenRadius(float4 boundsCenterRadius)
         boundsCenterRadius.w);
 }
 
-// 実例集の個体が画面の高さに対してこれより小さく映るなら描かない。
-bool HikariClusterCullInstanceTooSmall(uint absoluteIndex, HikariSurfaceGpuSceneInstance instance)
-{
-    if (!HikariIsMassGpuSceneIndex(absoluteIndex) ||
-        (instance.objectIdHigh & HIKARI_MASS_INSTANCE_IDENTITY_BIT) == 0u)
-    {
-        return false;
-    }
-    const float minimum = (float)((instance.objectIdHigh >> 16u) & 255u) * HIKARI_MASS_INSTANCE_MIN_SCREEN_STEP;
-    // 個体ごとに閾値をずらす。全部が同じ距離で消えると輪が見えるので、遠くへ行くほど少しずつ間引かれるようにする。
-    const uint hash = instance.objectIdLow * 2654435761u;
-    const float spread = 0.6f + 0.8f * (float)(hash >> 16u) / 65535.0f;
-    return minimum > 0.0f && HikariClusterCullProjectedScreenRadius(instance.boundsCenterRadius) < minimum * spread;
-}
+#include "Include/Cluster/HIKARI_ClusterMassInstanceVisibility.hlsli"
 
 void HikariClusterCullAddDebugCounter(uint byteOffset, uint value)
 {

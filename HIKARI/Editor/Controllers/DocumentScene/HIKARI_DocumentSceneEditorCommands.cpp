@@ -10,6 +10,8 @@
 #include <span>
 #include <utility>
 
+#include "Core/HIKARI_Logger.h"
+#include "Editor/Assets/HIKARI_FarModelBakeOperation.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
@@ -242,6 +244,17 @@ void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectE
                 aiOperationScene_->SetUnsavedSceneChanges(true);
             }
         });
+    host->Extensions().SetFarModelBaker([this](std::string_view modelAssetGuid) -> std::string {
+        if (aiOperationScene_ == nullptr) {
+            return {};
+        }
+        EDITOR::FarModelBakeOutcome outcome =
+            EDITOR::BakeFarModelAsset(aiOperationScene_->GetAssetDatabase(), modelAssetGuid, 0u);
+        if (!outcome.ok) {
+            HIKARI_LOG_ERROR("[FarModel] " + outcome.message);
+        }
+        return std::move(outcome.farModelGuid);
+    });
 }
 
 void DocumentSceneEditorController::DiscardModuleUndoEntries() { documentHistory_ = EDITOR::EditorDocumentHistory{}; }

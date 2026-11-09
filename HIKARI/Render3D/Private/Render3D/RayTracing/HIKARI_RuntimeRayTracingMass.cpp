@@ -47,7 +47,7 @@ void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const RUNTIME::Mas
         for (int col = 0; col < 4; ++col)
             finite = finite && MATH::IsFinite(instance.Transform[row][col]);
     }
-    instance.InstanceMask = finite ? kRuntimeRayTracingSceneMask : 0x00;
+    instance.InstanceMask = finite ? kRuntimeRayTracingMassMask : 0x00;
     if (!finite)
         std::memset(instance.Transform, 0, sizeof(instance.Transform));
 }

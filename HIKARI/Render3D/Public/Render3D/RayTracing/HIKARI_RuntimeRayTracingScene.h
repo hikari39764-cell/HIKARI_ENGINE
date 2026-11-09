@@ -128,7 +128,7 @@ struct RuntimeRayTracingBudget {
     uint32_t chunksPerAsset = 1024;
     uint32_t buildsPerFrame = 2;
     uint32_t geometryUploadsPerFrame = 1;
-    uint32_t maximumInstances = 262144; // 大量配置（最大 131072 個体）を含む
+    uint32_t maximumInstances = 262144; // 大量配置を含む（一つの個体が一つ。超えると大量配置を外す）
     uint32_t maximumHitRecords = 262144;
 };
 
@@ -142,6 +142,8 @@ inline constexpr uint32_t kRuntimeRayTracingHitTransmissive = 8u;
 inline constexpr uint32_t kRuntimeRayTracingHitProxy = 16u;
 // instance の mask。普通の光線は 0xff で全部に当たり、代理だけを見る長い影の光線は代理の bit だけを使う。
 inline constexpr uint8_t kRuntimeRayTracingSceneMask = 0xfeu;
+// 大量配置はこのビットだけで、遠景模型の面からの影の光線（HIKARI_RAY_SKIP_MASS）に当たらない。
+inline constexpr uint8_t kRuntimeRayTracingMassMask = 0x02u;
 inline constexpr uint8_t kRuntimeRayTracingProxyMask = 0x01u;
 // 代理だけを見る影の光線の長さ [m]。低い太陽の山の影が世界の端まで届く長さ。
 inline constexpr float kRuntimeRayTracingProxyShadowReach = 16000.0f;

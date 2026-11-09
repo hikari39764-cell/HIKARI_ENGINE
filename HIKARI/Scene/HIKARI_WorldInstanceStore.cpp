@@ -47,13 +47,26 @@ GameProjectWorldMassRenderProxyDesc MakeRenderProxy(ComponentTypeId id,
     return proxy;
 }
 
+GameProjectWorldMassRenderProxyDesc MakeFarRenderProxy(ComponentTypeId id,
+                                                       const GameProjectWorldInstanceSetDesc& desc) noexcept {
+    GameProjectWorldMassRenderProxyDesc proxy = MakeRenderProxy(id, desc);
+    proxy.geometry = GameProjectWorldMassRenderGeometry::ModelAsset;
+    proxy.flags |= static_cast<uint32_t>(GameProjectWorldMassRenderFlags::SkipRayTracing);
+    std::memcpy(proxy.modelAssetGuid, desc.farModelAssetGuid, sizeof(proxy.modelAssetGuid));
+    proxy.meshIndex = 0u;
+    proxy.primitiveIndex = kGameProjectWorldMassAllPrimitives;
+    proxy.materialIndex = 0u;
+    return proxy;
+}
+
 } // namespace
 
 bool IsValidWorldInstanceSetDesc(const GameProjectWorldInstanceSetDesc& desc) noexcept {
     if (desc.structSize != kGameProjectWorldInstanceSetDescV1Size || desc.version != kGameProjectWorldInstanceVersion ||
         !IsTerminatedText(desc.name) || desc.name[0] == '\0' || !IsTerminatedText(desc.modelAssetGuid) ||
-        !MATH::IsFinite(desc.tintVariation) || !MATH::IsFinite(desc.windStrength) ||
-        !MATH::IsFinite(desc.minScreenHeight)) {
+        !IsTerminatedText(desc.farModelAssetGuid) || !MATH::IsFinite(desc.tintVariation) ||
+        !MATH::IsFinite(desc.windStrength) || !MATH::IsFinite(desc.minScreenHeight) ||
+        !MATH::IsFinite(desc.farDistance) || desc.farDistance < 0.0f) {
         return false;
     }
     const uint32_t known = static_cast<uint32_t>(GameProjectWorldInstanceSetFlags::ReceiveShadow |
@@ -81,6 +94,7 @@ bool WorldInstanceStore::AddSet(const GameProjectWorldInstanceSetDesc& desc, Com
     Set& set = found->second;
     set.desc = desc;
     set.proxy = MakeRenderProxy(id, desc);
+    set.farProxy = MakeFarRenderProxy(id, desc);
     set.renderDirty = true;
     setsDirty_ = true;
     ++revision_;
@@ -314,13 +328,16 @@ void WorldInstanceStore::CollectRenderViews(std::vector<WorldMassRenderStoreView
             ++set.renderVersion;
             set.renderDirty = false;
         }
-        outViews.push_back(WorldMassRenderStoreView{set.proxy.typeId,
-                                                    &set.proxy,
-                                                    set.renderInstances,
-                                                    {},
-                                                    set.renderVersion,
-                                                    set.renderVersion,
-                                                    set.renderVersion});
+        outViews.push_back(WorldMassRenderStoreView{
+            set.proxy.typeId,
+            &set.proxy,
+            set.renderInstances,
+            {},
+            set.renderVersion,
+            set.renderVersion,
+            set.renderVersion,
+            set.desc.farModelAssetGuid[0] != '\0' && set.desc.farDistance > 0.0f ? &set.farProxy : nullptr,
+            set.desc.farDistance});
     }
 }
 

@@ -2,6 +2,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Editor/Assets/HIKARI_AssetQueryOperation.h"
+#include "Editor/Assets/HIKARI_FarModelBakeOperation.h"
 #include "Editor/Assets/HIKARI_AssetImportSettingsService.h"
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
@@ -417,6 +418,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     EDITOR::RegisterRenderStyleOperations(operationRegistry_, environmentPanel_.Style(),
                                           [this] { return aiOperationScene_; });
     EDITOR::RegisterAssetQueryOperation(operationRegistry_, [this] { return aiOperationScene_; });
+    EDITOR::RegisterFarModelBakeOperation(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterPerformanceOperations(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterShaderPlaygroundOperations(operationRegistry_);
     EDITOR::RegisterModelCollisionOperations(operationRegistry_, ModelCollisionWorkspace(),

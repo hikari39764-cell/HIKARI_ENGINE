@@ -83,6 +83,8 @@ public:
     virtual void RecordUndo(std::string_view label, std::unique_ptr<IEditorUndoEntry> entry) = 0;
     virtual void SetSceneListener(IEditorSceneListener* listener) = 0;
     virtual bool ActivateViewportTool(std::string_view toolId) = 0;
+    // 模型から遠景模型を焼いて導入を予約し、その GUID を outFarModelGuid へ書く（終端込み）。理由はログへ。
+    virtual bool BakeFarModel(std::string_view modelAssetGuid, char* outFarModelGuid, size_t capacity) = 0;
 };
 
 } // namespace HIKARI::EDITOR_PROJECT

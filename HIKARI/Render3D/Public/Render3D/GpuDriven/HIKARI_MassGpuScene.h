@@ -21,7 +21,7 @@ class RenderModelCache;
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
 inline constexpr size_t kMassGpuSceneDirtyHistoryCapacity = 8u;
-inline constexpr size_t kMassGpuSceneMaximumSourceInstanceCount = 131072u;
+inline constexpr size_t kMassGpuSceneMaximumSourceInstanceCount = 524288u;
 
 struct MassRenderProxyTemplateRequest {
     uint64_t typeId = 0u;
@@ -32,6 +32,9 @@ struct MassRenderProxyTemplateRequest {
     bool receiveShadow = true;
     bool rayTraced = true;
     std::string clusteredGeometryPath{};
+    // 遠景模型との切り替え（画面上の大きさ）。正なら近い模型でこれより小さい個体を描かず、負なら遠い模型でこれ以上の
+    // 個体を描かない。0 は切り替えなし。
+    float screenSwitch = 0.0f;
 };
 
 struct MassGpuSceneStoreInput {
@@ -101,6 +104,8 @@ public:
     void Clear();
     void BeginSync(uint64_t worldIdentity, uint64_t publicationFrameIndex, uint64_t publicationGeneration);
     bool AddStore(const MassGpuSceneStoreInput& input);
+    // あと instanceCount 個（部品ごとに数える）足せるか。
+    bool CanAdd(size_t instanceCount) const noexcept;
     bool EndSync(RUNTIME::RenderModelCache& renderModelCache);
 
     const MassGpuSceneSource& GetSource() const noexcept;

@@ -55,6 +55,7 @@ private:
     struct Set {
         GameProjectWorldInstanceSetDesc desc{};
         GameProjectWorldMassRenderProxyDesc proxy{};
+        GameProjectWorldMassRenderProxyDesc farProxy{};
         std::map<WorldCellCoord, std::vector<GameProjectWorldInstance>> cells{};
         std::vector<WorldMassRenderInstance> renderInstances{};
         uint64_t count = 0u;
