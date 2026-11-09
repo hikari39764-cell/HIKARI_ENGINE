@@ -28,6 +28,8 @@ enum class PrimitiveGenerationResult {
     Canceled,
 };
 
+constexpr size_t kMaximumAutomaticLightmapTriangles = 30000u;
+
 bool IsGenerationCandidate(const MeshPrimitive& primitive, AlphaMode alphaMode) {
     return primitive.layout == VertexLayoutKind::StaticPNTT && !primitive.hasMorphTargets &&
            alphaMode == AlphaMode::Opaque && !primitive.staticVertices.empty() && primitive.indices.size() >= 3u &&
@@ -266,6 +268,16 @@ bool PrepareModelLightmapUvs(ModelAsset& model, const LightmapUvGenerationSettin
 #if defined(HIKARI_WITH_EDITOR)
             std::string message{};
             const std::string label = mesh.name + "/" + primitive.name;
+            // 細かい網は展開が終わらないほど重く（66000 面の岩で 10 分以上）、光照貼図にも向かない。自動の時だけ飛ばす。
+            if (repair && primitive.indices.size() / 3u > kMaximumAutomaticLightmapTriangles) {
+                ++outReport.skippedUnsupportedCount;
+                if (outReport.messages.size() < 16u) {
+                    outReport.messages.push_back(
+                        label + ": lightmap UV generation skipped: " + std::to_string(primitive.indices.size() / 3u) +
+                        " triangles. Use a lower detail mesh or author UV1 if this surface needs a lightmap.");
+                }
+                continue;
+            }
             // UV1 を材質が参照する場合、Lightmap 用の展開で著者の座標を上書きしない。
             if (primitive.materialIndex < model.materials.size() &&
                 MATERIAL_POLICY::UsesTextureCoordinateSet(model.materials[primitive.materialIndex],

@@ -145,6 +145,29 @@ DirectX::TEX_COMPRESS_FLAGS ResolveCompressFlags(TextureAssetColorSpace colorSpa
     return flags;
 }
 
+// 切り抜きの色の図（葉、草、柵）か。ぼかした alpha の図は半透明として使うので触らない。
+bool IsCutoutColorTexture(const TextureImportSettings& settings) noexcept {
+    return (settings.usage == TextureUsage::Auto || settings.usage == TextureUsage::BaseColor) &&
+           settings.sourceHasCutoutAlpha &&
+           settings.sourceAlphaTranslucentRatio < settings.sourceAlphaCutoutRatio * 0.25f;
+}
+
+// 切り抜きの alpha は縮小で平均され、遠くの段でしきい値を割って面ごと消える。覆う面積が保たれるよう各段を上げる。
+// 失敗したら普通の段のまま（見た目が落ちるだけで導入は止めない）。
+void PreserveAlphaCoverage(DirectX::ScratchImage& mipChain) {
+    constexpr float kCutoutAlphaReference = 0.5f; // glTF の alphaCutoff の既定値
+    const DirectX::TexMetadata metadata = mipChain.GetMetadata();
+    DirectX::ScratchImage scaled{};
+    HRESULT hr = scaled.Initialize(metadata);
+    for (size_t item = 0u; SUCCEEDED(hr) && item < metadata.arraySize; ++item) {
+        hr = DirectX::ScaleMipMapsAlphaForCoverage(mipChain.GetImages(), mipChain.GetImageCount(), metadata, item,
+                                                   kCutoutAlphaReference, scaled);
+    }
+    if (SUCCEEDED(hr)) {
+        mipChain = std::move(scaled);
+    }
+}
+
 bool NeedsMipGeneration(const TextureImportSettings& settings, const DirectX::TexMetadata& metadata) {
     // 1 texel の画像は既に完全な mip chain。DirectXTex に縮小を要求しない。
     if (metadata.width <= 1 && metadata.height <= 1 && metadata.depth <= 1) {
@@ -450,6 +473,9 @@ bool CookTextureImage(const std::filesystem::path& sourcePath, TextureImportSett
                          " hr=" + FormatHResultHex(hr);
             HIKARI_LOG_ERROR(outMessage);
             return false;
+        }
+        if (IsCutoutColorTexture(settings)) {
+            PreserveAlphaCoverage(mipmapped);
         }
     }
 
