@@ -10,6 +10,7 @@
 #include <vector>
 
 #include "HIKARI_TerrainKitGpuErosion.h"
+#include "HIKARI_TerrainKitRivers.h"
 #include "HIKARI_TerrainKitRuleBaker.h"
 #include "HIKARI_TerrainKitSurfaces.h"
 #include "TerrainKit/Data/HIKARI_TerrainData.h"
@@ -123,6 +124,8 @@ public:
     void RebakeTiles(std::span<const TERRAIN::DATA::TileCoord> tiles);
     // 筆刷の一度分：矩形とその周り 1 標本だけを焼き直し、その範囲だけを描画へ送る。
     void RebakeRect(const TERRAIN::DATA::SampleRect& rect);
+    // 曲線の層を変えた時：変わった範囲だけ焼き直し、層の記述を保存の対象にする。
+    void RebakeAfterSplineChange(const TERRAIN::DATA::SampleRect& rect);
     // 制御図を塗った範囲を描画へ送り、保存の対象にする（高さは焼き直さない）。
     void MarkControlChanged(const TERRAIN::DATA::SampleRect& rect);
 
@@ -135,8 +138,7 @@ public:
     void SetSurfaceRules(TERRAIN::DATA::SurfaceRuleSet rules);
     TerrainRuleBaker& RuleBaker() noexcept { return ruleBaker_; }
     // 背景の計算の結果を受け取る。手塗りの標本は今の値を残す。
-    void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, bool hasControl, std::vector<uint32_t> control,
-                         std::vector<uint8_t> farColor);
+    void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> farColor);
     const TerrainWeather& Weather() const noexcept { return weather_; }
     void SetWeather(const TerrainWeather& weather);
     // 背景の thread を全部止める。DLL を外す前に呼ぶ。
@@ -156,6 +158,7 @@ public:
     uint64_t LayoutRevision() const noexcept { return layoutRevision_; }
     TerrainRenderResources& Render() noexcept { return render_; }
     GpuErosionJob& Erosion() noexcept { return erosion_; }
+    TerrainRivers& Rivers() noexcept { return rivers_; }
 
     // 世界 XZ の高さ（焼いた瓦片の双線形）。瓦片が無ければ空。
     std::optional<float> HeightAt(float worldX, float worldZ) const;
@@ -179,6 +182,7 @@ private:
     uint64_t layoutRevision_ = 1u;
     TerrainRenderResources render_{};
     GpuErosionJob erosion_{};
+    TerrainRivers rivers_{};
     TerrainSurfaceLibrary surfaces_{};
     bool surfaceSlotsDirty_ = false;
     TERRAIN::DATA::SurfaceRuleSet surfaceRules_{};

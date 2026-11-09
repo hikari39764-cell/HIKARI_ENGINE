@@ -484,7 +484,8 @@ bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassRes
 }
 
 bool HasDepthAwarePassWork() {
-    return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware);
+    return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware) ||
+           RENDER3D::SURFACE_EXTENSIONS::HasDepthAwareWork();
 }
 
 bool HasForwardTransparentPassWork() {
@@ -495,13 +496,16 @@ bool HasForwardTransparentPassWork() {
 }
 
 bool RenderDepthAwarePass(const GFX::Context& graphics, const MeshPassResources& passResources) {
-    if (!HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware)) {
-        return true;
+    bool executed = true;
+    if (HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware)) {
+        executed = ExecuteGeometryBackendPlan(graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware,
+                                              passResources, MeshDrawPassKind::Forward,
+                                              RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware)
+                       .gpuBackendExecuted;
     }
-    const GeometryBackendExecutionResult backendResult = ExecuteGeometryBackendPlan(
-        graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware, passResources, MeshDrawPassKind::Forward,
-        RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware);
-    return backendResult.gpuBackendExecuted;
+    return RecordSurfaceExtensions(graphics, RenderSurfacePass::DepthAware, passResources, MeshDrawPassKind::Forward,
+                                   false) &&
+           executed;
 }
 
 bool SetAmbientOcclusionRuntimeEnabled(bool enabled) {

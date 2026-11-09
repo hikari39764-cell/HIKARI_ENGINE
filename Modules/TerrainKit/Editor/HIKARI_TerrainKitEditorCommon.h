@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <optional>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -22,6 +23,7 @@ inline constexpr char kSculptToolId[] = "terrainkit.sculpt";
 inline constexpr char kMaskToolId[] = "terrainkit.mask";
 inline constexpr char kStampToolId[] = "terrainkit.stamp";
 inline constexpr char kPaintToolId[] = "terrainkit.paint";
+inline constexpr char kSplineToolId[] = "terrainkit.spline";
 
 // 編集器の所有スレッドだけで触る。
 struct EditorShared {
@@ -62,6 +64,19 @@ bool UpdateTerrainLayer(EditorShared& shared, const TERRAIN::DATA::HeightLayer& 
 // 自動の材質規則を差し替える（撤销一件、全世界を背景で計算し直す）。
 void ChangeSurfaceRules(EditorShared& shared, TERRAIN::DATA::SurfaceRuleSet rules);
 
+// 積雪と湿りを変える（撤销一件）。
+void ChangeWeather(EditorShared& shared, const TerrainWeather& weather);
+
+// 曲線の層。既定の幅と材質はここだけが持つ。
+float DefaultSplineWidth(TERRAIN::DATA::SplineKind kind);
+TERRAIN::DATA::HeightLayer MakeSplineLayer(TERRAIN::DATA::SplineKind kind);
+// その層より下の合成の高さ（層が無ければ全部の合成）。
+std::optional<float> HeightBelowLayer(uint32_t layerId, float worldX, float worldZ);
+// 曲線の層を差し替えて変わった範囲だけ焼き直す。撤销には載せない（引いている間）。
+bool ApplySplineLayer(const TERRAIN::DATA::HeightLayer& next);
+// 同じく、撤销一件で。
+bool ChangeSplineLayer(EditorShared& shared, const TERRAIN::DATA::HeightLayer& next, std::string& error);
+
 // 印章の名前（内蔵 + プロジェクトの Assets/TerrainStamps の画像）。
 std::vector<std::string> ListStampNames();
 bool RunStamp(EditorShared& shared, std::string_view stampName, const TERRAIN::DATA::StampSettings& settings,
@@ -93,6 +108,7 @@ std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeSculptTool(std::shared_
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeMaskTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeStampTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakePaintTool(std::shared_ptr<EditorShared> shared);
+std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeSplineTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorPanel> MakeTerrainPanel(std::shared_ptr<EditorShared> shared);
 
 // 操作の登録。handlers は登録の間生きている必要がある（呼び手が持つ）。

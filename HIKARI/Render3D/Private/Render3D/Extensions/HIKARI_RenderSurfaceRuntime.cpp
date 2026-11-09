@@ -679,6 +679,7 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
         return nullptr;
     }
     const char* pixelEntry = pass == RenderSurfacePass::Forward           ? "SurfaceForwardPS"
+                             : pass == RenderSurfacePass::DepthAware      ? "SurfaceDepthAwarePS"
                              : pass != RenderSurfacePass::GeometrySurface ? nullptr
                              : featureMask                                ? "SurfaceGeometryFeaturePS"
                                                                           : "SurfaceGeometryPS";
@@ -706,9 +707,20 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
     description.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
     description.DSVFormat = DXGI_FORMAT_D32_FLOAT;
     description.SampleDesc.Count = 1u;
-    if (pass == RenderSurfacePass::Forward) {
+    if (pass == RenderSurfacePass::Forward || pass == RenderSurfacePass::DepthAware) {
         description.NumRenderTargets = 1u;
         description.RTVFormats[0] = kSceneColorFormat;
+    }
+    if (pass == RenderSurfacePass::DepthAware) {
+        description.DepthStencilState.DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ZERO;
+        D3D12_RENDER_TARGET_BLEND_DESC& blend = description.BlendState.RenderTarget[0];
+        blend.BlendEnable = TRUE;
+        blend.SrcBlend = D3D12_BLEND_ONE;
+        blend.DestBlend = D3D12_BLEND_INV_SRC_ALPHA;
+        blend.BlendOp = D3D12_BLEND_OP_ADD;
+        blend.SrcBlendAlpha = D3D12_BLEND_ZERO;
+        blend.DestBlendAlpha = D3D12_BLEND_ONE;
+        blend.BlendOpAlpha = D3D12_BLEND_OP_ADD;
     } else if (pass == RenderSurfacePass::GeometrySurface) {
         description.NumRenderTargets = featureMask ? 3u : 1u;
         description.RTVFormats[0] = kSceneColorFormat;
@@ -861,6 +873,14 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
 }
 
 bool HasWork() noexcept { return !State().extensions.empty(); }
+
+bool HasDepthAwareWork() noexcept {
+    bool any = false;
+    for (IRenderSurfaceExtension* extension : State().extensions) {
+        CallModule("HasDepthAwareWork", [&] { any = any || extension->HasDepthAwareWork(); });
+    }
+    return any;
+}
 
 std::span<const RAYTRACING::RuntimeRayTracingProxy> GetRayProxies() noexcept { return State().publishedRayProxies; }
 

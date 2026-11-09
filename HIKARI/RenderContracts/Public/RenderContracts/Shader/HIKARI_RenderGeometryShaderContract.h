@@ -244,7 +244,8 @@ inline bool TryResolveRenderGeometryProgramRootLayout(std::string_view programId
         outLayout = RenderGeometryRootLayout::TraditionalCommand;
         return true;
     }
-    if (programId == "HIKARI.EngineShader.Render3D_TerrainKitSurface") {
+    if (programId == "HIKARI.EngineShader.Render3D_TerrainKitSurface" ||
+        programId == "HIKARI.EngineShader.Render3D_TerrainKitRiver") {
         outLayout = RenderGeometryRootLayout::ModuleSurfaceDraw;
         return true;
     }
@@ -407,7 +408,7 @@ inline bool IsRenderGeometryEntryIdentityValid(std::string_view programId, Rende
         return (id == "WorldTextMS" || id == "WorldTextPS") && entry.entry.entry == id;
     case RenderGeometryRootLayout::ModuleSurfaceDraw:
         return (id == "SurfaceVS" || id == "SurfaceGeometryPS" || id == "SurfaceGeometryFeaturePS" ||
-                id == "SurfaceForwardPS") &&
+                id == "SurfaceForwardPS" || id == "SurfaceDepthAwarePS") &&
                entry.entry.entry == id;
     }
     return false;
@@ -562,8 +563,9 @@ inline bool ValidateRenderGeometryShaderArtifact(const ShaderCookedArtifact& art
         : rootLayout == RenderGeometryRootLayout::ParticleCompaction ? 3u
         : rootLayout == RenderGeometryRootLayout::WorldSpriteDraw    ? 6u
         : rootLayout == RenderGeometryRootLayout::WorldTextDraw      ? 2u
-        : rootLayout == RenderGeometryRootLayout::ModuleSurfaceDraw  ? 4u
-                                                                     : 1u;
+        : rootLayout == RenderGeometryRootLayout::ModuleSurfaceDraw
+            ? (artifact.programId == "HIKARI.EngineShader.Render3D_TerrainKitRiver" ? 2u : 4u)
+            : 1u;
     if (artifact.entries.size() != expectedEntryCount) {
         outDiagnostic = "RenderGeometry artifact entry count is invalid";
         return false;

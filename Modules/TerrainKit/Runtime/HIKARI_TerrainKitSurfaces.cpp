@@ -25,7 +25,7 @@ namespace {
 
 constexpr char kSurfaceExtension[] = ".hterrainsurface";
 constexpr uint32_t kCookMagic = 0x43535448u; // "HTSC"
-constexpr uint32_t kCookVersion = 1u;
+constexpr uint32_t kCookVersion = 2u;
 
 struct CookHeader {
     uint32_t magic = kCookMagic;
@@ -121,7 +121,8 @@ bool CompressWithMips(std::vector<uint8_t>& rgba, DXGI_FORMAT format, bool srgb,
     DirectX::Image base{};
     base.width = kSurfaceTextureSize;
     base.height = kSurfaceTextureSize;
-    base.format = DXGI_FORMAT_R8G8B8A8_UNORM;
+    // 中身が sRGB なら入力もそう名乗る。UNORM のままだと BC7_UNORM_SRGB への圧縮が線形と見てもう一度符号化する。
+    base.format = srgb ? DXGI_FORMAT_R8G8B8A8_UNORM_SRGB : DXGI_FORMAT_R8G8B8A8_UNORM;
     base.rowPitch = static_cast<size_t>(kSurfaceTextureSize) * 4u;
     base.slicePitch = base.rowPitch * kSurfaceTextureSize;
     base.pixels = rgba.data();

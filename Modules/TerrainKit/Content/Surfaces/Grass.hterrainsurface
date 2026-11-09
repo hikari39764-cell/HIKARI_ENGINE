@@ -3,14 +3,14 @@
   "color": "Grass004_1K-JPG_Color.jpg",
   "normal": "Grass004_1K-JPG_NormalDX.jpg",
   "tilingMeters": 3.0,
-  "heightContrast": 0.15,
+  "heightContrast": 0.25,
   "roughnessValue": 0.92,
   "source": "https://ambientcg.com/view?id=Grass004",
   "license": "CC0-1.0",
   "author": "ambientCG (Lennart Demes)",
   "baseColor": [
-    0.72,
-    0.72,
-    1.05
+    0.85,
+    0.85,
+    0.9
   ]
 }

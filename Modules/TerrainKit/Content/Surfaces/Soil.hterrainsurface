@@ -3,14 +3,14 @@
   "color": "Ground048_1K-JPG_Color.jpg",
   "normal": "Ground048_1K-JPG_NormalDX.jpg",
   "tilingMeters": 3.5,
-  "heightContrast": 0.1,
+  "heightContrast": 0.25,
   "roughnessValue": 0.9,
   "source": "https://ambientcg.com/view?id=Ground048",
   "license": "CC0-1.0",
   "author": "ambientCG (Lennart Demes)",
   "baseColor": [
-    0.95,
-    1.15,
-    1.3
+    0.62,
+    0.7,
+    0.78
   ]
 }

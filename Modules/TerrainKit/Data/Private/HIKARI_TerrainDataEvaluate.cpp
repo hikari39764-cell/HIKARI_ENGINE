@@ -61,6 +61,7 @@ struct HeightStackEvaluator::Impl {
         const TiledRaster<float>* values = nullptr;
         const TiledRaster<float>* mask = nullptr;
         std::shared_ptr<const HeightImage> image{};
+        PreparedSpline spline{};
     };
 
     TerrainGrid grid{};
@@ -85,6 +86,7 @@ struct HeightStackEvaluator::Impl {
                 layer.values->ReadRect(grid, rect, values);
             }
             break;
+        case HeightLayerKind::Spline: EvaluateSplineHeights(layer.spline, grid, rect, values, alpha); break;
         }
         if (layer.settings.masked && layer.mask != nullptr) {
             std::vector<float> mask;
@@ -158,6 +160,9 @@ HeightStackEvaluator::HeightStackEvaluator(const TerrainData& data) : impl_(std:
         layer.values = data.LayerValues(settings.id);
         layer.mask = data.LayerMask(settings.id);
         layer.image = data.LayerImage(settings.id);
+        if (settings.kind == HeightLayerKind::Spline) {
+            layer.spline = PrepareSpline(settings.spline);
+        }
         if (settings.kind == HeightLayerKind::Noise) {
             layer.noise = MakeNoise(settings.noise, impl_->error);
             if (settings.noise.encodedNodeTree.empty() && settings.noise.fractal != NoiseFractal::None) {

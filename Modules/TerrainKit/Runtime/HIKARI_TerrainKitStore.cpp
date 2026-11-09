@@ -172,6 +172,8 @@ TerrainStore& TerrainStore::Get() {
 }
 
 void TerrainStore::Close() {
+    ruleBaker_.Cancel();
+    rivers_.Invalidate();
     scenePath_.clear();
     data_.reset();
     sculptLayer_ = 0u;
@@ -296,6 +298,8 @@ std::unique_ptr<TerrainData> TerrainStore::MakeGeneratedData(const NoiseLayerSet
 }
 
 std::unique_ptr<TerrainData> TerrainStore::ReplaceData(std::unique_ptr<TerrainData> data) {
+    ruleBaker_.Cancel();
+    rivers_.Invalidate();
     std::unique_ptr<TerrainData> previous = std::move(data_);
     data_ = std::move(data);
     sculptLayer_ = FindSculptLayer(*data_);
@@ -428,6 +432,11 @@ void TerrainStore::RebakeRect(const SampleRect& rect) {
     }
 }
 
+void TerrainStore::RebakeAfterSplineChange(const SampleRect& rect) {
+    stackDirty_ = true;
+    RebakeRect(rect);
+}
+
 void TerrainStore::MarkControlChanged(const SampleRect& rect) {
     std::vector<TileCoord> touched{};
     ForEachTileHolding(settings_.grid, rect, [&](TileCoord tile) {
@@ -467,35 +476,39 @@ void TerrainStore::SetSurfaceRules(SurfaceRuleSet rules) {
 }
 
 void TerrainStore::SetWeather(const TerrainWeather& weather) {
-    weather_ = weather;
+    const auto unit = [](float value, float fallback) {
+        return std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : fallback;
+    };
+    weather_.snowLineMeters = std::isfinite(weather.snowLineMeters) ? weather.snowLineMeters : weather_.snowLineMeters;
+    weather_.snowAmount = unit(weather.snowAmount, weather_.snowAmount);
+    weather_.wetness = unit(weather.wetness, weather_.wetness);
     surfaceSlotsDirty_ = true;
 }
 
 void TerrainStore::ShutdownWorkers() {
     surfaces_.Shutdown();
-    ruleBaker_.Shutdown();
+    ruleBaker_.Cancel();
 }
 
-void TerrainStore::ApplyRuleResult(TileCoord tile, bool hasControl, std::vector<uint32_t> control,
-                                   std::vector<uint8_t> farColor) {
+void TerrainStore::ApplyRuleResult(TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> farColor) {
     const auto found = tiles_.find(tile);
     if (found == tiles_.end() || data_ == nullptr) {
         return;
     }
     TileRuntime& runtime = found->second;
     const uint32_t samples = TileSamples(settings_.grid);
-    if (hasControl && control.size() == static_cast<size_t>(samples) * samples) {
-        // 計算の間に手で塗られた標本は今の値を残す。
+    if (control.size() == static_cast<size_t>(samples) * samples) {
+        // 計算の間の編集を消さない：手塗りと穴・ナビの印は今の値を取る。
         TiledRaster<uint32_t>& raster = data_->Control();
         const TileRaster<uint32_t>* current = raster.Find(tile);
-        if (current != nullptr) {
-            for (size_t index = 0u; index < control.size(); ++index) {
-                if (UnpackControlTexel(current->values[index]).handPainted) {
-                    control[index] = current->values[index];
-                }
-            }
+        for (size_t index = 0u; index < control.size(); ++index) {
+            control[index] = MergeComputedControl(control[index], current != nullptr ? current->values[index] : 0u);
         }
-        if (current == nullptr || current->values != control) {
+        // 全部既定のままの瓦片は図を持たない。
+        const bool stored = current != nullptr ? current->values != control
+                                               : std::any_of(control.begin(), control.end(),
+                                                             [](uint32_t value) { return value != 0u; });
+        if (stored) {
             TileRaster<uint32_t> next(samples, 0u);
             next.values = std::move(control);
             raster.Assign(tile, std::move(next));

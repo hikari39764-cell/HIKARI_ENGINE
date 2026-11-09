@@ -273,9 +273,8 @@ bool ReadTerrainCell(TerrainData& data, TileCoord expected, std::span<const uint
         }
         if (chunk.type == kChunkControl) {
             TileRaster<uint32_t> raster{};
-            if (!ToRaster(grid, chunk, raster) ||
-                !std::all_of(raster.values.begin(), raster.values.end(), IsValidControlValue)) {
-                error = "terrain control map has reserved bits set";
+            if (!ToRaster(grid, chunk, raster)) {
+                error = "terrain control map could not be read";
                 return false;
             }
             control = std::move(raster);

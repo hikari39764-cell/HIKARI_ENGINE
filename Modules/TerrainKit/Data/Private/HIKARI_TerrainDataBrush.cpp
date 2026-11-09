@@ -22,20 +22,6 @@ bool FinitePath(std::span<const MATH::Vec2> path) noexcept {
                        [](const MATH::Vec2& p) { return std::isfinite(p.x) && std::isfinite(p.y); });
 }
 
-SampleRect UnionRects(const SampleRect& a, const SampleRect& b) noexcept {
-    if (a.Empty()) {
-        return b;
-    }
-    if (b.Empty()) {
-        return a;
-    }
-    const int64_t x0 = (std::min)(a.x0, b.x0);
-    const int64_t z0 = (std::min)(a.z0, b.z0);
-    const int64_t x1 = (std::max)(a.X1(), b.X1());
-    const int64_t z1 = (std::max)(a.Z1(), b.Z1());
-    return SampleRect{x0, z0, static_cast<uint32_t>(x1 - x0 + 1), static_cast<uint32_t>(z1 - z0 + 1)};
-}
-
 // 行を並列に処理する（半径の大きい筆でも一フレームに収める）。行どうしは同じ標本へ書かない。
 template <class RowFunction>
 void ForEachRow(uint32_t rows, RowFunction function) {

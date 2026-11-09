@@ -3,6 +3,7 @@
 #include <filesystem>
 #include <initializer_list>
 #include <limits>
+#include <stdexcept>
 #include <string>
 #include <vector>
 
@@ -116,6 +117,21 @@ Json LayerToJson(const TerrainData& data, const HeightLayer& layer) {
 }
 
 // patch を層の記述へ重ねて検証する。id と種類は変えられない。
+// 省略形の点の列を読む。高さが無ければ layerId の層より下の地面の高さ（0 なら全部の合成）。
+void ReadSplinePoints(const Json& points, float width, uint32_t layerId, std::vector<SplinePoint>& out) {
+    out.clear();
+    for (const Json& point : points) {
+        const size_t count = point.size();
+        if (count != 2u && count != 3u) {
+            throw std::runtime_error("a spline point must be [x, z] or [x, y, z]");
+        }
+        const float x = point.at(0).get<float>();
+        const float z = point.at(count - 1u).get<float>();
+        const float y = count == 3u ? point.at(1).get<float>() : HeightBelowLayer(layerId, x, z).value_or(0.0f);
+        out.push_back(SplinePoint{MATH::Vec3{x, y, z}, width});
+    }
+}
+
 bool PatchLayer(const HeightLayer& layer, const Json& patch, HeightLayer& out, std::string& error) {
     if (!patch.is_object()) {
         error = "patch must be an object.";
@@ -265,7 +281,7 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                   Ok(result, "Terrain layers.", {{"layers", std::move(layers)}});
               });
     add.Mutation("terrainkit.layer.add", "Add a terrain layer. One undo step.",
-                 {{"kind", Type::String, "noise, image or sculpt."},
+                 {{"kind", Type::String, "noise, image, sculpt or spline (terrainkit.spline.add fills in a spline)."},
                   {"name", Type::String, "Layer name."},
                   {"index", Type::Integer, "Position counted from the bottom; omit for the top."},
                   {"patch", Type::Json, "Layer fields as in terrainkit.layer.list: blend, opacity, noise, image."}},
@@ -283,7 +299,7 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                          }
                      }
                      if (!known) {
-                         Fail(result, "UNKNOWN_KIND", "kind must be noise, image or sculpt.");
+                         Fail(result, "UNKNOWN_KIND", "kind must be noise, image, sculpt or spline.");
                          return;
                      }
                      layer.name = parameters.value("name", kind);
@@ -344,11 +360,85 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
             }
             HeightLayer next{};
             std::string error{};
-            if (!PatchLayer(*layer, parameters.at("patch"), next, error) || !UpdateTerrainLayer(*shared, next, error)) {
+            if (!PatchLayer(*layer, parameters.at("patch"), next, error)) {
+                Fail(result, "SET_FAILED", error);
+                return;
+            }
+            const bool updated = next.kind == HeightLayerKind::Spline ? ChangeSplineLayer(*shared, next, error)
+                                                                      : UpdateTerrainLayer(*shared, next, error);
+            if (!updated) {
                 Fail(result, "SET_FAILED", error);
                 return;
             }
             Ok(result, "Layer updated.", LayerToJson(TerrainStore::Get().Data(), next));
+        });
+    add.Mutation(
+        "terrainkit.spline.add",
+        "Add a road, river or ramp layer. Roads flatten the ground and paint their surface, rivers carve a bed, paint "
+        "and wet the banks and get a water surface, ramps only shape the ground. One undo step.",
+        {{"kind", Type::String, "road, river or ramp."},
+         {"name", Type::String, "Layer name."},
+         {"points", Type::Json,
+          "Points as [x, z] (height from the ground below) or [x, y, z]. For a river y is the water level."},
+         {"widthMeters", Type::Number, "Width at every point; omit for the default of the kind."},
+         {"patch", Type::Json, "Spline fields as in terrainkit.layer.list: falloffMeters, surface, depthMeters..."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            const std::string kindName = parameters.value("kind", std::string("road"));
+            const auto kind = TEXT::TryParseEnum(kSplineKindNames, kindName);
+            if (!kind.has_value()) {
+                Fail(result, "UNKNOWN_KIND", "kind must be road, river or ramp.");
+                return;
+            }
+            HeightLayer layer = MakeSplineLayer(*kind);
+            layer.name = parameters.value("name", layer.name);
+            std::string error{};
+            if (parameters.contains("patch") &&
+                !PatchLayer(layer, Json{{"spline", parameters.at("patch")}}, layer, error)) {
+                Fail(result, "INVALID_PATCH", error);
+                return;
+            }
+            const float width = parameters.value("widthMeters", DefaultSplineWidth(*kind));
+            ReadSplinePoints(parameters.value("points", Json::array()), width, 0u, layer.spline.points);
+            uint32_t id = 0u;
+            if (!AddTerrainLayer(*shared, std::move(layer), TerrainData::kAppend, id, error)) {
+                Fail(result, "ADD_FAILED", error);
+                return;
+            }
+            shared->selectedLayer = id;
+            Ok(result, "Spline layer added.",
+               LayerToJson(TerrainStore::Get().Data(), *TerrainStore::Get().Data().FindLayer(id)));
+        });
+    add.Mutation(
+        "terrainkit.spline.set",
+        "Replace the points of a road, river or ramp layer. The terrain, its surface and the water follow, and only "
+        "the changed area is rebaked. One undo step.",
+        {{"id", Type::Integer, "Layer id."},
+         {"points", Type::Json, "Points as [x, z] or [x, y, z]."},
+         {"widthMeters", Type::Number, "Width at every point; omit to keep the width of the first point."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            const HeightLayer* layer = TerrainStore::Get().Data().FindLayer(parameters.at("id").get<uint32_t>());
+            if (layer == nullptr || layer->kind != HeightLayerKind::Spline) {
+                Fail(result, "UNKNOWN_LAYER", "No spline layer with that id.");
+                return;
+            }
+            HeightLayer next = *layer;
+            const float width =
+                parameters.value("widthMeters", next.spline.points.empty() ? DefaultSplineWidth(next.spline.kind)
+                                                                           : next.spline.points.front().widthMeters);
+            ReadSplinePoints(parameters.at("points"), width, next.id, next.spline.points);
+            std::string error{};
+            if (!ChangeSplineLayer(*shared, next, error)) {
+                Fail(result, "SET_FAILED", error);
+                return;
+            }
+            Ok(result, "Spline updated.",
+               {{"points", next.spline.points.size()}, {"rivers", TerrainStore::Get().Rivers().RibbonCount()}});
         });
     add.Mutation("terrainkit.layer.select", "Select the layer brushes, stamps and erosion write to.",
                  {{"id", Type::Integer, "Layer id."}}, [shared](const Json& parameters, Sink& result) {
@@ -475,16 +565,15 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                  {{"snowLineMeters", Type::Number, "Height where snow starts."},
                   {"snowAmount", Type::Number, "0..1."},
                   {"wetness", Type::Number, "0..1."}},
-                 [](const Json& parameters, Sink& result) {
+                 [shared](const Json& parameters, Sink& result) {
                      if (!RequireTerrain(result)) {
                          return;
                      }
-                     TerrainStore& store = TerrainStore::Get();
-                     TerrainWeather weather = store.Weather();
+                     TerrainWeather weather = TerrainStore::Get().Weather();
                      weather.snowLineMeters = parameters.value("snowLineMeters", weather.snowLineMeters);
-                     weather.snowAmount = std::clamp(parameters.value("snowAmount", weather.snowAmount), 0.0f, 1.0f);
-                     weather.wetness = std::clamp(parameters.value("wetness", weather.wetness), 0.0f, 1.0f);
-                     store.SetWeather(weather);
+                     weather.snowAmount = parameters.value("snowAmount", weather.snowAmount);
+                     weather.wetness = parameters.value("wetness", weather.wetness);
+                     ChangeWeather(*shared, weather);
                      Ok(result, "Weather updated.", Json::object());
                  });
     add.Mutation(

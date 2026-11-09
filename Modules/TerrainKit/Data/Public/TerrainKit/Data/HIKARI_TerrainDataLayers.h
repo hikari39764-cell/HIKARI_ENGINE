@@ -8,6 +8,7 @@
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "TerrainKit/Data/HIKARI_TerrainDataGrid.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataSpline.h"
 
 // 高さの層スタック（下から上へ合成する）。記述は JSON 文本で保存し、智能体と人が直接読んで差分を取れる。
 // 層の画素（手彫りの差分、マスク）はタイル単位の二進ファイルに分けて持つ（HIKARI_TerrainDataFile.h）。
@@ -17,12 +18,14 @@ enum class HeightLayerKind : uint8_t {
     Noise = 0,  // FastNoise2 の手続き生成
     Image = 1,  // 外部ツールの高さ画像（EXR / R16）
     Sculpt = 2, // 筆刷・侵蝕・印章が書き込むタイル単位の値
+    Spline = 3, // 道路・河・坂の曲線（HIKARI_TerrainDataSpline.h）
 };
 
 inline constexpr TEXT::EnumName<HeightLayerKind> kHeightLayerKindNames[] = {
     {HeightLayerKind::Noise, "noise"},
     {HeightLayerKind::Image, "image"},
     {HeightLayerKind::Sculpt, "sculpt"},
+    {HeightLayerKind::Spline, "spline"},
 };
 
 // c = 下の合成結果、v = この層の値、a = 不透明度 × マスク。
@@ -127,6 +130,7 @@ struct HeightLayer {
     bool masked = false;
     NoiseLayerSettings noise{};
     ImageLayerSettings image{};
+    SplineLayerSettings spline{};
     bool operator==(const HeightLayer&) const = default;
 };
 
@@ -144,6 +148,8 @@ inline constexpr auto kHeightLayerFields = [](auto&& field) {
           Show{[](const S& layer) { return layer.kind == HeightLayerKind::Noise; }});
     field("image", &S::image, Nested{kImageLayerFields}, Group{"Image"},
           Show{[](const S& layer) { return layer.kind == HeightLayerKind::Image; }});
+    field("spline", &S::spline, Nested{kSplineLayerFields}, Group{"Spline"},
+          Show{[](const S& layer) { return layer.kind == HeightLayerKind::Spline; }});
 };
 
 struct HeightLayerStack {

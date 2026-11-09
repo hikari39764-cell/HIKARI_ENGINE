@@ -91,14 +91,31 @@ void TestControl() {
     texel.hole = true;
     texel.handPainted = true;
     texel.navigationExcluded = true;
+    texel.wetness = 15u;
     uint32_t packed = 0u;
     CHECK(PackControlTexel(texel, packed));
-    CHECK(IsValidControlValue(packed));
     CHECK(UnpackControlTexel(packed) == texel);
     CHECK(UnpackControlTexel(0u) == ControlTexel{});
+    // 背景の計算の結果は、計算中の編集（穴・手塗り）を消さない。
+    ControlTexel computedTexel{};
+    computedTexel.baseMaterial = 4u;
+    uint32_t computedValue = 0u;
+    CHECK(PackControlTexel(computedTexel, computedValue));
+    ControlTexel holeTexel{};
+    holeTexel.hole = true;
+    uint32_t holeValue = 0u;
+    CHECK(PackControlTexel(holeTexel, holeValue));
+    const ControlTexel merged = UnpackControlTexel(MergeComputedControl(computedValue, holeValue));
+    CHECK(merged.baseMaterial == 4u && merged.hole);
+    ControlTexel handTexel{};
+    handTexel.baseMaterial = 9u;
+    handTexel.handPainted = true;
+    uint32_t handValue = 0u;
+    CHECK(PackControlTexel(handTexel, handValue));
+    CHECK(MergeComputedControl(computedValue, handValue) == handValue);
+    CHECK(MergeComputedControl(handValue, computedValue) == computedValue);
     texel.baseMaterial = 32u;
     CHECK(!PackControlTexel(texel, packed));
-    CHECK(!IsValidControlValue(0x10000000u));
     // 主材質を塗れば重ねが薄まり、別の材質を塗れば重ねになる。満たせば主材質へ繰り上がる。
     ControlTexel painted = PaintControlMaterial(ControlTexel{}, 3u, 0.5f);
     CHECK(painted.baseMaterial == 0u && painted.overlayMaterial == 3u && painted.blend == 128u && painted.handPainted);
@@ -493,6 +510,81 @@ void TestSurfaceRules() {
     CHECK(read == defaults);
 }
 
+// 道路は路盤を平らにして路面を塗り、河は掘って岸を湿らせ、水面は下流へ上がらない。
+void TestSplineLayers() {
+    TerrainGrid grid{};
+    grid.tileCells = 64u;
+    grid.tileSizeMeters = 64.0f;
+    TerrainData data(grid);
+    HeightLayer base{};
+    base.kind = HeightLayerKind::Noise;
+    base.blend = HeightBlendMode::Replace;
+    base.noise.fractal = NoiseFractal::None;
+    base.noise.amplitudeMeters = 0.0f;
+    base.noise.offsetMeters = 50.0f;
+    CHECK(data.AddLayer(base) != 0u);
+    HeightLayer road{};
+    road.kind = HeightLayerKind::Spline;
+    road.blend = HeightBlendMode::Replace;
+    road.spline.kind = SplineKind::Road;
+    road.spline.falloffMeters = 6.0f;
+    road.spline.edgeMeters = 2.0f;
+    road.spline.surface = 3u;
+    road.spline.edgeSurface = 1u;
+    road.spline.points = {{HIKARI::MATH::Vec3{10.0f, 60.0f, 8.0f}, 6.0f},
+                          {HIKARI::MATH::Vec3{10.0f, 60.0f, 56.0f}, 6.0f}};
+    const uint32_t roadId = data.AddLayer(road);
+    CHECK(roadId != 0u);
+    const HeightStackEvaluator evaluator(data);
+    const SampleRect rect = TileSampleRect(grid, TileCoord{0, 0});
+    std::vector<float> heights{};
+    CHECK(evaluator.EvaluateRect(rect, heights));
+    const auto at = [&](uint32_t x, uint32_t z) { return heights[static_cast<size_t>(z) * rect.width + x]; };
+    CHECK(std::abs(at(10u, 32u) - 60.0f) < 0.01f);       // 路面
+    CHECK(std::abs(at(14u, 32u) - 60.0f) < 0.01f);       // 路肩まで平ら
+    CHECK(std::abs(at(40u, 32u) - 50.0f) < 0.01f);       // 届かない所は元のまま
+    CHECK(at(18u, 32u) > 50.0f && at(18u, 32u) < 60.0f); // 斜面
+    const PreparedSpline prepared = PrepareSpline(data.FindLayer(roadId)->spline);
+    std::vector<uint32_t> control(rect.Count(), 0u);
+    ControlTexel painted{};
+    painted.baseMaterial = 7u;
+    painted.handPainted = true;
+    CHECK(PackControlTexel(painted, control[static_cast<size_t>(32u) * rect.width + 9u]));
+    PaintSplineSurfaces(std::span(&prepared, 1u), grid, rect, control);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(32u) * rect.width + 10u]).baseMaterial == 3u);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(32u) * rect.width + 9u]).baseMaterial == 7u);
+    CHECK(UnpackControlTexel(control[static_cast<size_t>(32u) * rect.width + 40u]).baseMaterial == 0u);
+    // 一つの点を動かした時は、その近くの範囲だけ変わる。
+    SplineLayerSettings moved = prepared.settings;
+    moved.points.push_back(SplinePoint{HIKARI::MATH::Vec3{10.0f, 60.0f, 120.0f}, 6.0f});
+    moved.points.push_back(SplinePoint{HIKARI::MATH::Vec3{10.0f, 60.0f, 200.0f}, 6.0f});
+    SplineLayerSettings movedEnd = moved;
+    movedEnd.points.back().position.z = 220.0f;
+    const SampleRect changed = SplineChangedRect(PrepareSpline(moved), PrepareSpline(movedEnd), grid);
+    CHECK(!changed.Empty() && changed.z0 > 8);
+    // 河：水面は上流より上がらない。岸の中は掘られ、岸は湿る。
+    SplineLayerSettings river{};
+    river.kind = SplineKind::River;
+    river.depthMeters = 3.0f;
+    river.points = {{HIKARI::MATH::Vec3{30.0f, 49.0f, 0.0f}, 10.0f}, {HIKARI::MATH::Vec3{30.0f, 52.0f, 60.0f}, 10.0f}};
+    const PreparedSpline flow = PrepareSpline(river);
+    CHECK(flow.sections.back().y <= flow.sections.front().y);
+    std::vector<float> values{};
+    std::vector<float> alpha(rect.Count(), 1.0f);
+    EvaluateSplineHeights(flow, grid, rect, values, alpha);
+    const size_t center = static_cast<size_t>(32u) * rect.width + 30u;
+    CHECK(values[center] < 47.0f && alpha[center] == 1.0f);
+    std::vector<uint32_t> riverControl(rect.Count(), 0u);
+    PaintSplineSurfaces(std::span(&flow, 1u), grid, rect, riverControl);
+    CHECK(UnpackControlTexel(riverControl[center]).wetness == 15u);
+    // 記述は JSON で往復する。
+    const nlohmann::json written = WriteHeightLayerStackJson(data.Stack());
+    HeightLayerStack readBack{};
+    std::string error{};
+    CHECK(ReadHeightLayerStackJson(written, readBack, error));
+    CHECK(readBack == data.Stack());
+}
+
 void TestUndo() {
     TerrainData data(SmallGrid());
     const uint32_t sculpt = data.AddLayer(SculptLayer());
@@ -818,6 +910,7 @@ int main(int argc, char** argv) {
     TestBrushes();
     TestBrushVariantsStampsAndMasks();
     TestSurfaceRules();
+    TestSplineLayers();
     TestUndo();
     TestErosion();
     TestCellFile();

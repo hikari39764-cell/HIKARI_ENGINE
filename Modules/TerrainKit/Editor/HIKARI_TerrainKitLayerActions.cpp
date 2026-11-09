@@ -69,6 +69,18 @@ private:
     SurfaceRuleSet after_;
 };
 
+// 積雪と湿りの前後を持つ撤销。
+class WeatherUndo final : public IEditorUndoEntry {
+public:
+    WeatherUndo(TerrainWeather before, TerrainWeather after) : before_(before), after_(after) {}
+    void Undo() override { TerrainStore::Get().SetWeather(before_); }
+    void Redo() override { TerrainStore::Get().SetWeather(after_); }
+
+private:
+    TerrainWeather before_;
+    TerrainWeather after_;
+};
+
 // 層の記述を変える手続きの共通部分：撤销を取り、焼き直す。
 template <class Change>
 bool ChangeStack(EditorShared& shared, const char* label, Change change, std::string& error) {
@@ -215,6 +227,15 @@ void ChangeSurfaceRules(EditorShared& shared, SurfaceRuleSet rules) {
     if (shared.services != nullptr) {
         shared.services->RecordUndo("Edit Terrain Rules",
                                     std::make_unique<RulesUndo>(std::move(before), std::move(rules)));
+    }
+}
+
+void ChangeWeather(EditorShared& shared, const TerrainWeather& weather) {
+    TerrainStore& store = TerrainStore::Get();
+    const TerrainWeather before = store.Weather();
+    store.SetWeather(weather);
+    if (!(store.Weather() == before) && shared.services != nullptr) {
+        shared.services->RecordUndo("Edit Terrain Weather", std::make_unique<WeatherUndo>(before, store.Weather()));
     }
 }
 

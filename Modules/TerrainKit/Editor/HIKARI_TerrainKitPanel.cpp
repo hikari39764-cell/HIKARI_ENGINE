@@ -94,6 +94,18 @@ private:
         if (ui.Button("addImage", "Add Height Image")) {
             AddKind(HeightLayerKind::Image, "Height Image", error);
         }
+        for (const auto& entry : kSplineKindNames) {
+            ui.SameLine();
+            if (ui.Button(std::string("add") + entry.name, std::string("Add ") + entry.name)) {
+                uint32_t id = 0u;
+                if (AddTerrainLayer(*shared_, MakeSplineLayer(entry.value), TerrainData::kAppend, id, error)) {
+                    shared_->selectedLayer = id;
+                    if (shared_->services != nullptr) {
+                        shared_->services->ActivateViewportTool(kSplineToolId);
+                    }
+                }
+            }
+        }
         const size_t position = store.Data().LayerIndex(shared_->selectedLayer);
         if (position != TerrainData::kAppend) {
             if (ui.Button("layerUp", "Move Up")) {
@@ -180,13 +192,52 @@ private:
             }
             changed |= ui.InputFloat("imageScale", "Height Scale (m)", &next.image.heightScaleMeters);
             changed |= ui.InputFloat("imageOffset", "Height Offset (m)", &next.image.heightOffsetMeters);
+        } else if (next.kind == HeightLayerKind::Spline) {
+            changed |= DrawSpline(ui, next.spline);
         }
         if (changed) {
             std::string error{};
-            if (!UpdateTerrainLayer(*shared_, next, error)) {
+            const bool updated = next.kind == HeightLayerKind::Spline ? ChangeSplineLayer(*shared_, next, error)
+                                                                      : UpdateTerrainLayer(*shared_, next, error);
+            if (!updated) {
                 Report(error);
             }
         }
+    }
+
+    bool DrawSpline(IEditorWorkspaceUi& ui, SplineLayerSettings& spline) {
+        if (ui.Button("splineTool", "Road and River Tool") && shared_->services != nullptr) {
+            shared_->services->ActivateViewportTool(kSplineToolId);
+        }
+        ui.Text(std::to_string(spline.points.size()) + " points");
+        bool changed = false;
+        float width = spline.points.empty() ? DefaultSplineWidth(spline.kind) : spline.points.front().widthMeters;
+        if (ui.InputFloat("splineWidth", "Width (m)", &width)) {
+            for (SplinePoint& point : spline.points) {
+                point.widthMeters = width;
+            }
+            changed = true;
+        }
+        changed |= ui.InputFloat("splineFalloff", "Falloff (m)", &spline.falloffMeters);
+        changed |= ui.InputFloat("splineEdge", "Edge Width (m)", &spline.edgeMeters);
+        changed |= ui.Checkbox("splinePaint", "Paint Surface", &spline.paint);
+        int32_t surface = static_cast<int32_t>(spline.surface);
+        if (ui.InputInt("splineSurface", "Surface Slot", &surface)) {
+            spline.surface = static_cast<uint32_t>(std::clamp(surface, 0, 31));
+            changed = true;
+        }
+        int32_t edge = static_cast<int32_t>(spline.edgeSurface);
+        if (ui.InputInt("splineEdgeSurface", "Edge Surface Slot", &edge)) {
+            spline.edgeSurface = static_cast<uint32_t>(std::clamp(edge, 0, 31));
+            changed = true;
+        }
+        if (spline.kind == SplineKind::River) {
+            changed |= ui.InputFloat("riverDepth", "Depth (m)", &spline.depthMeters);
+            changed |= ui.InputFloat("riverWet", "Wet Bank (m)", &spline.wetMeters);
+            changed |= ui.InputFloat("riverSpeed", "Flow Speed (m/s)", &spline.flowSpeed);
+            changed |= ui.InputFloat("riverClarity", "Clarity (m)", &spline.clarityMeters);
+        }
+        return changed;
     }
 
     void DrawBrush(IEditorWorkspaceUi& ui) {
@@ -277,7 +328,7 @@ private:
         weatherChanged |= ui.InputFloat("snowAmount", "Snow Amount", &weather.snowAmount);
         weatherChanged |= ui.InputFloat("wetness", "Wetness", &weather.wetness);
         if (weatherChanged) {
-            store.SetWeather(weather);
+            ChangeWeather(*shared_, weather);
         }
     }
 

@@ -146,7 +146,7 @@ TerrainSurfaceSample TerrainSampleSurface(uint surface, float3 worldPosition, fl
 }
 
 // 周りの 4 標本の制御図から、この画素で一番効く 2 材質を選ぶ。
-void TerrainPickSurfaces(float2 tileUv, uint tileLayer, out uint first, out uint second, out float blend)
+void TerrainPickSurfaces(float2 tileUv, uint tileLayer, out uint first, out uint second, out float blend, out float wet)
 {
     const float samples = gTerrainTileCells + 1.0f;
     const float2 texel = tileUv * samples - 0.5f;
@@ -158,10 +158,12 @@ void TerrainPickSurfaces(float2 tileUv, uint tileLayer, out uint first, out uint
     uint ids[8];
     float weights[8];
     uint count = 0u;
+    wet = 0.0f;
     for (uint corner = 0u; corner < 4u; ++corner)
     {
         const int2 at = min(cell + int2(corner & 1u, corner >> 1u), int2(last, last));
         const uint value = gTerrainControl.Load(int4(at, tileLayer, 0));
+        wet += cornerWeights[corner] * float(value >> 28u) / 15.0f;
         const float overlay = float((value >> 10u) & 255u) / 255.0f;
         const uint materials[2] = {value & 31u, (value >> 5u) & 31u};
         const float amounts[2] = {cornerWeights[corner] * (1.0f - overlay), cornerWeights[corner] * overlay};
@@ -204,12 +206,12 @@ void TerrainPickSurfaces(float2 tileUv, uint tileLayer, out uint first, out uint
 }
 
 // 画素の地表：2 材質を高さで混ぜ、広い明暗のむらを足す。
-TerrainSurfaceSample TerrainResolveSurface(TerrainVertex input, float3 macroNormal)
+TerrainSurfaceSample TerrainResolveSurface(TerrainVertex input, float3 macroNormal, out float wet)
 {
     uint first;
     uint second;
     float blend;
-    TerrainPickSurfaces(input.tileUv, input.tileLayer, first, second, blend);
+    TerrainPickSurfaces(input.tileUv, input.tileLayer, first, second, blend, wet);
     const uint limit = gTerrainSurfaceCount - 1u;
     first = min(first, limit);
     second = min(second, limit);
@@ -259,13 +261,16 @@ TerrainSurfaceSample TerrainShadeSurface(TerrainVertex input, float3 macroNormal
     const float distanceToCamera = length(input.worldPosition - gSurfaceCameraPosition);
     const float far = gTerrainFarReady != 0u ? saturate((distanceToCamera - kFarStartMeters) / kFarFadeMeters) : 0.0f;
     TerrainSurfaceSample surface;
+    float wet = gTerrainWetness;
     if (far >= 1.0f)
     {
         surface = TerrainFarSurface(input, macroNormal);
     }
     else
     {
-        surface = TerrainResolveSurface(input, macroNormal);
+        float sampleWet;
+        surface = TerrainResolveSurface(input, macroNormal, sampleWet);
+        wet = max(wet, sampleWet);
         if (far > 0.0f)
         {
             const TerrainSurfaceSample distant = TerrainFarSurface(input, macroNormal);
@@ -286,10 +291,10 @@ TerrainSurfaceSample TerrainShadeSurface(TerrainVertex input, float3 macroNormal
         surface.roughness = lerp(surface.roughness, 0.55f, snow);
         surface.normal = normalize(lerp(surface.normal, macroNormal, snow * 0.8f));
     }
-    if (gTerrainWetness > 0.0f)
+    if (wet > 0.0f)
     {
-        surface.albedo *= lerp(1.0f, 0.5f, gTerrainWetness);
-        surface.roughness *= lerp(1.0f, 0.35f, gTerrainWetness);
+        surface.albedo *= lerp(1.0f, 0.5f, wet);
+        surface.roughness *= lerp(1.0f, 0.35f, wet);
     }
     return surface;
 }

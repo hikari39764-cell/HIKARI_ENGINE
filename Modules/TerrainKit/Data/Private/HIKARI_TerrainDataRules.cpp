@@ -32,6 +32,8 @@ SurfaceRuleSet DefaultSurfaceRules() {
     soil.minSlopeDegrees = 24.0f;
     soil.slopeFadeDegrees = 16.0f;
     soil.strength = 0.8f;
+    soil.noiseScaleMeters = 42.0f;
+    soil.noiseAmount = 1.5f;
     set.rules.push_back(soil);
     SurfaceRule sand{};
     sand.name = "Sand in low valleys";
@@ -45,6 +47,8 @@ SurfaceRuleSet DefaultSurfaceRules() {
     rock.surface = 2u;
     rock.minSlopeDegrees = 38.0f;
     rock.slopeFadeDegrees = 14.0f;
+    rock.noiseScaleMeters = 30.0f;
+    rock.noiseAmount = 1.2f;
     set.rules.push_back(rock);
     SurfaceRule snow{};
     snow.name = "Snow on high ground";
@@ -75,6 +79,7 @@ void EvaluateSurfaceRules(const SurfaceRuleSet& set, const SurfaceRuleTile& tile
             if (texel.handPainted) {
                 continue;
             }
+            texel.wetness = 0u;
             const size_t center = static_cast<size_t>(z + margin) * stride + x + margin;
             const float height = tile.heights[center];
             const float gradientX = (tile.heights[center + 1u] - tile.heights[center - 1u]) * slopeScale;
@@ -94,11 +99,16 @@ void EvaluateSurfaceRules(const SurfaceRuleSet& set, const SurfaceRuleTile& tile
                 if (!rule.enabled || rule.surface >= kTerrainControlMaterialCount) {
                     continue;
                 }
-                const float noise = rule.noiseAmount > 0.0f
-                                        ? rule.noiseAmount * LatticeValueNoise(worldX / rule.noiseScaleMeters,
-                                                                               worldZ / rule.noiseScaleMeters,
-                                                                               static_cast<uint32_t>(index + 1u))
-                                        : 0.0f;
+                // 大きな塊と細かい崩れの二段（一段だと境界が丸い島になる）。
+                const float noise =
+                    rule.noiseAmount > 0.0f
+                        ? rule.noiseAmount *
+                              (0.7f * LatticeValueNoise(worldX / rule.noiseScaleMeters, worldZ / rule.noiseScaleMeters,
+                                                        static_cast<uint32_t>(index + 1u)) +
+                               0.3f * LatticeValueNoise(worldX * 3.7 / rule.noiseScaleMeters,
+                                                        worldZ * 3.7 / rule.noiseScaleMeters,
+                                                        static_cast<uint32_t>(index + 101u)))
+                        : 0.0f;
                 float mask =
                     rule.strength *
                     RangeWeight(slope + noise * rule.slopeFadeDegrees, rule.minSlopeDegrees, rule.maxSlopeDegrees,

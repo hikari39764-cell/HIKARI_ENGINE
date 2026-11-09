@@ -105,6 +105,8 @@ enum class RenderSurfacePass : uint32_t {
     GeometrySurface,
     Forward,
     Shadow,
+    // 不透明の後に場面の深度図を読みながら場面色へ混ぜる（水面など）。深度へは書かない。色は事前乗算のアルファで出す。
+    DepthAware,
 };
 
 // 行列は引擎の列優先 m[col][row]。cameraPosition は影の視点でも主相机の位置（遠近分級を主視点に揃えるため）。
@@ -116,7 +118,8 @@ struct RenderSurfaceView {
 };
 
 // instances と constants は Draw の中で写される。programId は引擎の内蔵着色器の番号で、
-// 入口 SurfaceVS / SurfaceGeometryPS / SurfaceGeometryFeaturePS / SurfaceForwardPS を持つこと。
+// 使う pass に応じて入口 SurfaceVS / SurfaceGeometryPS / SurfaceGeometryFeaturePS / SurfaceForwardPS /
+// SurfaceDepthAwarePS を持つこと。
 struct RenderSurfaceDraw {
     const char* programId = nullptr;
     RenderSurfaceResourceId textures[kRenderSurfaceTextureSlotCount]{};
@@ -143,6 +146,8 @@ public:
     virtual void PrepareFrame(IRenderSurfaceResources& resources) = 0;
     // 視点ごと・pass ごとに呼ばれる。
     virtual void Record(const RenderSurfaceView& view, IRenderSurfaceCommands& commands) = 0;
+    // DepthAware の pass で描くものがあるか（無ければ引擎はその段を省ける）。
+    virtual bool HasDepthAwareWork() const { return false; }
     // 機器の作り直しなどで資源が消えた時。番号を忘れて次の PrepareFrame で作り直す。
     virtual void OnRenderResourcesLost() {}
 };

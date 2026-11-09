@@ -15,6 +15,7 @@
 #include "HIKARI/Project/RenderSurface.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
+#include "HIKARI_TerrainKitFrustum.h"
 #include "HIKARI_TerrainKitRenderData.h"
 #include "HIKARI_TerrainKitStore.h"
 
@@ -57,39 +58,6 @@ struct TerrainDrawConstants {
     float snowAmount = 0.0f;
     float wetness = 0.0f;
     float reserved = 0.0f;
-};
-
-struct FrustumPlanes {
-    std::array<std::array<float, 4>, 6> planes{};
-
-    explicit FrustumPlanes(const float m[16]) {
-        // 列優先 m[col][row]：行 r は (m[0+r], m[4+r], m[8+r], m[12+r])。D3D の深度は 0..w。
-        const auto row = [&](int r) { return std::array<float, 4>{m[r], m[4 + r], m[8 + r], m[12 + r]}; };
-        const auto r0 = row(0);
-        const auto r1 = row(1);
-        const auto r2 = row(2);
-        const auto r3 = row(3);
-        for (int i = 0; i < 4; ++i) {
-            planes[0][i] = r3[i] + r0[i];
-            planes[1][i] = r3[i] - r0[i];
-            planes[2][i] = r3[i] + r1[i];
-            planes[3][i] = r3[i] - r1[i];
-            planes[4][i] = r2[i];
-            planes[5][i] = r3[i] - r2[i];
-        }
-    }
-
-    bool IntersectsBox(const float minimum[3], const float maximum[3]) const noexcept {
-        for (const auto& plane : planes) {
-            const float x = plane[0] >= 0.0f ? maximum[0] : minimum[0];
-            const float y = plane[1] >= 0.0f ? maximum[1] : minimum[1];
-            const float z = plane[2] >= 0.0f ? maximum[2] : minimum[2];
-            if (plane[0] * x + plane[1] * y + plane[2] * z + plane[3] < 0.0f) {
-                return false;
-            }
-        }
-        return true;
-    }
 };
 
 // 地形の部品。設定を場面に保存し、自分をその世界のモジュールの面として登録する。
@@ -169,10 +137,19 @@ public:
         PrepareTerrainRenderData(resources, store);
     }
 
+    bool HasDepthAwareWork() const override {
+        TerrainStore& store = TerrainStore::Get();
+        return store.IsOpen() && store.Rivers().HasWork();
+    }
+
     void Record(const RenderSurfaceView& view, IRenderSurfaceCommands& commands) override {
         TerrainStore& store = TerrainStore::Get();
         const TerrainRenderResources& render = store.Render();
         if (!store.IsOpen() || render.heightTexture == 0u || render.indexBuffer == 0u) {
+            return;
+        }
+        if (view.pass == RenderSurfacePass::DepthAware) {
+            store.Rivers().Record(view, commands);
             return;
         }
         instances_.clear();
@@ -231,6 +208,7 @@ public:
     void OnRenderResourcesLost() override {
         TerrainStore::Get().Render() = {};
         TerrainStore::Get().Erosion().OnRenderResourcesLost();
+        TerrainStore::Get().Rivers().OnRenderResourcesLost();
     }
 
     uint32_t GetNavigationChunkCount() const override {

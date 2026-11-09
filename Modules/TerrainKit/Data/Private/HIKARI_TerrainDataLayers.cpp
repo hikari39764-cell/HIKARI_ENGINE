@@ -11,13 +11,25 @@ namespace {
 
 bool Finite(float value) noexcept { return std::isfinite(value); }
 
+bool FiniteSpline(const SplineLayerSettings& s) noexcept {
+    for (const SplinePoint& point : s.points) {
+        if (!Finite(point.position.x) || !Finite(point.position.y) || !Finite(point.position.z) ||
+            !Finite(point.widthMeters)) {
+            return false;
+        }
+    }
+    return Finite(s.falloffMeters) && Finite(s.edgeMeters) && Finite(s.depthMeters) && Finite(s.wetMeters) &&
+           Finite(s.flowSpeed) && Finite(s.clarityMeters) && Finite(s.waterColor.x) && Finite(s.waterColor.y) &&
+           Finite(s.waterColor.z);
+}
+
 bool FiniteLayer(const HeightLayer& layer) noexcept {
     const NoiseLayerSettings& n = layer.noise;
     const ImageLayerSettings& i = layer.image;
     return Finite(layer.opacity) && Finite(n.featureSizeMeters) && Finite(n.gain) && Finite(n.lacunarity) &&
            Finite(n.weightedStrength) && Finite(n.amplitudeMeters) && Finite(n.offsetMeters) &&
            Finite(i.originMeters.x) && Finite(i.originMeters.y) && Finite(i.sizeMeters.x) && Finite(i.sizeMeters.y) &&
-           Finite(i.heightScaleMeters) && Finite(i.heightOffsetMeters);
+           Finite(i.heightScaleMeters) && Finite(i.heightOffsetMeters) && FiniteSpline(layer.spline);
 }
 
 } // namespace
@@ -46,6 +58,9 @@ bool ValidateHeightLayerStack(const HeightLayerStack& stack, std::string* error)
         if (layer.kind == HeightLayerKind::Image &&
             (layer.image.sizeMeters.x <= 0.0f || layer.image.sizeMeters.y <= 0.0f)) {
             return fail("image layer " + std::to_string(layer.id) + " needs a positive size");
+        }
+        if (layer.spline.points.size() > kSplineMaximumPoints) {
+            return fail("spline layer " + std::to_string(layer.id) + " has too many points");
         }
     }
     return true;

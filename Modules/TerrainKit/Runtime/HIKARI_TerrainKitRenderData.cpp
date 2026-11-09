@@ -356,10 +356,9 @@ void UpdateRayProxies(IRenderSurfaceResources& resources, TerrainStore& store) {
 }
 
 // 材質の図が揃っていれば、区画の色を制御図の材質の平均色で置き換える（数点の平均）。
-void AddSurfaceColor(const TerrainStore& store, TileCoord tile, uint32_t x, uint32_t z, uint32_t size,
-                     float albedo[3]) {
-    const auto& surfaces = store.Surfaces().Surfaces();
-    if (surfaces.empty()) {
+void AddSurfaceColor(const TerrainStore& store, const std::vector<std::array<float, 4>>& colors, TileCoord tile,
+                     uint32_t x, uint32_t z, uint32_t size, float albedo[3]) {
+    if (colors.empty()) {
         return;
     }
     const auto* raster = store.Data().Control().Find(tile);
@@ -371,13 +370,9 @@ void AddSurfaceColor(const TerrainStore& store, TileCoord tile, uint32_t x, uint
             const uint32_t sx = (std::min)(x + size * tapX / kTaps + size / (2u * kTaps), samples - 1u);
             const uint32_t sz = (std::min)(z + size * tapZ / kTaps + size / (2u * kTaps), samples - 1u);
             const uint32_t value = raster != nullptr ? raster->values[static_cast<size_t>(sz) * samples + sx] : 0u;
-            const auto texel = TERRAIN::DATA::UnpackControlTexel(value);
-            const float blend = static_cast<float>(texel.blend) / 255.0f;
-            const auto base = (std::min)(static_cast<size_t>(texel.baseMaterial), surfaces.size() - 1u);
-            const auto overlay = (std::min)(static_cast<size_t>(texel.overlayMaterial), surfaces.size() - 1u);
-            for (int channel = 0; channel < 3; ++channel) {
-                sum[channel] += surfaces[base].averageColor[channel] * (1.0f - blend) +
-                                surfaces[overlay].averageColor[channel] * blend;
+            const std::array<float, 4> color = ControlSampleColor(value, colors);
+            for (size_t channel = 0u; channel < 3u; ++channel) {
+                sum[channel] += color[channel];
             }
         }
     }
@@ -388,6 +383,7 @@ void AddSurfaceColor(const TerrainStore& store, TileCoord tile, uint32_t x, uint
 
 uint32_t CreateRayProxy(IRenderSurfaceResources& resources, const TerrainStore& store, TileCoord tile,
                         const TileRuntime& runtime) {
+    const std::vector<std::array<float, 4>> colors = SurfaceColorTable(store);
     const auto& grid = store.Settings().grid;
     const uint32_t samples = TERRAIN::DATA::TileSamples(grid);
     uint32_t step = (std::max)((samples - 1u) / kRayProxyCells, 1u);
@@ -450,7 +446,8 @@ uint32_t CreateRayProxy(IRenderSurfaceResources& resources, const TerrainStore& 
             region.normal[1] = inverseLength;
             region.normal[2] = normalZ * inverseLength;
             PlaceholderAlbedo(height / static_cast<float>(count), region.normal[1], region.albedo);
-            AddSurfaceColor(store, tile, regionX * step, regionZ * step, kRayProxyRegionCells * step, region.albedo);
+            AddSurfaceColor(store, colors, tile, regionX * step, regionZ * step, kRayProxyRegionCells * step,
+                            region.albedo);
             regions.push_back(region);
         }
     }
@@ -467,6 +464,7 @@ void PrepareTerrainRenderData(IRenderSurfaceResources& resources, TerrainStore& 
     UploadFarColors(resources, store);
     UpdateRayProxies(resources, store);
     store.Erosion().Update(resources);
+    store.Rivers().Prepare(resources, store);
 }
 
 } // namespace HIKARI::TERRAINKIT

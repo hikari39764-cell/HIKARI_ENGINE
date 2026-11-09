@@ -13,13 +13,13 @@
 //   bit 25     穴（地形の面を抜く）
 //   bit 26     手塗り（自動材質規則はこの標本を書き換えない）
 //   bit 27     ナビから外す
-//   bit 28-31  予約（0 でなければ読み込みで拒否）
+//   bit 28-31  湿り（0..15。河の岸など。規則と曲線が毎回求め直す）
 namespace HIKARI::TERRAIN::DATA {
 
 inline constexpr uint32_t kTerrainControlMaterialCount = 32u;
 inline constexpr uint32_t kTerrainControlUvRotationSteps = 16u;
 inline constexpr uint32_t kTerrainControlUvScaleSteps = 8u;
-inline constexpr uint32_t kTerrainControlReservedMask = 0xF0000000u;
+inline constexpr uint32_t kTerrainControlWetnessSteps = 16u;
 
 struct ControlTexel {
     uint8_t baseMaterial = 0u;
@@ -27,6 +27,7 @@ struct ControlTexel {
     uint8_t blend = 0u;
     uint8_t uvRotation = 0u;
     uint8_t uvScale = 0u;
+    uint8_t wetness = 0u;
     bool hole = false;
     bool handPainted = false;
     bool navigationExcluded = false;
@@ -36,17 +37,28 @@ struct ControlTexel {
 // 範囲外の値は詰めずに false を返す。
 inline bool PackControlTexel(const ControlTexel& texel, uint32_t& out) noexcept {
     if (texel.baseMaterial >= kTerrainControlMaterialCount || texel.overlayMaterial >= kTerrainControlMaterialCount ||
-        texel.uvRotation >= kTerrainControlUvRotationSteps || texel.uvScale >= kTerrainControlUvScaleSteps) {
+        texel.uvRotation >= kTerrainControlUvRotationSteps || texel.uvScale >= kTerrainControlUvScaleSteps ||
+        texel.wetness >= kTerrainControlWetnessSteps) {
         return false;
     }
     out = static_cast<uint32_t>(texel.baseMaterial) | (static_cast<uint32_t>(texel.overlayMaterial) << 5u) |
           (static_cast<uint32_t>(texel.blend) << 10u) | (static_cast<uint32_t>(texel.uvRotation) << 18u) |
           (static_cast<uint32_t>(texel.uvScale) << 22u) | (texel.hole ? 1u << 25u : 0u) |
-          (texel.handPainted ? 1u << 26u : 0u) | (texel.navigationExcluded ? 1u << 27u : 0u);
+          (texel.handPainted ? 1u << 26u : 0u) | (texel.navigationExcluded ? 1u << 27u : 0u) |
+          (static_cast<uint32_t>(texel.wetness) << 28u);
     return true;
 }
 
-inline bool IsValidControlValue(uint32_t value) noexcept { return (value & kTerrainControlReservedMask) == 0u; }
+// 背景で計算した値を今の値へ重ねる。穴・手塗り・ナビの印は人の編集なので今の値を取り、計算の前か今のどちらかが
+// 手塗りの標本は今の値のまま（手塗りを外した標本は次の計算に任せる）。
+inline uint32_t MergeComputedControl(uint32_t computed, uint32_t current) noexcept {
+    constexpr uint32_t kHandPainted = 1u << 26u;
+    constexpr uint32_t kAuthored = (1u << 25u) | kHandPainted | (1u << 27u);
+    if (((computed | current) & kHandPainted) != 0u) {
+        return current;
+    }
+    return (computed & ~kAuthored) | (current & kAuthored);
+}
 
 inline ControlTexel UnpackControlTexel(uint32_t value) noexcept {
     ControlTexel texel{};
@@ -58,6 +70,7 @@ inline ControlTexel UnpackControlTexel(uint32_t value) noexcept {
     texel.hole = ((value >> 25u) & 1u) != 0u;
     texel.handPainted = ((value >> 26u) & 1u) != 0u;
     texel.navigationExcluded = ((value >> 27u) & 1u) != 0u;
+    texel.wetness = static_cast<uint8_t>((value >> 28u) & 15u);
     return texel;
 }
 

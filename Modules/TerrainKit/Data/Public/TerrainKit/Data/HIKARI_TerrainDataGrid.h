@@ -103,6 +103,8 @@ void ForEachTileHolding(const TerrainGrid& grid, const SampleRect& rect, Fn&& fn
 }
 // 二つの矩形の共通部分。
 SampleRect IntersectRects(const SampleRect& a, const SampleRect& b) noexcept;
+// 両方を覆う矩形。片方が空ならもう片方。
+SampleRect UnionRects(const SampleRect& a, const SampleRect& b) noexcept;
 
 uint16_t QuantizeHeight(const TerrainGrid& grid, float height) noexcept;
 float DequantizeHeight(const TerrainGrid& grid, uint16_t value) noexcept;

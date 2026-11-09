@@ -1,0 +1,56 @@
+#pragma once
+
+#include <cstdint>
+#include <vector>
+
+#include "HIKARI/Project/RenderSurface.h"
+#include "TerrainKit/Data/HIKARI_TerrainDataSpline.h"
+
+// 河の水面：河の曲線の層から帯を作って描く。帯は層が変わった時だけ作り直す。
+namespace HIKARI::TERRAINKIT {
+
+class TerrainStore;
+
+class TerrainRivers {
+public:
+    // 描画の前に毎フレーム一度。
+    void Prepare(IRenderSurfaceResources& resources, const TerrainStore& store);
+    bool HasWork() const noexcept { return !ribbons_.empty() && indexBuffer_ != 0u; }
+    void Record(const RenderSurfaceView& view, IRenderSurfaceCommands& commands);
+    void OnRenderResourcesLost() noexcept { indexBuffer_ = 0u; }
+    // 編集データを替えた時。次の Prepare で層を読み直す（通し番号はデータごとなので偶然一致しうる）。
+    void Invalidate() noexcept { revision_ = 0u; }
+    size_t RibbonCount() const noexcept { return ribbons_.size(); }
+
+private:
+    struct CrossSection {
+        float x = 0.0f;
+        float y = 0.0f;
+        float z = 0.0f;
+        float left = 0.0f;
+        float right = 0.0f;
+        float tangentX = 0.0f;
+        float tangentZ = 1.0f;
+        float along = 0.0f;
+    };
+    struct Section {
+        CrossSection a{};
+        CrossSection b{};
+    };
+    struct Ribbon {
+        std::vector<Section> sections{};
+        MATH::Vec3 color{};
+        float clarity = 1.0f;
+        float flowSpeed = 0.0f;
+    };
+
+    void Rebuild(const std::vector<TERRAIN::DATA::SplineLayerSettings>& rivers);
+
+    uint64_t revision_ = 0u;
+    std::vector<TERRAIN::DATA::SplineLayerSettings> built_{};
+    std::vector<Ribbon> ribbons_{};
+    std::vector<Section> visible_{};
+    RenderSurfaceResourceId indexBuffer_ = 0u;
+};
+
+} // namespace HIKARI::TERRAINKIT
