@@ -393,7 +393,8 @@ EditorOperationResult CreateSceneWaterObject(SceneObjectOperationContext& operat
 }
 
 // 物体の模型の底を真下の地面へ置き、坂に合わせて傾ける（Unreal の End キーと同じ）。向きは保つ。
-// 置き方は物体の GroundAnchorComponent、無ければ既定。引数で個別に上書きできる。親を持つ物と固定した物は動かさない。
+// 置き方は物体の GroundAnchorComponent、無ければ既定。引数で個別に上書きできる（GroundAnchorComponent を持つ物は
+// 記録の時にその置き方で置き直される）。親を持つ物と固定した物は動かさない。
 EditorOperationResult DropSceneObjectsToGround(SceneObjectOperationContext& operation,
                                                const nlohmann::json& parameters) {
     DocumentSceneBase& scene = operation.scene;
@@ -424,7 +425,7 @@ EditorOperationResult DropSceneObjectsToGround(SceneObjectOperationContext& oper
     std::vector<SceneObjectData> before = document.objects;
     nlohmann::json dropped = nlohmann::json::array();
     nlohmann::json skipped = nlohmann::json::array();
-    const std::unordered_map<uint64_t, float> bottoms = CollectModelBottoms();
+    const std::unordered_map<uint64_t, ModelFootprint> footprints = CollectModelFootprints();
     for (const SceneObjectId id : targets) {
         SceneObjectData* object = FindSceneObjectData(document, id);
         if (object == nullptr || object->parent.has_value() || object->editorLocked) {
@@ -436,9 +437,9 @@ EditorOperationResult DropSceneObjectsToGround(SceneObjectOperationContext& oper
         settings.maxTiltDegrees = parameters.value("maxTiltDegrees", settings.maxTiltDegrees);
         settings.sinkMeters = parameters.value("sinkMeters", settings.sinkMeters);
         TransformData placed{};
-        const auto bottom = bottoms.find(id.value);
-        if (!PlaceOnGround(scene.GetWorld(), object->transform, bottom != bottoms.end() ? bottom->second : 0.0f,
-                           settings, placed)) {
+        const auto footprint = footprints.find(id.value);
+        if (!PlaceOnGround(scene.GetWorld(), object->transform,
+                           footprint != footprints.end() ? &footprint->second : nullptr, settings, placed)) {
             skipped.push_back(id.value);
             continue;
         }

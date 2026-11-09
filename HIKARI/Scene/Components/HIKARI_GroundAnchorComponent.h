@@ -27,7 +27,8 @@ inline constexpr auto kGroundPlacementFields = [](auto&& field) {
           Help{"Pushes the object down into the ground; negative lifts it."});
 };
 
-// 地面に従う印。地形を削ったり盛ったりすると、編集器がこの物体を真下の地面へ置き直す（向きは保つ）。遊びの中では何もしない。
+// 地面に従う印。動かした時と地形を変えた時に、編集器がこの物体を真下の地面へ置き直す（水平の向きは保つ）。
+// 遊びの中では何もしない。
 class GroundAnchorComponent final : public IComponent {
 public:
     std::string_view GetTypeName() const override { return "GroundAnchorComponent"; }

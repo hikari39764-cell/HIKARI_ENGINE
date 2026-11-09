@@ -8,8 +8,8 @@
 namespace HIKARI {
 
 void GroundAnchorComponent::BuildInspector(IInspectorBuilder& builder) {
-    builder.Text("Follows the ground: when the terrain under it changes, the object is placed back on it. "
-                 "End drops the selection with these settings.");
+    builder.Text("Keeps the object on the ground: moving it, or changing the terrain under it, places it back on "
+                 "the ground with these settings. Remove this component to place the object freely.");
     GroundPlacementSettings next = settings_;
     if (InspectFields(builder, next, kGroundPlacementFields)) {
         settings_ = next;

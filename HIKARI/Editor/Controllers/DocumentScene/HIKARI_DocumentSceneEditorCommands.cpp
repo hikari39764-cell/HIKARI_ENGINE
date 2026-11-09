@@ -353,6 +353,8 @@ void DocumentSceneEditorController::CommitAppliedDocumentCommand(
 
 void DocumentSceneEditorController::CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene,
                                                                       SceneObjectAuthoringHistoryRequest history) {
+    // 地面に従う物体を動かした・足した編集は、置き直しまで含めて一つの撤销にする。
+    groundFollow_.ApplyToEdit(scene, history);
     EDITOR::EditorDocumentImpact impact =
         history.runtimeWorldAffected ? EDITOR::EditorDocumentImpact::RuntimeWorld : EDITOR::EditorDocumentImpact::None;
     const auto beforeLighting =

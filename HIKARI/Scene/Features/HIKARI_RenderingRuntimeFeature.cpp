@@ -131,7 +131,8 @@ public:
         };
         groundAnchor.fields = JSONFIELDS::Describe<GroundPlacementSettings>(kGroundPlacementFields);
         groundAnchor.presentation = ComponentTypePresentation{
-            "Ground Anchor", "Placement", "Keeps the object on the ground: it is placed back when the terrain changes.",
+            "Ground Anchor", "Placement",
+            "Keeps the object on the ground: it is placed back when it is moved or the terrain changes.",
             std::string(RuntimeFeatureIds::Rendering)};
 
         bool success = components.Register(std::move(model));
