@@ -76,6 +76,8 @@ if(TARGET HIKARI_EditorHost)
         PRIVATE
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitGpuErosion.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitGpuErosion.h"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitGrass.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitGrass.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitModule.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRenderData.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRenderData.h"

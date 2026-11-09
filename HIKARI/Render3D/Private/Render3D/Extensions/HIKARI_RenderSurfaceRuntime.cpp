@@ -661,8 +661,49 @@ bool ResolveEntry(RuntimeState& state, const char* programId, const char* entry,
     return true;
 }
 
+struct MeshSurfacePipelineStream {
+    CD3DX12_PIPELINE_STATE_STREAM_ROOT_SIGNATURE RootSignature;
+    CD3DX12_PIPELINE_STATE_STREAM_MS MS;
+    CD3DX12_PIPELINE_STATE_STREAM_PS PS;
+    CD3DX12_PIPELINE_STATE_STREAM_BLEND_DESC BlendState;
+    CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL DepthStencilState;
+    CD3DX12_PIPELINE_STATE_STREAM_DEPTH_STENCIL_FORMAT DSVFormat;
+    CD3DX12_PIPELINE_STATE_STREAM_RASTERIZER RasterizerState;
+    CD3DX12_PIPELINE_STATE_STREAM_RENDER_TARGET_FORMATS RTVFormats;
+    CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_DESC SampleDesc;
+    CD3DX12_PIPELINE_STATE_STREAM_SAMPLE_MASK SampleMask;
+};
+
+// 頂点着色器の PSO と同じ状態で、頂点の段を mesh shader に替える。
+HRESULT CreateMeshSurfacePipeline(ID3D12Device* device, const D3D12_GRAPHICS_PIPELINE_STATE_DESC& description,
+                                  D3D12_SHADER_BYTECODE meshShader, ComPtr<ID3D12PipelineState>& outPipeline) {
+    ComPtr<ID3D12Device2> device2{};
+    const HRESULT queried = device->QueryInterface(IID_PPV_ARGS(device2.GetAddressOf()));
+    if (FAILED(queried)) {
+        return queried;
+    }
+    D3D12_RT_FORMAT_ARRAY targets{};
+    targets.NumRenderTargets = description.NumRenderTargets;
+    std::copy(std::begin(description.RTVFormats), std::end(description.RTVFormats), std::begin(targets.RTFormats));
+    MeshSurfacePipelineStream stream{};
+    stream.RootSignature = description.pRootSignature;
+    stream.MS = meshShader;
+    stream.PS = description.PS;
+    stream.BlendState = CD3DX12_BLEND_DESC(description.BlendState);
+    stream.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(description.DepthStencilState);
+    stream.DSVFormat = description.DSVFormat;
+    stream.RasterizerState = CD3DX12_RASTERIZER_DESC(description.RasterizerState);
+    stream.RTVFormats = targets;
+    stream.SampleDesc = description.SampleDesc;
+    stream.SampleMask = description.SampleMask;
+    D3D12_PIPELINE_STATE_STREAM_DESC streamDescription{};
+    streamDescription.SizeInBytes = sizeof(stream);
+    streamDescription.pPipelineStateSubobjectStream = &stream;
+    return device2->CreatePipelineState(&streamDescription, IID_PPV_ARGS(outPipeline.GetAddressOf()));
+}
+
 ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* rootSignature, const char* programId,
-                                     RenderSurfacePass pass, bool featureMask) {
+                                     RenderSurfacePass pass, bool featureMask, bool meshDraw) {
     const std::string program(programId);
     const std::string key = program + "#" + std::to_string(static_cast<uint32_t>(pass)) + (featureMask ? "f" : "");
     if (const auto found = state.pipelines.find(key); found != state.pipelines.end()) {
@@ -673,9 +714,12 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
     }
     state.failedPrograms.emplace(key, true);
 
-    SHADER::ShaderAssetEntryLease vertex{};
+    SHADER::ShaderAssetEntryLease geometry{};
     SHADER::ShaderAssetEntryLease pixel{};
-    if (!ResolveEntry(state, programId, "SurfaceVS", SHADER::ShaderStage::Vertex, "vs_6_0", vertex)) {
+    const bool geometryResolved =
+        meshDraw ? ResolveEntry(state, programId, "SurfaceMS", SHADER::ShaderStage::Mesh, "ms_6_5", geometry)
+                 : ResolveEntry(state, programId, "SurfaceVS", SHADER::ShaderStage::Vertex, "vs_6_0", geometry);
+    if (!geometryResolved) {
         return nullptr;
     }
     const char* pixelEntry = pass == RenderSurfacePass::Forward           ? "SurfaceForwardPS"
@@ -690,8 +734,10 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
     description.pRootSignature = rootSignature;
-    const auto vertexDxil = vertex.GetDxil();
-    description.VS = {vertexDxil.data(), vertexDxil.size()};
+    const auto geometryDxil = geometry.GetDxil();
+    if (!meshDraw) {
+        description.VS = {geometryDxil.data(), geometryDxil.size()};
+    }
     if (pixelEntry != nullptr) {
         const auto pixelDxil = pixel.GetDxil();
         description.PS = {pixelDxil.data(), pixelDxil.size()};
@@ -730,9 +776,12 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
         }
     }
     ComPtr<ID3D12PipelineState> pipeline{};
-    if (!HIKARI_DX_CHECK(
-            state.graphics.device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(pipeline.GetAddressOf())),
-            "RenderSurface::CreatePipeline")) {
+    const HRESULT created =
+        meshDraw
+            ? CreateMeshSurfacePipeline(state.graphics.device, description, {geometryDxil.data(), geometryDxil.size()},
+                                        pipeline)
+            : state.graphics.device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(pipeline.GetAddressOf()));
+    if (!HIKARI_DX_CHECK(created, "RenderSurface::CreatePipeline")) {
         return nullptr;
     }
     GFX::SetD3D12Name(pipeline.Get(), L"HIKARI RenderSurface PSO");
@@ -782,12 +831,13 @@ public:
             (draw.constantBytes != 0u && draw.constants == nullptr)) {
             return false;
         }
+        const bool meshDraw = draw.indexBuffer == 0u;
         const auto index = state_.resources.find(draw.indexBuffer);
-        if (index == state_.resources.end() || index->second.isTexture) {
+        if (!meshDraw && (index == state_.resources.end() || index->second.isTexture)) {
             return false;
         }
         ID3D12PipelineState* pipeline =
-            ResolvePipeline(state_, rootSignature_, draw.programId, input_.pass, input_.geometryFeatureMask);
+            ResolvePipeline(state_, rootSignature_, draw.programId, input_.pass, input_.geometryFeatureMask, meshDraw);
         const D3D12_GPU_DESCRIPTOR_HANDLE table = ResolveTable(state_, draw);
         if (pipeline == nullptr || table.ptr == 0u) {
             return false;
@@ -815,6 +865,14 @@ public:
                                                constantAllocation.gpuAddress);
         cmd->SetGraphicsRootShaderResourceView(MESHRENDERER::ROOT_PARAM::JointPalette, instanceAllocation.gpuAddress);
         cmd->SetGraphicsRootDescriptorTable(MESHRENDERER::ROOT_PARAM::ClusterGeometryPool, table);
+        if (meshDraw) {
+            ComPtr<ID3D12GraphicsCommandList6> meshCommands{};
+            if (FAILED(cmd->QueryInterface(IID_PPV_ARGS(meshCommands.GetAddressOf())))) {
+                return false;
+            }
+            meshCommands->DispatchMesh(draw.instanceCount * draw.indexCount, 1u, 1u);
+            return true;
+        }
         cmd->IASetPrimitiveTopology(D3D_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
         cmd->IASetIndexBuffer(&index->second.indexView);
         cmd->DrawIndexedInstanced(draw.indexCount, draw.instanceCount, 0u, 0, 0u);

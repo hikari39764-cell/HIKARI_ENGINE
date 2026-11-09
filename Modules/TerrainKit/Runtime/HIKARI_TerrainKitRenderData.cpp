@@ -22,8 +22,14 @@ constexpr uint32_t kRayProxiesPerFrame = 8u;
 constexpr uint32_t kRayProxyRebuildsPerFrame = 2u;
 // 筆で塗っている間の作り直しの間隔。
 constexpr uint64_t kRayProxyRebuildFrames = 30u;
-// 着色器の材質の表（図 2 行）：0 行 = 繰り返しの長さ、高さ混合の幅、法線の強さ、図があるか。
-constexpr uint32_t kSurfaceParamRows = 2u;
+// 着色器の材質の表：0 行 = 繰り返しの長さ、高さ混合の幅、法線の強さ、図があるか。1 行 = 平均の色、濃淡の倍率。
+// 2 行から 8 行は草（Render3D_TerrainKitGrass.hlsl の GRASS_PARAM_* と揃える）。
+constexpr uint32_t kSurfaceParamRows = 9u;
+constexpr float kDegreesToRadians = 0.01745329252f;
+
+float SrgbToLinear(float value) noexcept {
+    return value <= 0.04045f ? value / 12.92f : std::pow((value + 0.055f) / 1.055f, 2.4f);
+}
 
 float Smoothstep(float edge0, float edge1, float value) noexcept {
     const float t = std::clamp((value - edge0) / (edge1 - edge0), 0.0f, 1.0f);
@@ -216,6 +222,46 @@ void UploadColorMaps(IRenderSurfaceResources& resources, TerrainStore& store) {
     }
 }
 
+// 材質の表を送る。草の見た目を変えた時もここだけ送り直す。
+void UploadSurfaceParams(IRenderSurfaceResources& resources, TerrainRenderResources& render,
+                         const std::vector<CookedSurface>& surfaces, uint64_t grassRevision) {
+    const auto layers = static_cast<uint32_t>(surfaces.size());
+    std::vector<float> params(static_cast<size_t>(layers) * kSurfaceParamRows * 4u, 0.0f);
+    for (uint32_t index = 0u; index < layers; ++index) {
+        const TerrainSurfaceAsset& asset = surfaces[index].asset;
+        const auto setRow = [&](uint32_t rowIndex, float a, float b, float c, float d) {
+            float* out = params.data() + static_cast<size_t>(layers * rowIndex + index) * 4u;
+            out[0] = a;
+            out[1] = b;
+            out[2] = c;
+            out[3] = d;
+        };
+        setRow(0u, asset.tilingMeters, asset.heightContrast, asset.normalStrength,
+               surfaces[index].colorHeight.empty() ? 0.0f : 1.0f);
+        setRow(1u, surfaces[index].averageColor[0], surfaces[index].averageColor[1], surfaces[index].averageColor[2],
+               asset.variationContrast);
+        const TerrainSurfaceGrass& grass = surfaces[index].grass;
+        setRow(2u, grass.density, grass.heightMin, (std::max)(grass.heightMin, grass.heightMax), grass.width);
+        setRow(3u, grass.tiltDegrees * kDegreesToRadians, grass.tiltVariationDegrees * kDegreesToRadians, grass.bend,
+               grass.clumpMeters);
+        setRow(4u, grass.clumpHeight, grass.clumpPull, grass.clumpFacing, grass.clumpAway);
+        setRow(5u, SrgbToLinear(grass.rootColor.x), SrgbToLinear(grass.rootColor.y), SrgbToLinear(grass.rootColor.z),
+               grass.translucency);
+        setRow(6u, SrgbToLinear(grass.tipColor.x), SrgbToLinear(grass.tipColor.y), SrgbToLinear(grass.tipColor.z),
+               grass.roughness);
+        setRow(7u, grass.colorVariation, grass.groundBlend, grass.wind, grass.rootShade);
+        setRow(8u, SrgbToLinear(grass.plumeColor.x), SrgbToLinear(grass.plumeColor.y), SrgbToLinear(grass.plumeColor.z),
+               grass.plumeShare);
+    }
+    RenderSurfaceTextureUpload upload{};
+    upload.width = layers;
+    upload.height = kSurfaceParamRows;
+    upload.rowPitchBytes = layers * 4u * sizeof(float);
+    upload.pixels = params.data();
+    (void)resources.UploadTexture(render.surfaceParams, upload);
+    render.grassRevision = grassRevision;
+}
+
 // 材質の図が揃ったら配列へ送る。一フレームに数枠ずつ（1 枠で約 2.7 MB）。
 void UpdateSurfaces(IRenderSurfaceResources& resources, TerrainStore& store) {
     TerrainSurfaceLibrary& library = store.Surfaces();
@@ -244,26 +290,9 @@ void UpdateSurfaces(IRenderSurfaceResources& resources, TerrainStore& store) {
                                           RenderSurfaceTextureFormat::Bc7Unorm});
         render.surfaceParams = resources.CreateTextureArray(
             {layers, kSurfaceParamRows, 1u, 1u, RenderSurfaceTextureFormat::R32G32B32A32Float});
-        std::vector<float> params(static_cast<size_t>(layers) * kSurfaceParamRows * 4u, 0.0f);
-        for (uint32_t index = 0u; index < layers; ++index) {
-            const TerrainSurfaceAsset& asset = surfaces[index].asset;
-            float* row = params.data() + static_cast<size_t>(index) * 4u;
-            row[0] = asset.tilingMeters;
-            row[1] = asset.heightContrast;
-            row[2] = asset.normalStrength;
-            row[3] = surfaces[index].colorHeight.empty() ? 0.0f : 1.0f;
-            float* second = params.data() + static_cast<size_t>(layers + index) * 4u;
-            second[0] = surfaces[index].averageColor[0];
-            second[1] = surfaces[index].averageColor[1];
-            second[2] = surfaces[index].averageColor[2];
-            second[3] = asset.variationContrast;
-        }
-        RenderSurfaceTextureUpload upload{};
-        upload.width = layers;
-        upload.height = kSurfaceParamRows;
-        upload.rowPitchBytes = layers * 4u * sizeof(float);
-        upload.pixels = params.data();
-        (void)resources.UploadTexture(render.surfaceParams, upload);
+        UploadSurfaceParams(resources, render, surfaces, library.GrassRevision());
+    } else if (render.surfaceParams != 0u && render.grassRevision != library.GrassRevision()) {
+        UploadSurfaceParams(resources, render, surfaces, library.GrassRevision());
     }
     constexpr uint32_t kSurfacesPerFrame = 2u;
     for (uint32_t count = 0u; count < kSurfacesPerFrame && render.surfacesUploaded < surfaces.size(); ++count) {

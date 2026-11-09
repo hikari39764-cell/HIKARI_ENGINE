@@ -219,6 +219,8 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
     std::error_code slotError{};
     surfaceRules_ = DefaultSurfaceRules();
     weather_ = {};
+    grass_ = {};
+    std::map<std::string, TerrainSurfaceGrass> surfaceGrass{};
     if (std::filesystem::exists(slotPath, slotError) && ReadTerrainJson(slotPath, slotFile, slotMessage)) {
         slots = slotFile.value("slots", std::vector<std::string>{});
         if (slotFile.contains("rules")) {
@@ -229,11 +231,20 @@ bool TerrainStore::Open(const std::filesystem::path& scenePath, const TerrainSet
         weather_.snowLineMeters = slotFile.value("snowLineMeters", weather_.snowLineMeters);
         weather_.snowAmount = slotFile.value("snowAmount", weather_.snowAmount);
         weather_.wetness = slotFile.value("wetness", weather_.wetness);
+        if (const auto grass = slotFile.find("grass"); grass != slotFile.end()) {
+            JSONFIELDS::Read(*grass, grass_, kTerrainGrassSettingsFields);
+        }
+        if (const auto overrides = slotFile.find("surfaceGrass"); overrides != slotFile.end()) {
+            for (const auto& [name, fields] : overrides->items()) {
+                JSONFIELDS::Read(fields, surfaceGrass[name], kTerrainSurfaceGrassFields);
+            }
+        }
     }
+    surfaces_.SetGrassOverrides(std::move(surfaceGrass));
     if (slots.empty()) {
         // DefaultSurfaceRules の枠の番号と揃える。
-        slots = {"Grass",  "Soil",       "Rock",   "Sand",         "Snow",       "Dry Grass",
-                 "Meadow", "Stony Dirt", "Gravel", "Layered Rock", "Worn Ground"};
+        slots = {"Grass",      "Soil",   "Rock",         "Sand",        "Snow",       "Dry Grass",   "Meadow",
+                 "Stony Dirt", "Gravel", "Layered Rock", "Worn Ground", "Tall Grass", "Short Grass", "Pampas"};
     }
     surfaces_.SetSlots(ProjectRoot(), std::move(slots));
     scatter_.Load(TerrainCellDirectory(scenePath), ProjectRoot());
@@ -484,6 +495,18 @@ void TerrainStore::SetScatterRules(ScatterRuleSet rules) {
     ruleBaker_.MarkAllScatterDirty(*this);
 }
 
+void TerrainStore::SetGrass(const TerrainGrassSettings& grass) {
+    const auto finite = [](float value, float fallback, float low, float high) {
+        return std::isfinite(value) ? std::clamp(value, low, high) : fallback;
+    };
+    grass_.enabled = grass.enabled;
+    grass_.density = finite(grass.density, grass_.density, 0.0f, 1.0f);
+    grass_.firstRangeMeters = finite(grass.firstRangeMeters, grass_.firstRangeMeters, 4.0f, 64.0f);
+    grass_.windStrength = finite(grass.windStrength, grass_.windStrength, 0.0f, 3.0f);
+    grass_.windSpeed = finite(grass.windSpeed, grass_.windSpeed, 0.0f, 20.0f);
+    surfaceSlotsDirty_ = true;
+}
+
 void TerrainStore::SetWeather(const TerrainWeather& weather) {
     const auto unit = [](float value, float fallback) {
         return std::isfinite(value) ? std::clamp(value, 0.0f, 1.0f) : fallback;
@@ -535,6 +558,26 @@ void TerrainStore::ApplyRuleResult(TileCoord tile, std::vector<uint32_t> control
     }
     runtime.colorMap = std::move(colorMap);
     runtime.colorMapPending = true;
+}
+
+void TerrainStore::SetSurfaceGrass(const std::string& name, const std::optional<TerrainSurfaceGrass>& grass) {
+    const auto colorKey = [&]() {
+        const auto& surfaces = surfaces_.Surfaces();
+        const auto found = std::find_if(surfaces.begin(), surfaces.end(),
+                                        [&](const CookedSurface& surface) { return surface.asset.name == name; });
+        return found == surfaces.end()
+                   ? std::array<float, 7>{}
+                   : std::array<float, 7>{found->grass.density,     found->grass.rootColor.x, found->grass.rootColor.y,
+                                          found->grass.rootColor.z, found->grass.tipColor.x,  found->grass.tipColor.y,
+                                          found->grass.tipColor.z};
+    };
+    const std::array<float, 7> before = colorKey();
+    surfaces_.SetGrassOverride(name, grass);
+    surfaceSlotsDirty_ = true;
+    // 色の図は草の色へ寄せてある。色が変わった時だけ作り直す。
+    if (colorKey() != before) {
+        RuleBaker().MarkAllDirty(*this);
+    }
 }
 
 void TerrainStore::SetSurfaceSlots(std::vector<std::string> names) {
@@ -766,6 +809,10 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
                                {"snowAmount", weather_.snowAmount},
                                {"wetness", weather_.wetness}};
     JSONFIELDS::Write(surfaceFile, surfaceRules_, kSurfaceRuleSetFields);
+    JSONFIELDS::Write(surfaceFile["grass"], grass_, kTerrainGrassSettingsFields);
+    for (const auto& [name, grass] : surfaces_.GrassOverrides()) {
+        JSONFIELDS::Write(surfaceFile["surfaceGrass"][name], grass, kTerrainSurfaceGrassFields);
+    }
     if ((!samePath || surfaceSlotsDirty_) &&
         !WriteTerrainJson(directory / kSurfaceSlotFileName, surfaceFile, message)) {
         error = "Could not write the terrain surfaces: " + message;

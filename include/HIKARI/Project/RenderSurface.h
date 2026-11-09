@@ -9,6 +9,7 @@ namespace HIKARI {
 
 // モジュールが自分の幾何を場面の深度・面・前向き不透明と太陽の影へ描くための接口。
 // 頂点は持たず、頂点番号と実例データから頂点着色器で位置を作る（地形の瓦片のような格子向け）。
+// 一つずつ形を作る物（草）は mesh shader でも描ける（RenderSurfaceDraw の indexBuffer を 0 にする）。
 // 資源の実体、PSO、root の束縛は引擎が持ち、モジュールは番号と内容だけを渡す。
 
 using RenderSurfaceResourceId = uint32_t;
@@ -119,7 +120,8 @@ struct RenderSurfaceView {
 
 // instances と constants は Draw の中で写される。programId は引擎の内蔵着色器の番号で、
 // 使う pass に応じて入口 SurfaceVS / SurfaceGeometryPS / SurfaceGeometryFeaturePS / SurfaceForwardPS /
-// SurfaceDepthAwarePS を持つこと。
+// SurfaceDepthAwarePS を持つこと。indexBuffer が 0 なら SurfaceVS の代わりに SurfaceMS で描く：indexCount は実例一つ
+// あたりの組の数で、SV_GroupID.x が「実例の番号 × 組の数 + 組の番号」になる。
 struct RenderSurfaceDraw {
     const char* programId = nullptr;
     RenderSurfaceResourceId textures[kRenderSurfaceTextureSlotCount]{};

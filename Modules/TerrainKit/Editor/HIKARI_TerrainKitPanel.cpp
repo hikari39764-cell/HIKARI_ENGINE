@@ -309,6 +309,21 @@ private:
         ui.InputFloat("paintRadius", "Paint Radius (m)", &brush.radiusMeters);
         ui.InputFloat("paintStrength", "Paint Strength", &brush.strength);
         ui.InputFloat("paintHardness", "Paint Hardness", &brush.hardness);
+        // 塗る材質の草。塗った所にこの草が生える。
+        const auto& surfaces = library.Surfaces();
+        if (brush.material < surfaces.size()) {
+            const CookedSurface& surface = surfaces[brush.material];
+            ui.Separator();
+            ui.Text("Grass on " + surface.asset.name);
+            TerrainSurfaceGrass grass = surface.grass;
+            if (DrawFieldUi(ui, "surfaceGrass", grass, kTerrainSurfaceGrassFields, NoCustomFieldUi{})) {
+                ChangeSurfaceGrass(*shared_, surface.asset.name, grass);
+            }
+            if (library.GrassOverrides().contains(surface.asset.name) &&
+                ui.Button("surfaceGrassReset", "Reset Grass To Asset")) {
+                ChangeSurfaceGrass(*shared_, surface.asset.name, std::nullopt);
+            }
+        }
     }
 
     void DrawRules(IEditorWorkspaceUi& ui, TerrainStore& store) {
@@ -348,6 +363,10 @@ private:
         weatherChanged |= ui.InputFloat("wetness", "Wetness", &weather.wetness);
         if (weatherChanged) {
             ChangeWeather(*shared_, weather);
+        }
+        TerrainGrassSettings grass = store.Grass();
+        if (DrawFieldUi(ui, "grass", grass, kTerrainGrassSettingsFields, NoCustomFieldUi{})) {
+            ChangeGrassSettings(*shared_, grass);
         }
     }
 

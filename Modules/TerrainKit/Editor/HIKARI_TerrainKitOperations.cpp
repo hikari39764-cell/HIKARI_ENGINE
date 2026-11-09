@@ -536,6 +536,7 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                   for (const CookedSurface& surface : library.Surfaces()) {
                       Json entry{};
                       JSONFIELDS::Write(entry, surface.asset, kTerrainSurfaceAssetFields);
+                      JSONFIELDS::Write(entry, surface.grass, kTerrainSurfaceGrassFields);
                       entry["averageColor"] = surface.averageColor;
                       entry["ready"] = !surface.colorHeight.empty();
                       slots.push_back(std::move(entry));
@@ -631,6 +632,60 @@ void RegisterTerrainOperations(IEditorOperationRegistrar& registrar, const std::
                      weather.wetness = parameters.value("wetness", weather.wetness);
                      ChangeWeather(*shared, weather);
                      Ok(result, "Weather updated.", Json::object());
+                 });
+    add.Mutation(
+        "terrainkit.surface.set_grass",
+        "Change how the grass on one surface looks, saved with the scene. Paint that surface to grow this grass. "
+        "Use reset to go back to the values in the surface asset.",
+        {{"surface", Type::String, "Surface name."},
+         {"reset", Type::Boolean, "Go back to the surface asset."},
+         {"grassDensity", Type::Number, "0..1. 0 means no grass grows here."},
+         {"grassHeightMin", Type::Number, "Meters."},
+         {"grassHeightMax", Type::Number, "Meters."},
+         {"grassWidth", Type::Number, "Half width of a blade in meters."},
+         {"grassTilt", Type::Number, "Lean in degrees."},
+         {"grassBend", Type::Number, "Tip droop, 0..1."},
+         {"grassRootColor", Type::Json, "sRGB [r, g, b]."},
+         {"grassTipColor", Type::Json, "sRGB [r, g, b]."},
+         {"grassPlumeShare", Type::Number, "Share of blades that end in a plume."},
+         {"grassPlumeColor", Type::Json, "sRGB [r, g, b]."}},
+        [shared](const Json& parameters, Sink& result) {
+            if (!RequireTerrain(result)) {
+                return;
+            }
+            const std::string name = parameters.value("surface", std::string{});
+            const auto& surfaces = TerrainStore::Get().Surfaces().Surfaces();
+            const auto found = std::find_if(surfaces.begin(), surfaces.end(),
+                                            [&](const CookedSurface& surface) { return surface.asset.name == name; });
+            if (found == surfaces.end()) {
+                Fail(result, "UNKNOWN_SURFACE", "That surface is not in a slot.");
+                return;
+            }
+            if (parameters.value("reset", false)) {
+                ChangeSurfaceGrass(*shared, name, std::nullopt);
+            } else {
+                TerrainSurfaceGrass grass = found->grass;
+                JSONFIELDS::Read(parameters, grass, kTerrainSurfaceGrassFields);
+                ChangeSurfaceGrass(*shared, name, grass);
+            }
+            Ok(result, "Grass updated.", Json::object());
+        });
+    add.Mutation("terrainkit.grass.set",
+                 "Set the overall grass settings. Which surfaces grow grass, and how it looks, comes from the surface "
+                 "assets (grass* fields).",
+                 {{"enabled", Type::Boolean, "Whether grass is drawn."},
+                  {"density", Type::Number, "0..1, multiplies every surface's density."},
+                  {"firstRangeMeters", Type::Number, "Where the finest blades fade. Grass reaches 8 times this far."},
+                  {"windStrength", Type::Number, "0..3."},
+                  {"windSpeed", Type::Number, "Speed of the gusts in m/s."}},
+                 [shared](const Json& parameters, Sink& result) {
+                     if (!RequireTerrain(result)) {
+                         return;
+                     }
+                     TerrainGrassSettings grass = TerrainStore::Get().Grass();
+                     JSONFIELDS::Read(parameters, grass, kTerrainGrassSettingsFields);
+                     ChangeGrassSettings(*shared, grass);
+                     Ok(result, "Grass settings updated.", Json::object());
                  });
     add.Mutation(
         "terrainkit.paint.stroke",

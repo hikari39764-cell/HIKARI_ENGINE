@@ -141,15 +141,15 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::Camera].InitAsConstantBufferView(0, 0, kAll);
     params[ROOT_PARAM::CullingCamera].InitAsConstantBufferView(9, 0, kAll);
     params[ROOT_PARAM::Object].InitAsConstantBufferView(1, 0, kAll);
-    params[ROOT_PARAM::Light].InitAsConstantBufferView(2, 0, kPixel);
+    params[ROOT_PARAM::Light].InitAsConstantBufferView(2, 0, kAll);
     params[ROOT_PARAM::ShadowMap].InitAsDescriptorTable(1, &shadowTextureRange, kPixel);
     params[ROOT_PARAM::ShadowCB].InitAsConstantBufferView(4, 0, kPixel);
-    // 環境と探針は大量配置の mesh shader も読む（meshlet ごとの探針）。
+    // 環境と探針は大量配置と草の mesh shader も読む（光は頂点か meshlet ごとに決める）。
     params[ROOT_PARAM::SkyEnvironment].InitAsConstantBufferView(5, 0, kAll);
     params[ROOT_PARAM::SkyCube].InitAsDescriptorTable(1, &skyCubeTextureRange, kPixel);
     params[ROOT_PARAM::SceneDepth].InitAsDescriptorTable(1, &sceneDepthTextureRange, kPixel);
     params[ROOT_PARAM::SceneColor].InitAsDescriptorTable(1, &sceneColorTextureRange, kPixel);
-    params[ROOT_PARAM::IblIrradiance].InitAsDescriptorTable(1, &iblIrradianceRange, kPixel);
+    params[ROOT_PARAM::IblIrradiance].InitAsDescriptorTable(1, &iblIrradianceRange, kAll);
     params[ROOT_PARAM::IblPrefiltered].InitAsDescriptorTable(1, &iblPrefilteredRange, kPixel);
     params[ROOT_PARAM::IblBrdfLut].InitAsDescriptorTable(1, &iblBrdfLutRange, kPixel);
     params[ROOT_PARAM::ReflectionProbePrefiltered].InitAsDescriptorTable(1, &reflectionProbePrefilteredRange, kPixel);

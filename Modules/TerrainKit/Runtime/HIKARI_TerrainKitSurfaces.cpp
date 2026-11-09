@@ -276,6 +276,18 @@ TERRAIN::DATA::SurfaceMapStyle MakeSurfaceMapStyle(const CookedSurface& surface)
                                                                     linear(asset.mapColorC)}
                               : std::array<std::array<float, 3>, 3>{surface.averageColor, surface.averageColor,
                                                                     surface.averageColor};
+    // 草の生える地表：葉の間から見える地面と、葉が薄くなる遠くの地形を草の色へ寄せる（葉の根元もこの図の色を読む）。
+    if (surface.grass.density > 0.0f) {
+        const std::array<float, 3> root = linear(surface.grass.rootColor);
+        const std::array<float, 3> tip = linear(surface.grass.tipColor);
+        const float share = 0.8f * (std::min)(surface.grass.density, 1.0f);
+        for (std::array<float, 3>& color : style.colors) {
+            for (size_t channel = 0u; channel < color.size(); ++channel) {
+                const float grass = root[channel] + (tip[channel] - root[channel]) * 0.6f;
+                color[channel] += (grass - color[channel]) * share;
+            }
+        }
+    }
     return style;
 }
 
@@ -289,6 +301,7 @@ bool ReadTerrainSurfaceAsset(const std::filesystem::path& file, TerrainSurfaceAs
         const nlohmann::json json = nlohmann::json::parse(stream);
         TerrainSurfaceAsset asset{};
         JSONFIELDS::Read(json, asset, kTerrainSurfaceAssetFields);
+        JSONFIELDS::Read(json, asset.grass, kTerrainSurfaceGrassFields);
         if (asset.name.empty()) {
             asset.name = file.stem().string();
         }
@@ -385,8 +398,31 @@ bool TerrainSurfaceLibrary::Poll() {
     Loaded loaded = pending_.get();
     surfaces_ = std::move(loaded.surfaces);
     lastError_ = std::move(loaded.error);
+    ApplyGrassOverrides();
     ++revision_;
     return true;
+}
+
+void TerrainSurfaceLibrary::ApplyGrassOverrides() {
+    for (CookedSurface& surface : surfaces_) {
+        const auto found = grassOverrides_.find(surface.asset.name);
+        surface.grass = found != grassOverrides_.end() ? found->second : surface.asset.grass;
+    }
+    ++grassRevision_;
+}
+
+void TerrainSurfaceLibrary::SetGrassOverrides(std::map<std::string, TerrainSurfaceGrass> overrides) {
+    grassOverrides_ = std::move(overrides);
+    ApplyGrassOverrides();
+}
+
+void TerrainSurfaceLibrary::SetGrassOverride(const std::string& name, const std::optional<TerrainSurfaceGrass>& grass) {
+    if (grass.has_value()) {
+        grassOverrides_[name] = *grass;
+    } else {
+        grassOverrides_.erase(name);
+    }
+    ApplyGrassOverrides();
 }
 
 float TerrainSurfaceLibrary::Progress() const noexcept {

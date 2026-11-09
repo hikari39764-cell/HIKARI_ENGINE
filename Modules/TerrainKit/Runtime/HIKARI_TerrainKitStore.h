@@ -69,6 +69,27 @@ struct TerrainWeather {
     bool operator==(const TerrainWeather&) const = default;
 };
 
+// 草の全体の設定。どの地表にどんな草が生えるかは地表材質の資産が持つ。
+struct TerrainGrassSettings {
+    bool enabled = true;
+    float density = 1.0f;
+    float firstRangeMeters = 20.0f; // 一番細かい段の葉が消える距離。段ごとに倍で、8 倍まで草が届く
+    float windStrength = 1.0f;
+    float windSpeed = 3.0f;
+    bool operator==(const TerrainGrassSettings&) const = default;
+};
+
+inline constexpr auto kTerrainGrassSettingsFields = [](auto&& field) {
+    using S = TerrainGrassSettings;
+    using namespace JSONFIELDS;
+    field("enabled", &S::enabled, Label{"Grass"});
+    field("density", &S::density, Slider(0.0, 1.0), Label{"Grass Density"});
+    field("firstRangeMeters", &S::firstRangeMeters, Range{4.0, 64.0}, Label{"Dense Range"}, Unit{"m"},
+          Help{"Distance where the finest blades fade out. Grass reaches eight times this far."});
+    field("windStrength", &S::windStrength, Range{0.0, 3.0}, Label{"Wind Strength"});
+    field("windSpeed", &S::windSpeed, Range{0.0, 20.0}, Label{"Wind Speed"}, Unit{"m/s"});
+};
+
 // 瓦片の光線追跡の代理（実体は引擎）。
 struct TerrainRayProxy {
     uint32_t resource = 0u;
@@ -89,6 +110,7 @@ struct TerrainRenderResources {
     uint32_t colorMap = 0u;
     uint32_t colorMapsUploaded = 0u;
     uint64_t surfaceRevision = 0u;
+    uint64_t grassRevision = 0u;
     uint32_t surfacesUploaded = 0u; // 送り終えた枠の数。全部終わるまで着色器へ渡さない。
     uint64_t layoutRevision = 0u;
     std::map<TERRAIN::DATA::TileCoord, TerrainRayProxy> rayProxies{};
@@ -140,6 +162,8 @@ public:
     TerrainSurfaceLibrary& Surfaces() noexcept { return surfaces_; }
     const TerrainSurfaceLibrary& Surfaces() const noexcept { return surfaces_; }
     void SetSurfaceSlots(std::vector<std::string> names);
+    // 材質の草の見た目を場面で上書きする。空なら資産の値へ戻す。
+    void SetSurfaceGrass(const std::string& name, const std::optional<TerrainSurfaceGrass>& grass);
     // 自動の材質規則。変えると全部の瓦片を背景で計算し直す。
     const TERRAIN::DATA::SurfaceRuleSet& SurfaceRules() const noexcept { return surfaceRules_; }
     void SetSurfaceRules(TERRAIN::DATA::SurfaceRuleSet rules);
@@ -152,6 +176,8 @@ public:
     void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> colorMap);
     const TerrainWeather& Weather() const noexcept { return weather_; }
     void SetWeather(const TerrainWeather& weather);
+    const TerrainGrassSettings& Grass() const noexcept { return grass_; }
+    void SetGrass(const TerrainGrassSettings& grass);
     // 背景の thread を全部止める。DLL を外す前に呼ぶ。
     void ShutdownWorkers();
     // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
@@ -201,6 +227,7 @@ private:
     TerrainRuleBaker ruleBaker_{};
     TerrainScatter scatter_{};
     TerrainWeather weather_{};
+    TerrainGrassSettings grass_{};
     std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 

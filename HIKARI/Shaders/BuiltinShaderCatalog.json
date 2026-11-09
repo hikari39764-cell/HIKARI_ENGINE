@@ -4989,6 +4989,51 @@
       }
     },
     {
+      "assetGuid": "92891d1968e74bd799bb8596feb4c7ff",
+      "programId": "HIKARI.EngineShader.Render3D_TerrainKitGrass",
+      "source": "Render3D_TerrainKitGrass.hlsl",
+      "scope": "Runtime",
+      "state": "Cooked",
+      "owner": "Modules.TerrainKit",
+      "group": "TerrainKit",
+      "includeRoots": [
+        "EngineSdk"
+      ],
+      "defines": [
+        {
+          "value": "3",
+          "name": "HIKARI_SURFACE_LIGHTING"
+        }
+      ],
+      "entries": [
+        {
+          "id": "SurfaceForwardPS",
+          "stage": "Pixel",
+          "entry": "SurfaceForwardPS",
+          "profile": "ps_6_0"
+        },
+        {
+          "id": "SurfaceMS",
+          "stage": "Mesh",
+          "entry": "SurfaceMS",
+          "profile": "ms_6_5"
+        }
+      ],
+      "contract": {
+        "engineInterfaceId": "HIKARI.RenderGeometry",
+        "engineInterfaceVersion": 2,
+        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
+        "rootLayoutId": "HIKARI.RenderGeometry.ModuleSurfaceDraw.Root",
+        "rootLayoutVersion": 1,
+        "rootLayoutHash": "c82525eaebf93f007d61159917664027d5b7a0b57d0e321657fe6bb9b4635472",
+        "requiredCaps": {
+          "minimumShaderModel": 65,
+          "minimumRootSignatureVersion": 10,
+          "requiredFeatureMask": 2
+        }
+      }
+    },
+    {
       "assetGuid": "4be2c07d9a1f46e3b58d20c6f1a97e35",
       "programId": "HIKARI.EngineShader.Render3D_TerrainKitRiver",
       "source": "Render3D_TerrainKitRiver.hlsl",

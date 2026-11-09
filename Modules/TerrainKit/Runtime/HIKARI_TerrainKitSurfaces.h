@@ -5,7 +5,9 @@
 #include <cstdint>
 #include <filesystem>
 #include <future>
+#include <map>
 #include <memory>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -19,6 +21,64 @@ namespace HIKARI::TERRAINKIT {
 
 inline constexpr uint32_t kSurfaceTextureSize = 1024u;
 inline constexpr uint32_t kSurfaceTextureMips = 11u;
+
+// この地表に生える草（Ghost of Tsushima の草の考え方。HIKARI_TerrainKitGrass と Render3D_TerrainKitGrass が読む）。
+// 焼いた図の鍵に入れないよう表を分ける（値を変えても図を焼き直さない）。ファイルでは同じ段に並ぶ。
+struct TerrainSurfaceGrass {
+    float density = 0.0f; // 0 なら生えない
+    float heightMin = 0.3f;
+    float heightMax = 0.6f;
+    float width = 0.016f; // 葉の半分の幅
+    float tiltDegrees = 20.0f;
+    float tiltVariationDegrees = 16.0f;
+    float bend = 0.3f;
+    float clumpMeters = 1.2f;
+    float clumpHeight = 0.35f;
+    float clumpPull = 0.25f;
+    float clumpFacing = 0.55f;
+    float clumpAway = 0.25f;
+    MATH::Vec3 rootColor{0.14f, 0.2f, 0.07f}; // sRGB 0..1
+    MATH::Vec3 tipColor{0.46f, 0.56f, 0.2f};
+    float translucency = 0.55f;
+    float roughness = 0.55f;
+    float colorVariation = 0.05f;
+    float groundBlend = 0.5f;
+    float wind = 1.0f;
+    float rootShade = 0.35f;
+    float plumeShare = 0.0f; // 穂をつける葉の割合（蒲苇など）
+    MATH::Vec3 plumeColor{0.9f, 0.88f, 0.8f};
+    bool operator==(const TerrainSurfaceGrass&) const = default;
+};
+
+inline constexpr auto kTerrainSurfaceGrassFields = [](auto&& field) {
+    using S = TerrainSurfaceGrass;
+    using namespace JSONFIELDS;
+    field("grassDensity", &S::density, Slider(0.0, 1.0), Label{"Grass Density"},
+          Help{"0 means no grass grows on this surface."});
+    field("grassHeightMin", &S::heightMin, Range{0.01, 5.0}, Label{"Grass Height Min"}, Unit{"m"});
+    field("grassHeightMax", &S::heightMax, Range{0.01, 5.0}, Label{"Grass Height Max"}, Unit{"m"});
+    field("grassWidth", &S::width, Range{0.001, 0.2}, Label{"Blade Half Width"}, Unit{"m"});
+    field("grassTilt", &S::tiltDegrees, Range{0.0, 80.0}, Label{"Lean"}, Unit{"deg"});
+    field("grassTiltVariation", &S::tiltVariationDegrees, Range{0.0, 60.0}, Label{"Lean Variation"}, Unit{"deg"});
+    field("grassBend", &S::bend, Slider(0.0, 1.0), Label{"Tip Droop"});
+    field("grassClumpMeters", &S::clumpMeters, Range{0.1, 16.0}, Label{"Clump Size"}, Unit{"m"});
+    field("grassClumpHeight", &S::clumpHeight, Slider(0.0, 1.0), Label{"Clump Height Difference"});
+    field("grassClumpPull", &S::clumpPull, Slider(0.0, 1.0), Label{"Pull To Clump Center"});
+    field("grassClumpFacing", &S::clumpFacing, Slider(0.0, 1.0), Label{"Clump Same Direction"});
+    field("grassClumpAway", &S::clumpAway, Slider(0.0, 2.0), Label{"Lean Away From Center"});
+    field("grassRootColor", &S::rootColor, Label{"Root Color"}, Help{"sRGB 0..1."});
+    field("grassTipColor", &S::tipColor, Label{"Tip Color"}, Help{"sRGB 0..1."});
+    field("grassTranslucency", &S::translucency, Slider(0.0, 1.0), Label{"Translucency"});
+    field("grassRoughness", &S::roughness, Slider(0.05, 1.0), Label{"Roughness"});
+    field("grassColorVariation", &S::colorVariation, Slider(0.0, 0.5), Label{"Clump Color Difference"},
+          Help{"Keep this small for a painted look."});
+    field("grassGroundBlend", &S::groundBlend, Slider(0.0, 1.0), Label{"Root Takes Ground Color"});
+    field("grassWind", &S::wind, Range{0.0, 3.0}, Label{"Wind Response"});
+    field("grassRootShade", &S::rootShade, Slider(0.0, 1.0), Label{"Root Brightness"});
+    field("grassPlumeShare", &S::plumeShare, Slider(0.0, 1.0), Label{"Plume Share"},
+          Help{"Share of blades that end in a plume, such as pampas grass."});
+    field("grassPlumeColor", &S::plumeColor, Label{"Plume Color"}, Help{"sRGB 0..1."});
+};
 
 struct TerrainSurfaceAsset {
     std::string name{};
@@ -42,6 +102,7 @@ struct TerrainSurfaceAsset {
     std::string license{};
     std::string author{};
     std::string source{};
+    TerrainSurfaceGrass grass{};
     bool operator==(const TerrainSurfaceAsset&) const = default;
 };
 
@@ -74,6 +135,7 @@ inline constexpr auto kTerrainSurfaceAssetFields = [](auto&& field) {
 
 struct CookedSurface {
     TerrainSurfaceAsset asset{};
+    TerrainSurfaceGrass grass{};                         // 実際に描く草（資産の値に場面の上書きを重ねたもの）
     std::vector<uint8_t> colorHeight{};                  // BC7 全段を続けて（RGB sRGB + 高さ）
     std::vector<uint8_t> detail{};                       // BC7 全段を続けて（法線 xy、粗さ、AO）
     std::array<float, 3> averageColor{0.5f, 0.5f, 0.5f}; // 線形
@@ -107,6 +169,11 @@ public:
     const std::vector<CookedSurface>& Surfaces() const noexcept { return surfaces_; }
     uint64_t Revision() const noexcept { return revision_; }
     const std::string& LastError() const noexcept { return lastError_; }
+    // 草の見た目の場面の上書き（材質の名前ごと）。図は焼き直さない。
+    const std::map<std::string, TerrainSurfaceGrass>& GrassOverrides() const noexcept { return grassOverrides_; }
+    void SetGrassOverrides(std::map<std::string, TerrainSurfaceGrass> overrides);
+    void SetGrassOverride(const std::string& name, const std::optional<TerrainSurfaceGrass>& grass);
+    uint64_t GrassRevision() const noexcept { return grassRevision_; }
 
 private:
     struct Shared {
@@ -125,6 +192,10 @@ private:
     std::shared_ptr<Shared> shared_{};
     uint64_t revision_ = 0u;
     std::string lastError_{};
+    std::map<std::string, TerrainSurfaceGrass> grassOverrides_{};
+    uint64_t grassRevision_ = 0u;
+
+    void ApplyGrassOverrides();
 };
 
 } // namespace HIKARI::TERRAINKIT

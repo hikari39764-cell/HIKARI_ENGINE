@@ -25,5 +25,33 @@
     0.588,
     0.51,
     0.329
-  ]
+  ],
+  "grassDensity": 0.9,
+  "grassHeightMin": 0.4,
+  "grassHeightMax": 0.9,
+  "grassWidth": 0.022,
+  "grassTilt": 28.0,
+  "grassTiltVariation": 16.0,
+  "grassBend": 0.5,
+  "grassClumpMeters": 1.5,
+  "grassClumpHeight": 0.4,
+  "grassClumpPull": 0.3,
+  "grassClumpFacing": 0.65,
+  "grassClumpAway": 0.25,
+  "grassRootColor": [
+    0.22,
+    0.2,
+    0.1
+  ],
+  "grassTipColor": [
+    0.62,
+    0.56,
+    0.3
+  ],
+  "grassTranslucency": 0.45,
+  "grassRoughness": 0.65,
+  "grassColorVariation": 0.06,
+  "grassGroundBlend": 0.5,
+  "grassWind": 1.2,
+  "grassRootShade": 0.38
 }

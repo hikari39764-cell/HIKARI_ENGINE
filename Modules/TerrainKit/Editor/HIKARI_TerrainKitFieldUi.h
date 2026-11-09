@@ -9,6 +9,7 @@
 #include <string_view>
 #include <type_traits>
 
+#include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "HIKARI/Project/EditorWorkspace.h"
@@ -86,6 +87,12 @@ struct FieldUiDrawer {
             auto edited = static_cast<int32_t>(value);
             if (ui.InputInt(id, Label(key, meta), &edited, input)) {
                 value = static_cast<M>(edited);
+                changed = true;
+            }
+        } else if constexpr (std::is_same_v<M, MATH::Vec3>) {
+            EDITOR_PROJECT::EditorWorkspaceColor color{value.x, value.y, value.z, 1.0f};
+            if (ui.Color4(id, Label(key, meta), &color)) {
+                value = MATH::Vec3{color.r, color.g, color.b};
                 changed = true;
             }
         } else if constexpr (std::is_same_v<M, std::string>) {

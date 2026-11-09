@@ -16,6 +16,7 @@
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
 #include "HIKARI_TerrainKitFrustum.h"
+#include "HIKARI_TerrainKitGrass.h"
 #include "HIKARI_TerrainKitRenderData.h"
 #include "HIKARI_TerrainKitStore.h"
 
@@ -153,6 +154,8 @@ public:
             store.Rivers().Record(view, commands);
             return;
         }
+        // 草を先に描く。葉が書いた深度で、隠れた地面の着色を省く。
+        RecordTerrainGrass(view, commands, store);
         instances_.clear();
         const FrustumPlanes frustum(view.viewProjection);
         const float tileSize = store.Settings().grid.tileSizeMeters;

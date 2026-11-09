@@ -93,6 +93,8 @@ void ChangeScatterRules(EditorShared& shared, TERRAIN::DATA::ScatterRuleSet rule
 
 // 積雪と湿りを変える（撤销一件）。
 void ChangeWeather(EditorShared& shared, const TerrainWeather& weather);
+void ChangeGrassSettings(EditorShared& shared, const TerrainGrassSettings& grass);
+void ChangeSurfaceGrass(EditorShared& shared, const std::string& name, const std::optional<TerrainSurfaceGrass>& grass);
 
 // 曲線の層。既定の幅と材質はここだけが持つ。
 float DefaultSplineWidth(TERRAIN::DATA::SplineKind kind);

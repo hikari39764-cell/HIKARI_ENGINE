@@ -94,6 +94,33 @@ private:
     TerrainWeather after_;
 };
 
+// 草の全体の設定の前後を持つ撤销。
+class GrassSettingsUndo final : public IEditorUndoEntry {
+public:
+    GrassSettingsUndo(TerrainGrassSettings before, TerrainGrassSettings after) : before_(before), after_(after) {}
+    void Undo() override { TerrainStore::Get().SetGrass(before_); }
+    void Redo() override { TerrainStore::Get().SetGrass(after_); }
+
+private:
+    TerrainGrassSettings before_;
+    TerrainGrassSettings after_;
+};
+
+// 材質の草の見た目の前後を持つ撤销。
+class SurfaceGrassUndo final : public IEditorUndoEntry {
+public:
+    SurfaceGrassUndo(std::string name, std::optional<TerrainSurfaceGrass> before,
+                     std::optional<TerrainSurfaceGrass> after)
+        : name_(std::move(name)), before_(before), after_(after) {}
+    void Undo() override { TerrainStore::Get().SetSurfaceGrass(name_, before_); }
+    void Redo() override { TerrainStore::Get().SetSurfaceGrass(name_, after_); }
+
+private:
+    std::string name_;
+    std::optional<TerrainSurfaceGrass> before_;
+    std::optional<TerrainSurfaceGrass> after_;
+};
+
 // 層の記述を変える手続きの共通部分：撤销を取り、焼き直す。
 template <class Change>
 bool ChangeStack(EditorShared& shared, const char* label, Change change, std::string& error) {
@@ -264,6 +291,28 @@ void ChangeScatterRules(EditorShared& shared, ScatterRuleSet rules) {
     if (shared.services != nullptr) {
         shared.services->RecordUndo("Edit Scatter Rules",
                                     std::make_unique<ScatterRulesUndo>(std::move(before), std::move(rules)));
+    }
+}
+
+void ChangeSurfaceGrass(EditorShared& shared, const std::string& name,
+                        const std::optional<TerrainSurfaceGrass>& grass) {
+    TerrainStore& store = TerrainStore::Get();
+    const auto& overrides = store.Surfaces().GrassOverrides();
+    const auto found = overrides.find(name);
+    const std::optional<TerrainSurfaceGrass> before =
+        found != overrides.end() ? std::optional<TerrainSurfaceGrass>(found->second) : std::nullopt;
+    store.SetSurfaceGrass(name, grass);
+    if (before != grass && shared.services != nullptr) {
+        shared.services->RecordUndo("Edit Grass", std::make_unique<SurfaceGrassUndo>(name, before, grass));
+    }
+}
+
+void ChangeGrassSettings(EditorShared& shared, const TerrainGrassSettings& grass) {
+    TerrainStore& store = TerrainStore::Get();
+    const TerrainGrassSettings before = store.Grass();
+    store.SetGrass(grass);
+    if (!(store.Grass() == before) && shared.services != nullptr) {
+        shared.services->RecordUndo("Edit Terrain Grass", std::make_unique<GrassSettingsUndo>(before, store.Grass()));
     }
 }
 
