@@ -118,6 +118,22 @@ bool PlaceOnGround(const World& world, const TransformData& current, const Model
     return true;
 }
 
+bool RestOnGround(const World& world, const TransformData& current, const ModelFootprint* footprint,
+                  TransformData& out) noexcept {
+    const MATH::Vec3& degrees = current.rotationEulerDeg;
+    const MATH::Mat4 rotation = MATH::Mat4::Rotate(
+        MATH::Quat::FromEulerXYZ(degrees.x * kDegToRad, degrees.y * kDegToRad, degrees.z * kDegToRad));
+    const float bottom = footprint != nullptr ? -footprint->min.y * current.scale.y : 0.0f;
+    const MATH::Vec3 foot = current.position - MATH::TransformVector(rotation, {0.0f, 1.0f, 0.0f}) * bottom;
+    WorldGroundHit hit{};
+    if (!GroundBelow(world, foot, hit)) {
+        return false;
+    }
+    out = current;
+    out.position.y += hit.position.y - foot.y;
+    return true;
+}
+
 GroundPlacementSettings ResolveGroundPlacement(const SceneObjectData& object) {
     GroundPlacementSettings settings{};
     if (const SceneComponentData* anchor = object.FindComponent("GroundAnchorComponent")) {

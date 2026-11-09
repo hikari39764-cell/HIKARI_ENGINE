@@ -40,9 +40,9 @@ namespace HIKARI {
 using EDITOR::HandleTransformGizmoShortcuts;
 using EDITOR::DOCUMENT_SCENE::CollectObjectOverlayIcons;
 using EDITOR::DOCUMENT_SCENE::DrawObjectOverlayIcons;
-using EDITOR::DOCUMENT_SCENE::ObjectIconTargets;
 using EDITOR::DOCUMENT_SCENE::DrawRenderDebugViewCombo;
 using EDITOR::DOCUMENT_SCENE::DrawViewportDebugOptions;
+using EDITOR::DOCUMENT_SCENE::ObjectIconTargets;
 
 void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& scene,
                                                            EDITOR::EditorPlaySession& playSession,
@@ -198,6 +198,8 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
                         }
                     }
                     ImGui::SeparatorText(TEXT::Localize("ui.viewport.settingsSnap").c_str());
+                    ImGui::Checkbox(TEXT::Localize("ui.viewport.groundSnap").c_str(),
+                                    &context_.transformGizmo.groundSnap);
                     ImGui::DragFloat3(TEXT::Localize("ui.viewport.translate").c_str(),
                                       &context_.transformGizmo.translateSnap.x, 0.05f, 0.001f, 100.0f);
                     ImGui::DragFloat(TEXT::Localize("ui.viewport.rotate").c_str(),

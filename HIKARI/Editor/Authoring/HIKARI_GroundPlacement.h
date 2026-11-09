@@ -27,6 +27,9 @@ std::unordered_map<uint64_t, ModelFootprint> CollectModelFootprints();
 // footprint が無い物（模型の無い物）は基点を一点で置く。真下に地面が無ければ false。
 bool PlaceOnGround(const World& world, const TransformData& current, const ModelFootprint* footprint,
                    const GroundPlacementSettings& settings, TransformData& out) noexcept;
+// 向きは変えずに、模型の底の中心（今の姿勢）を真下の地面の高さへ合わせる。地面が無ければ false。
+bool RestOnGround(const World& world, const TransformData& current, const ModelFootprint* footprint,
+                  TransformData& out) noexcept;
 // GroundAnchorComponent があればその置き方、無ければ既定。
 GroundPlacementSettings ResolveGroundPlacement(const SceneObjectData& object);
 

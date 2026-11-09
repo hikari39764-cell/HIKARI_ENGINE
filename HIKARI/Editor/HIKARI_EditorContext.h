@@ -62,6 +62,8 @@ struct EditorTransformGizmoState {
     EditorTransformGizmoOperation operation = EditorTransformGizmoOperation::Translate;
     EditorTransformGizmoMode mode = EditorTransformGizmoMode::World;
     bool snapEnabled = false;
+    // 移動の手柄で動かす物を真下の地面へ載せたまま動かす（Unreal の表面吸着）。
+    bool groundSnap = false;
     MATH::Vec3 translateSnap{0.5f, 0.5f, 0.5f};
     float rotateSnapDeg = 15.0f;
     float scaleSnap = 0.1f;
