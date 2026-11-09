@@ -45,11 +45,13 @@ private:
         bool worldAligned = false; // 波を世界座標で作る（湖。河は曲線の座標）
     };
 
-    void Rebuild(const std::vector<TERRAIN::DATA::SplineLayerSettings>& waters);
-    void AppendRiver(const TERRAIN::DATA::PreparedSpline& spline, Ribbon& ribbon) const;
+    void Rebuild(const std::vector<TERRAIN::DATA::SplineLayerSettings>& waters, float seaLevel);
+    // 海面より下に沈んだ区間は描かない（河口は海の水面に溶け込む）。
+    void AppendRiver(const TERRAIN::DATA::PreparedSpline& spline, float seaLevel, Ribbon& ribbon) const;
     void AppendLake(const TERRAIN::DATA::PreparedSpline& spline, Ribbon& ribbon) const;
 
     uint64_t revision_ = 0u;
+    float seaLevel_ = 0.0f;
     std::vector<TERRAIN::DATA::SplineLayerSettings> built_{};
     std::vector<Ribbon> ribbons_{};
     std::vector<Section> visible_{};

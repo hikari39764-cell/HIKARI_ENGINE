@@ -33,7 +33,7 @@ struct RiverDrawConstants {
 
 } // namespace
 
-void TerrainRivers::Rebuild(const std::vector<SplineLayerSettings>& waters) {
+void TerrainRivers::Rebuild(const std::vector<SplineLayerSettings>& waters, float seaLevel) {
     ribbons_.clear();
     for (const SplineLayerSettings& settings : waters) {
         const PreparedSpline spline = PrepareSpline(settings);
@@ -47,7 +47,7 @@ void TerrainRivers::Rebuild(const std::vector<SplineLayerSettings>& waters) {
         if (settings.kind == SplineKind::Lake) {
             AppendLake(spline, ribbon);
         } else {
-            AppendRiver(spline, ribbon);
+            AppendRiver(spline, seaLevel, ribbon);
         }
         if (!ribbon.sections.empty()) {
             ribbons_.push_back(std::move(ribbon));
@@ -95,7 +95,7 @@ void TerrainRivers::AppendLake(const PreparedSpline& spline, Ribbon& ribbon) con
     }
 }
 
-void TerrainRivers::AppendRiver(const PreparedSpline& spline, Ribbon& ribbon) const {
+void TerrainRivers::AppendRiver(const PreparedSpline& spline, float seaLevel, Ribbon& ribbon) const {
     {
         // 帯の断面の列。両端は半幅だけ先へ伸ばし、河の丸い端まで水面を届かせる（岸に当たって消える）。
         std::vector<CrossSection> crosses{};
@@ -140,7 +140,8 @@ void TerrainRivers::AppendRiver(const PreparedSpline& spline, Ribbon& ribbon) co
         }
         ribbon.sections.reserve(limited.size());
         for (size_t index = 0u; index + 1u < limited.size(); ++index) {
-            if (limited[index + 1u].along > limited[index].along) {
+            if (limited[index + 1u].along > limited[index].along &&
+                (limited[index].y > seaLevel || limited[index + 1u].y > seaLevel)) {
                 ribbon.sections.push_back(Section{limited[index], limited[index + 1u]});
             }
         }
@@ -167,10 +168,12 @@ void TerrainRivers::Prepare(IRenderSurfaceResources& resources, const TerrainSto
         indexBuffer_ = resources.CreateIndexBuffer(indices);
     }
     const TerrainData& data = store.Data();
-    if (data.Revision() == revision_) {
+    if (data.Revision() == revision_ && store.SeaLevel() == seaLevel_) {
         return;
     }
     revision_ = data.Revision();
+    const bool seaMoved = store.SeaLevel() != seaLevel_;
+    seaLevel_ = store.SeaLevel();
     std::vector<SplineLayerSettings> waters{};
     for (const HeightLayer& layer : data.Stack().layers) {
         if (layer.kind == HeightLayerKind::Spline && layer.enabled &&
@@ -178,8 +181,8 @@ void TerrainRivers::Prepare(IRenderSurfaceResources& resources, const TerrainSto
             waters.push_back(layer.spline);
         }
     }
-    if (waters != built_) {
-        Rebuild(waters);
+    if (waters != built_ || seaMoved) {
+        Rebuild(waters, seaLevel_);
         built_ = std::move(waters);
     }
 }
