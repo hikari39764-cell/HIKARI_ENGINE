@@ -8,6 +8,7 @@
 #include "Render3D/Procedural/HIKARI_ProceduralMeshTypes.h"
 #include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
 #include "Scene/Components/Lighting/HIKARI_LightSettings.h"
+#include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
 
 namespace HIKARI {
 
@@ -62,7 +63,8 @@ GameObject* CreateWorldTextObject(DocumentSceneBase& scene, const CreateWorldTex
 
 GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiveRequest& request);
 
-GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
+GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
+                                     WATER::WaterSurfaceGeometryMode geometryMode);
 
 GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 

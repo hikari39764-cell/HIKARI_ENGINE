@@ -44,6 +44,8 @@ struct GrassDrawConstants {
     float windDirectionZ = 0.57f;
     float windStrength = 1.0f;
     float windSpeed = 3.0f;
+    float waterLevel = kNoSeaLevel; // これより低い地面には生やさない
+    float reserved[3]{};
 };
 
 class PatchSelector {
@@ -186,6 +188,7 @@ void RecordTerrainGrass(const RenderSurfaceView& view, IRenderSurfaceCommands& c
     constants.colorMapReady = render.colorMap != 0u && render.colorMapsUploaded >= store.Tiles().size() ? 1u : 0u;
     constants.windStrength = settings.windStrength;
     constants.windSpeed = settings.windSpeed;
+    constants.waterLevel = store.SeaLevel();
 
     RenderSurfaceDraw draw{};
     draw.programId = kGrassProgram;

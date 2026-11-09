@@ -323,6 +323,8 @@ TerrainSurfaceSample TerrainShadeSurface(TerrainVertex input, float3 macroNormal
         surface.roughness = lerp(surface.roughness, 0.55f, snow);
         surface.normal = normalize(lerp(surface.normal, macroNormal, snow * 0.8f));
     }
+    // 波打ち際：海面から少し上までは波で濡れた砂の帯。
+    wet = max(wet, 1.0f - smoothstep(gTerrainSeaLevel + 0.2f, gTerrainSeaLevel + 1.6f, input.worldPosition.y));
     if (wet > 0.0f)
     {
         surface.albedo *= lerp(1.0f, 0.5f, wet);

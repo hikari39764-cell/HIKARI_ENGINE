@@ -33,6 +33,7 @@ enum class RuntimeWorldAccessResult : uint8_t { Success, InvalidWorld, WrongThre
 
 class INavigationGeometrySource;
 class IRenderSurfaceExtension;
+class IWaterSource;
 
 class World {
 public:
@@ -177,6 +178,10 @@ public:
     }
     void AddNavigationGeometrySource(INavigationGeometrySource& source);
     void RemoveNavigationGeometrySource(INavigationGeometrySource& source) noexcept;
+    // モジュールの水。世界は持ち主にならず、登録した側が外す。
+    std::span<IWaterSource* const> GetWaterSources() const noexcept { return waterSources_; }
+    void AddWaterSource(IWaterSource& source);
+    void RemoveWaterSource(IWaterSource& source) noexcept;
     void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept;
     bool IsOwnerThread() const noexcept { return std::this_thread::get_id() == ownerThread_; }
     static World* ResolveRuntimeWorld(uint64_t identity, RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
@@ -464,6 +469,7 @@ private:
     uint64_t runtimeIdentity_ = 0u;
     std::vector<IRenderSurfaceExtension*> renderSurfaceExtensions_{};
     std::vector<INavigationGeometrySource*> navigationGeometrySources_{};
+    std::vector<IWaterSource*> waterSources_{};
     uint64_t nextPrefabRequestId_ = 1u;
     uint64_t nextPrefabInstanceId_ = 1u;
     uint64_t nextDynamicSceneObjectId_ = 1u;

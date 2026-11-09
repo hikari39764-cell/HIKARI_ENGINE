@@ -209,6 +209,9 @@ private:
                 point.x = static_cast<float>(x);
                 point.y = HeightAt(x, z);
                 point.z = static_cast<float>(z);
+                if (point.y < tile_.waterLevel) {
+                    return;
+                }
                 GroundAlignedRotation(std::atan2(tangentX, tangentZ) + yawJitter, 0.0f, 0.0f, 0.0f, point.rotation);
                 point.scale = rule.scaleMin + (rule.scaleMax - rule.scaleMin) * HashUnit(Mix(hash + 5u));
                 out_.push_back(point);
@@ -248,6 +251,9 @@ private:
                     continue;
                 }
                 const float height = HeightAt(x, z);
+                if (height < tile_.waterLevel) {
+                    continue;
+                }
                 const float slopeX = (HeightAt(x + kProbeMeters, z) - HeightAt(x - kProbeMeters, z)) /
                                      static_cast<float>(2.0 * kProbeMeters);
                 const float slopeZ = (HeightAt(x, z + kProbeMeters) - HeightAt(x, z - kProbeMeters)) /

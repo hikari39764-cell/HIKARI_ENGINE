@@ -176,11 +176,16 @@ WaterSurfaceSettings ResolveWaterSurfaceSettingsForMesh(const WaterSurfaceSettin
     return settings;
 }
 
+float OceanGradeShare(float uniformCell) noexcept {
+    const float cell = (std::max)(MATH::FiniteOr(uniformCell, 1.0f), 1.0e-3f);
+    return std::clamp(kOceanNearCellMeters / cell, kOceanMinimumGradeShare, 1.0f);
+}
+
 WaterSurfaceSettings ResolveWaterSurfaceRuntimeSettings(const WaterSurfaceSettings& rawSettings,
                                                         float maximumVertexSpacing, const MATH::Mat4& world) noexcept {
-    WaterSurfaceSettings settings = ResolveWaterSurfaceSettingsForMesh(rawSettings, maximumVertexSpacing);
+    WaterSurfaceSettings settings = SanitizeWaterSurfaceSettings(rawSettings);
     if (settings.geometryMode != WaterSurfaceGeometryMode::CameraCenteredOcean) {
-        return settings;
+        return ResolveWaterSurfaceSettingsForMesh(settings, maximumVertexSpacing);
     }
 
     const MATH::Vec3 basisX{world.m[0][0], world.m[0][1], world.m[0][2]};
@@ -192,8 +197,10 @@ WaterSurfaceSettings ResolveWaterSurfaceRuntimeSettings(const WaterSurfaceSettin
     if (MATH::Length(planeNormal) <= 1.0e-6f || MATH::Length(authoredUp) <= 1.0e-6f ||
         planeNormal.y < kMinimumWorldUpAlignment || authoredUp.y < kMinimumWorldUpAlignment) {
         settings.geometryMode = WaterSurfaceGeometryMode::FiniteAuthored;
+        return ResolveWaterSurfaceSettingsForMesh(settings, maximumVertexSpacing);
     }
-    return settings;
+    // 海の格子は相机の近くほど細かい（着色器の HikariOceanGrade）。ここでは一番細かい格で間引き、遠くは着色器が消す。
+    return ResolveWaterSurfaceSettingsForMesh(settings, maximumVertexSpacing * OceanGradeShare(maximumVertexSpacing));
 }
 
 WaterSurfaceEvaluation EvaluateWaterSurface(const WaterSurfaceSettings& rawSettings, const MATH::Vec2& sourceLocalXZ,

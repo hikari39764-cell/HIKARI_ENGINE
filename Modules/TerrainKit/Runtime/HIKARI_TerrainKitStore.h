@@ -78,6 +78,9 @@ inline constexpr TEXT::EnumName<TerrainOverlay> kTerrainOverlayNames[] = {
     {TerrainOverlay::Wetness, "Wetness"}, {TerrainOverlay::Surfaces, "Surfaces"}, {TerrainOverlay::Grass, "Grass"},
 };
 
+// 海が無い時の水面の高さ（着色器はこれより上を陸として扱う）。
+inline constexpr float kNoSeaLevel = -1.0e9f;
+
 // 草の全体の設定。どの地表にどんな草が生えるかは地表材質の資産が持つ。
 struct TerrainGrassSettings {
     bool enabled = true;
@@ -184,6 +187,9 @@ public:
     // 背景の計算の結果を受け取る。手塗りの標本は今の値を残す。
     void ApplyRuleResult(TERRAIN::DATA::TileCoord tile, std::vector<uint32_t> control, std::vector<uint8_t> colorMap);
     const TerrainWeather& Weather() const noexcept { return weather_; }
+    // 場面の海の高さ（無ければ kNoSeaLevel）。地形の部品が毎フレーム世界から取り込む。散布・草・地面が読む。
+    float SeaLevel() const noexcept { return seaLevel_; }
+    void SetSeaLevel(float level);
     void SetWeather(const TerrainWeather& weather);
     const TerrainGrassSettings& Grass() const noexcept { return grass_; }
     TerrainOverlay Overlay() const noexcept { return overlay_; }
@@ -243,6 +249,7 @@ private:
     TerrainRuleBaker ruleBaker_{};
     TerrainScatter scatter_{};
     TerrainWeather weather_{};
+    float seaLevel_ = kNoSeaLevel;
     TerrainGrassSettings grass_{};
     TerrainOverlay overlay_ = TerrainOverlay::None;
     std::map<uint32_t, std::string> loadedImageKeys_{};

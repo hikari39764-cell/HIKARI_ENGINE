@@ -10,6 +10,10 @@
 static const float HIKARI_OCEAN_EPSILON = 1.0e-4f;
 static const float HIKARI_OCEAN_MIN_SNAP_CELL = 1.0e-3f;
 static const float HIKARI_OCEAN_FOCUS_NDC_Y = -0.35f;
+// 格子の歪め方。各軸で g(t) = a t + (1 - a) t^4（t は中心から縁への 0..1）。中心の格は等間隔の a 倍で、
+// a は一番細かい格がこの大きさになるように決める。C++ の WATER::OceanGradeShare と同じ値を使う。
+static const float HIKARI_OCEAN_NEAR_CELL_METERS = 0.5f;
+static const float HIKARI_OCEAN_MIN_GRADE_SHARE = 0.01f;
 
 float2 HikariOceanSafeHalfExtent(float2 extent, float2 fallbackExtent)
 {
@@ -152,7 +156,8 @@ float HikariOceanResolveGridSegments(uint indexCount)
     return max(round(sqrt(cellCount)), 1.0f);
 }
 
-float2 HikariOceanResolveSnapCell(
+// 歪める前の等間隔の格。
+float2 HikariOceanResolveUniformCell(
     float2 authoredHalfExtent,
     uint indexCount)
 {
@@ -160,6 +165,41 @@ float2 HikariOceanResolveSnapCell(
     return max(
         authoredHalfExtent * (2.0f / segments),
         HIKARI_OCEAN_MIN_SNAP_CELL.xx);
+}
+
+float HikariOceanGradeShare(float2 uniformCell)
+{
+    const float cell = max(max(uniformCell.x, uniformCell.y), HIKARI_OCEAN_MIN_SNAP_CELL);
+    return clamp(HIKARI_OCEAN_NEAR_CELL_METERS / cell, HIKARI_OCEAN_MIN_GRADE_SHARE, 1.0f);
+}
+
+float2 HikariOceanGrade(float2 centered, float share)
+{
+    const float2 t = abs(centered);
+    const float2 t2 = t * t;
+    return sign(centered) * (share * t + (1.0f - share) * t2 * t2);
+}
+
+// 歪めた後の格の大きさが等間隔の何倍か（g の傾き）。
+float2 HikariOceanGradeSlope(float2 centered, float share)
+{
+    const float2 t = abs(centered);
+    return share + 4.0f * (1.0f - share) * t * t * t;
+}
+
+// 相机の動きはこの大きさで丸める。一番細かい格（中心）が動いても同じ格子点に重なる。
+float2 HikariOceanResolveSnapCell(
+    float2 authoredHalfExtent,
+    uint indexCount)
+{
+    const float2 uniformCell = HikariOceanResolveUniformCell(authoredHalfExtent, indexCount);
+    return max(uniformCell * HikariOceanGradeShare(uniformCell), HIKARI_OCEAN_MIN_SNAP_CELL.xx);
+}
+
+// 格より短い波は格子で表せずちらつくので、格の大きさで消す（CPU の ResolveWaterSurfaceSettingsForMesh と同じ幅）。
+float HikariOceanResolvedWaveShare(float wavelength, float cell)
+{
+    return saturate((wavelength - 2.0f * cell) / max(2.0f * cell, HIKARI_OCEAN_EPSILON));
 }
 
 float3 HikariOceanUnprojectFarPoint(

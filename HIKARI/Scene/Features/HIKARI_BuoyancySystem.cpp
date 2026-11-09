@@ -1,4 +1,5 @@
 #include "Scene/Features/HIKARI_BuoyancySystem.h"
+#include "Scene/Water/HIKARI_WorldWater.h"
 
 #include <algorithm>
 
@@ -48,7 +49,7 @@ void BuoyancySystem::PreFixedUpdate(World& world, const FrameContext& frame) {
             WATER::WaterSurfaceQuery query{};
             query.positionWS = center;
             WATER::WaterSurfaceSample sample{};
-            if (!waterQuery_->SampleNearest(query, sample) || !sample.valid) {
+            if (!WATER::SampleWorldWater(world, query, sample) || !sample.valid) {
                 return;
             }
 

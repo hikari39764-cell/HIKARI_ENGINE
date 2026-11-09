@@ -537,6 +537,14 @@ void World::RemoveNavigationGeometrySource(INavigationGeometrySource& source) no
     std::erase(navigationGeometrySources_, &source);
 }
 
+void World::AddWaterSource(IWaterSource& source) {
+    if (std::find(waterSources_.begin(), waterSources_.end(), &source) == waterSources_.end()) {
+        waterSources_.push_back(&source);
+    }
+}
+
+void World::RemoveWaterSource(IWaterSource& source) noexcept { std::erase(waterSources_, &source); }
+
 void World::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept {
     std::erase(renderSurfaceExtensions_, &extension);
 }

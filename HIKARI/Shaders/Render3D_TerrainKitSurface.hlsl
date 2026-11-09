@@ -52,7 +52,7 @@ cbuffer RenderSurfaceConstants : register(b3)
     float gTerrainReserved;
     float gTerrainOverlayHeightMin;
     float gTerrainOverlayHeightRange;
-    float gTerrainReserved1;
+    float gTerrainSeaLevel;
     float gTerrainReserved2;
 };
 

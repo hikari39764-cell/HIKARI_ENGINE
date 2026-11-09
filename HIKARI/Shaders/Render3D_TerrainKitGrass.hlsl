@@ -47,6 +47,8 @@ cbuffer RenderSurfaceConstants : register(b3)
     float2 gGrassWindDirection;
     float gGrassWindStrength;
     float gGrassWindSpeed;
+    float gGrassWaterLevel; // これより低い地面（海の中）には生やさない
+    float3 gGrassReserved;
 };
 
 // 小区画は辺 64 個の格子点、mesh shader の一組は 4x4 の 16 枚。格子の間隔は段ごとに倍になる。

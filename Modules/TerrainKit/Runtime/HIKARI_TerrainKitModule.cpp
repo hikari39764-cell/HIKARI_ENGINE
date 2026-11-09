@@ -15,10 +15,12 @@
 #include "HIKARI/Project/RenderSurface.h"
 #include "HIKARI/Project/RuntimeFeature.h"
 #include "HIKARI/Project/RuntimeFeatureRegistration.h"
+#include "HIKARI/Project/WaterSource.h"
 #include "HIKARI_TerrainKitFrustum.h"
 #include "HIKARI_TerrainKitGrass.h"
 #include "HIKARI_TerrainKitRenderData.h"
 #include "HIKARI_TerrainKitStore.h"
+#include "HIKARI_TerrainKitWater.h"
 
 namespace HIKARI::TERRAINKIT {
 namespace {
@@ -33,6 +35,8 @@ constexpr uint32_t kLodLevels = 4u;
 // （条件：開始割合 >= 0.5 + 0.705 * 節の辺 / 下の段の範囲）に決める。
 constexpr float kFirstRangeInLeaves = 6.0f;
 constexpr float kMorphStartFraction = 0.78f;
+// これより深い水の底は道案内に入れない（膝より上、歩いて渡れない深さ）。
+constexpr float kWadeDepthMeters = 0.9f;
 
 struct TerrainNodeInstance {
     float originX = 0.0f;
@@ -61,18 +65,22 @@ struct TerrainDrawConstants {
     float reserved = 0.0f;
     float overlayHeightMin = 0.0f; // 高さの数据図の範囲（実際の地形の最低と最高）
     float overlayHeightRange = 1.0f;
-    float reserved1 = 0.0f;
+    float seaLevel = kNoSeaLevel; // 海の水面の高さ。この少し上まで地面が湿る
     float reserved2 = 0.0f;
 };
 
 // 地形の部品。設定を場面に保存し、自分をその世界のモジュールの面として登録する。
-class TerrainComponent final : public IGameComponent, public IRenderSurfaceExtension, public INavigationGeometrySource {
+class TerrainComponent final : public IGameComponent,
+                               public IRenderSurfaceExtension,
+                               public INavigationGeometrySource,
+                               public IWaterSource {
 public:
     void OnAttach(GameComponentContext& context) override {
         world_ = context.GetWorld();
         owner_ = context.GetObject().GetHandle();
         (void)world_.AddRenderSurfaceExtension(*this);
         (void)world_.AddNavigationGeometrySource(*this);
+        (void)world_.AddWaterSource(*this);
         TerrainStore::Get().BindWorld(world_);
     }
 
@@ -106,6 +114,7 @@ public:
     void OnDetach(GameComponentContext&) override {
         world_.RemoveRenderSurfaceExtension(*this);
         world_.RemoveNavigationGeometrySource(*this);
+        world_.RemoveWaterSource(*this);
         for (const uint64_t body : heightFields_) {
             world_.RemoveStaticHeightField(body);
         }
@@ -140,6 +149,8 @@ public:
             }
             return;
         }
+        GameProjectOcean ocean{};
+        store.SetSeaLevel(world_.FindOcean(ocean) ? ocean.level : kNoSeaLevel);
         PrepareTerrainRenderData(resources, store);
     }
 
@@ -202,6 +213,7 @@ public:
                                      ? static_cast<uint32_t>(surfaces.size())
                                      : 0u;
         constants.colorMapReady = render.colorMap != 0u && render.colorMapsUploaded >= store.Tiles().size() ? 1u : 0u;
+        constants.seaLevel = store.SeaLevel();
         constants.snowLineMeters = store.Weather().snowLineMeters;
         constants.snowAmount = store.Weather().snowAmount;
         constants.wetness = store.Weather().wetness;
@@ -270,18 +282,37 @@ public:
                 vertices.push_back(originZ + static_cast<float>(row) * spacing);
             }
         }
+        // 歩いて渡れない深さの水の底は道にしない（河、湖、海を世界の水の問い合わせで見る）。
+        std::vector<uint8_t> deep(static_cast<size_t>(columns) * columns, 0u);
+        for (size_t vertex = 0u; vertex < deep.size(); ++vertex) {
+            GameProjectWaterSample water{};
+            const GameProjectFloat3 ground{vertices[vertex * 3u], vertices[vertex * 3u + 1u],
+                                           vertices[vertex * 3u + 2u]};
+            deep[vertex] = world_.SampleWater(ground, water) && water.submergence > kWadeDepthMeters ? 1u : 0u;
+        }
         std::vector<int32_t> triangles{};
         triangles.reserve(static_cast<size_t>(columns - 1u) * (columns - 1u) * 6u);
+        const auto add = [&](int32_t a, int32_t b, int32_t c) {
+            if (deep[static_cast<size_t>(a)] == 0u || deep[static_cast<size_t>(b)] == 0u ||
+                deep[static_cast<size_t>(c)] == 0u) {
+                triangles.insert(triangles.end(), {a, b, c});
+            }
+        };
         for (uint32_t row = 0u; row + 1u < columns; ++row) {
             for (uint32_t column = 0u; column + 1u < columns; ++column) {
                 const int32_t a = static_cast<int32_t>(row * columns + column);
                 const int32_t b = a + 1;
                 const int32_t c = a + static_cast<int32_t>(columns);
                 const int32_t d = c + 1;
-                triangles.insert(triangles.end(), {a, c, b, b, c, d});
+                add(a, c, b);
+                add(b, c, d);
             }
         }
         sink.Append(vertices, triangles);
+    }
+
+    bool SampleWater(float x, float z, GameProjectWaterSourceSample& out) const override {
+        return water_.Sample(TerrainStore::Get(), x, z, out);
     }
 
 private:
@@ -351,6 +382,7 @@ private:
     std::vector<uint64_t> heightFields_{};
     TerrainSettings settings_{};
     std::vector<TerrainNodeInstance> instances_{};
+    mutable TerrainWaterBodies water_{};
     std::string lastError_{};
 };
 

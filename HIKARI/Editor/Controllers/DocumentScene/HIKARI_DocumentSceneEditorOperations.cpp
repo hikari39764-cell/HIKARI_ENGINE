@@ -142,6 +142,15 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
         {"scene.create_empty_object", "Create an empty scene object.", "scene", EDITOR::CreateSceneEmptyObject,
          Concat({NameParameter("物体名称，缺省为 AI Object"), PositionParameters(), RotationParameters(),
                  ScaleParameters()})},
+        {"scene.create_water",
+         "Create a water surface. camera_centered_ocean makes a sea that follows the camera at position y.", "scene",
+         EDITOR::CreateSceneWaterObject,
+         Concat({NameParameter("Object name"),
+                 PositionParameters(),
+                 RotationParameters(),
+                 ScaleParameters(),
+                 {{"geometryMode", EditorOperationParameterType::String, false,
+                   "finite_authored (default) or camera_centered_ocean"}}})},
     };
 }
 

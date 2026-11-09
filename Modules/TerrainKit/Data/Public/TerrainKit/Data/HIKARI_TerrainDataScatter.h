@@ -170,6 +170,8 @@ struct ScatterTile {
     std::span<const PreparedSpline> splines{};
     std::span<const uint32_t> splineLayers{};
     std::span<const ScatterReserved> reserved{};
+    // これより低い地面（海の中）には置かない。
+    float waterLevel = -1.0e9f;
 };
 
 struct ScatterPoint {

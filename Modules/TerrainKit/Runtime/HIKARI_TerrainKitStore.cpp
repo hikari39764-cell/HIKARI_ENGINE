@@ -519,6 +519,15 @@ void TerrainStore::SetWeather(const TerrainWeather& weather) {
     surfaceSlotsDirty_ = true;
 }
 
+void TerrainStore::SetSeaLevel(float level) {
+    if (level == seaLevel_) {
+        return;
+    }
+    seaLevel_ = level;
+    // 海の中の木と岩を消す・戻す。
+    ruleBaker_.MarkAllScatterDirty(*this);
+}
+
 void TerrainStore::ShutdownWorkers() {
     surfaces_.Shutdown();
     ruleBaker_.Cancel();

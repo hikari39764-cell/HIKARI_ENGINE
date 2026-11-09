@@ -12,6 +12,8 @@
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Core/Text/HIKARI_EnumNames.h"
+#include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
 #include <cstdio>
 
 namespace HIKARI::EDITOR {
@@ -363,6 +365,32 @@ EditorOperationResult CreateSceneEmptyObject(SceneObjectOperationContext& operat
     result.message = "已创建空物体 " + request.name;
     return result;
 }
+EditorOperationResult CreateSceneWaterObject(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {
+    EDITOR::EditorOperationResult result{};
+    DocumentSceneBase* scene = &operation.scene;
+    WATER::WaterSurfaceGeometryMode mode = WATER::WaterSurfaceGeometryMode::FiniteAuthored;
+    const std::string modeName = parameters.value("geometryMode", std::string{"finite_authored"});
+    if (!TEXT::TryParseEnum(WATER::kWaterSurfaceGeometryModeNames, modeName, mode)) {
+        return OperationFailure("INVALID_MODE", "geometryMode must be finite_authored or camera_centered_ocean");
+    }
+    ObjectCreationEdit edit(operation, "Create Water");
+    EDITOR::CreateObjectRequest request{};
+    request.name = parameters.value("name", std::string{});
+    if (request.name.empty()) {
+        request.name = mode == WATER::WaterSurfaceGeometryMode::CameraCenteredOcean ? "Sea" : "Water Surface";
+    }
+    ReadObjectTransform(parameters, request);
+    GameObject* object = EDITOR::CreateWaterSurfaceObject(*scene, request, mode);
+    if (object == nullptr) {
+        return OperationFailure("CREATE_FAILED", "Could not create the water: " + request.name);
+    }
+    edit.Complete(*object);
+    result.data = CreatedObjectReceipt(*scene, *object);
+    result.ok = true;
+    result.message = "Created water " + request.name;
+    return result;
+}
+
 EditorOperationResult DeleteSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters) {
     return EditSceneSelection(operation, SceneObjectCommandId::Delete, parameters);
 }

@@ -162,7 +162,10 @@ bool GrassBladeExists(GrassPatch patch, int2 baseCell, float2 cameraXZ, out uint
     if (any(tileLocal < 0.0f) || any(tileLocal >= gTerrainTileSize))
         return false;
     hash = GrassNextHash(hash);
-    if (!GrassSelectSurface(GrassTileUv(position, patch.tileOriginXZ), patch.tileLayer, hash, surface))
+    const float2 uv = GrassTileUv(position, patch.tileOriginXZ);
+    if (!GrassSelectSurface(uv, patch.tileLayer, hash, surface))
+        return false;
+    if (gGrassWaterLevel > -1.0e8f && GrassTerrainHeight(uv, patch.tileLayer) < gGrassWaterLevel + 0.1f)
         return false;
     hash = GrassNextHash(hash);
     const float density = gTerrainSurfaceParams.Load(int4(surface, GRASS_PARAM_SHAPE, 0, 0)).x * gGrassDensity;

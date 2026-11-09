@@ -35,6 +35,9 @@ class DisplaySettingsView;
 class IGameComponent;
 class INavigationGeometrySource;
 class IRenderSurfaceExtension;
+class IWaterSource;
+struct GameProjectOcean;
+struct GameProjectWaterSample;
 class IGameProjectSession;
 class InputView;
 class MotionView;
@@ -120,6 +123,14 @@ public:
     // モジュールの幾何を道案内の入力へ足す。外すまで source を生かしておく。
     HIKARI_GAME_PROJECT_SDK_API bool AddNavigationGeometrySource(INavigationGeometrySource& source) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API void RemoveNavigationGeometrySource(INavigationGeometrySource& source) const noexcept;
+    // モジュールの水（河や湖）を水の問い合わせへ足す。外すまで source を生かしておく（HIKARI/Project/WaterSource.h）。
+    HIKARI_GAME_PROJECT_SDK_API bool AddWaterSource(IWaterSource& source) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveWaterSource(IWaterSource& source) const noexcept;
+    // 一点の水：水面の高さ、流速、深さ。引擎の水面とモジュールの水のうち position の高さに一番近い水面。
+    HIKARI_GAME_PROJECT_SDK_API bool SampleWater(GameProjectFloat3 position,
+                                                 GameProjectWaterSample& out) const noexcept;
+    // 場面の海（相机を追う水面）。無ければ false。
+    HIKARI_GAME_PROJECT_SDK_API bool FindOcean(GameProjectOcean& out) const noexcept;
     // モジュールの面を登録する。OnWorldDetached までに外すこと。
     HIKARI_GAME_PROJECT_SDK_API bool AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;

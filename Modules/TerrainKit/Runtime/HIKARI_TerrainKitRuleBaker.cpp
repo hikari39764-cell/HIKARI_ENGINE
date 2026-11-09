@@ -265,7 +265,7 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
                       [inputs = std::move(inputs), rules = store.SurfaceRules(), styles = std::move(styles), samples,
                        splines = std::move(splines), splineLayers = std::move(splineLayers), grid,
                        scatterRules = std::make_shared<const ScatterRuleSet>(store.Scatter().Rules()),
-                       previous = std::move(previous), fresh = std::move(fresh),
+                       seaLevel = store.SeaLevel(), previous = std::move(previous), fresh = std::move(fresh),
                        spacing = static_cast<float>(SampleSpacing(grid))]() mutable {
                           std::shared_ptr<const TerrainAnalysis> analysis = previous;
                           if (analysis == nullptr) {
@@ -301,6 +301,7 @@ void TerrainRuleBaker::Update(TerrainStore& store) {
                                   scatter.splines = splines;
                                   scatter.splineLayers = splineLayers;
                                   scatter.reserved = input.reserved;
+                                  scatter.waterLevel = seaLevel;
                                   EvaluateScatter(*scatterRules, scatter, result.points);
                                   result.scattered = true;
                               }

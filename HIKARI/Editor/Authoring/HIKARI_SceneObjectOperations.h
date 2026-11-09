@@ -24,6 +24,7 @@ EditorOperationResult CreateSceneWorldSprite(SceneObjectOperationContext& operat
 EditorOperationResult CreateSceneWorldText(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult CreateScenePrimitive(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult CreateSceneEmptyObject(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
+EditorOperationResult CreateSceneWaterObject(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult DeleteSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 EditorOperationResult DuplicateSceneObjects(SceneObjectOperationContext& operation, const nlohmann::json& parameters);
 } // namespace EDITOR

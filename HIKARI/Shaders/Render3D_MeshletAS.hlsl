@@ -282,7 +282,7 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     bool requiresFineCull = HikariClusterHasConservativeBounds(instance);
     // 頂点変形する地形/有限水面も、変形包絡で広げた bounds で剔除する。
     if (clusterValid && !requiresFineCull &&
-        HikariMeshletResolveDeformedClusterBounds(instance, cullMin, cullMax))
+        HikariMeshletResolveDeformedClusterBounds(instance, gInvViewProj, gCameraPos, cullMin, cullMax))
     {
         requiresFineCull = true;
         // 平面用の球は使わず、広げた box から作り直す。

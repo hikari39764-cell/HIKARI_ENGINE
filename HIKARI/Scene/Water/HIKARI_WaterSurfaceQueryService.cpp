@@ -192,6 +192,21 @@ bool WaterSurfaceQueryService::SampleNearest(const WaterSurfaceQuery& query,
                                      outSample);
 }
 
+bool WaterSurfaceQueryService::FindOcean(float& outLevel, RuntimeObjectHandle& outObject) const noexcept {
+    const auto snapshot = snapshotStore_.Current();
+    if (snapshot == nullptr) {
+        return false;
+    }
+    for (const WaterSurfaceSnapshotEntry& surface : snapshot->entries) {
+        if (surface.settings.geometryMode == WaterSurfaceGeometryMode::CameraCenteredOcean) {
+            outLevel = MATH::TransformPoint(surface.world, {0.0f, 0.0f, 0.0f}).y;
+            outObject = surface.object;
+            return true;
+        }
+    }
+    return false;
+}
+
 uint64_t WaterSurfaceQueryService::GetSnapshotRevision() const noexcept { return snapshotStore_.Revision(); }
 
 std::size_t WaterSurfaceQueryService::GetSurfaceCount() const noexcept { return snapshotStore_.Count(); }

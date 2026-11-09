@@ -83,6 +83,7 @@ if(TARGET HIKARI_EditorHost)
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRenderData.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitFrustum.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRivers.cpp"
+            "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitWater.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRivers.h"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRuleBaker.cpp"
             "${CMAKE_CURRENT_SOURCE_DIR}/Runtime/HIKARI_TerrainKitRuleBaker.h"
