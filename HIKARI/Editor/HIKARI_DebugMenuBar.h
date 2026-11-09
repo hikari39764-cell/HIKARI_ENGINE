@@ -8,7 +8,7 @@ namespace EDITOR {
 class EditorCommandRouter;
 class EditorOperationRegistry;
 class GameExportJob;
-class ModuleEditorExtensions;
+class GameProjectEditorWorkspaceHost;
 class EditorProjectSessionController;
 class EditorToolHost;
 class EditorWorkspaceHost;
@@ -20,7 +20,8 @@ public:
               DebugCameraController3D& debugCamera, bool& environmentLightingEnabled, bool& resetDockingLayoutRequested,
               EDITOR::EditorCommandRouter& commandRouter, EDITOR::EditorProjectSessionController& projectSession,
               bool projectTransitionAllowed, bool hasUnsavedProjectChanges, EDITOR::GameExportJob& exportJob,
-              EDITOR::EditorOperationRegistry& operations, EDITOR::ModuleEditorExtensions* moduleExtensions) const;
+              EDITOR::EditorOperationRegistry& operations,
+              EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaces) const;
 };
 
 } // namespace HIKARI

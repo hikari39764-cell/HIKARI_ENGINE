@@ -548,7 +548,7 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
                        projectSession,
                        playSession.GetMode() == EDITOR::EditorPlayMode::None && !playSession.IsTransitioning(),
                        HasKnownUnsavedProjectChanges(scene), exportJob_, operationRegistry_,
-                       projectWorkspaceHost_ ? &projectWorkspaceHost_->Extensions() : nullptr);
+                       projectWorkspaceHost_ ? &*projectWorkspaceHost_ : nullptr);
     projectSession.DrawConfirmationDialog();
 
     if (projectWorkspaceHost_) {

@@ -244,6 +244,13 @@ void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectE
                 aiOperationScene_->SetUnsavedSceneChanges(true);
             }
         });
+    host->Extensions().SetViewportCameraSetter(
+        [this](const GameProjectFloat3& position, const GameProjectFloat3& target) {
+            if (aiOperationScene_ != nullptr) {
+                aiOperationScene_->GetCamera().SetLookAt({position.x, position.y, position.z},
+                                                         {target.x, target.y, target.z});
+            }
+        });
     host->Extensions().SetFarModelBaker([this](std::string_view modelAssetGuid) -> std::string {
         if (aiOperationScene_ == nullptr) {
             return {};

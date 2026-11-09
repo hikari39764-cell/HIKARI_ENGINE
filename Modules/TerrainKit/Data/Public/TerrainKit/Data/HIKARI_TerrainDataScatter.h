@@ -54,35 +54,41 @@ inline constexpr auto kScatterRuleFields = [](auto&& field) {
     field("name", &S::name, Label{"Name"});
     field("enabled", &S::enabled, Label{"Enabled"});
     field("seed", &S::seed, Range{0.0, 4294967295.0}, Label{"Seed"});
-    field("instanceSet", &S::instanceSet, Label{"Instance Set"});
-    field("densityPer100", &S::densityPer100, Range{0.0, 10000.0}, Label{"Density"}, Unit{"per 100 m2"});
+    field("instanceSet", &S::instanceSet, Label{"Instance Set"}, Group{"Instances"});
+    field("densityPer100", &S::densityPer100, Range{0.0, 10000.0}, Label{"Density"}, Unit{"per 100 m2"},
+          Group{"Instances"});
     field("footprintMeters", &S::footprintMeters, Range{0.05, 25.0}, Label{"Footprint"}, Unit{"m"},
-          Help{"Space one instance takes. Later rules cannot place inside it."});
-    field("scaleMin", &S::scaleMin, Range{0.01, 100.0}, Label{"Scale Min"});
-    field("scaleMax", &S::scaleMax, Range{0.01, 100.0}, Label{"Scale Max"});
+          Help{"Space one instance takes. Later rules cannot place inside it."}, Group{"Instances"});
+    field("scaleMin", &S::scaleMin, Range{0.01, 100.0}, Label{"Scale Min"}, Group{"Instances"});
+    field("scaleMax", &S::scaleMax, Range{0.01, 100.0}, Label{"Scale Max"}, Group{"Instances"});
     field("edgeScale", &S::edgeScale, Slider(0.0, 1.0), Label{"Edge Scale"},
-          Help{"Size of instances where density is low, such as at the edge of a forest."});
-    field("alignToGround", &S::alignToGround, Slider(0.0, 1.0), Label{"Align To Ground"});
-    field("minSlopeDegrees", &S::minSlopeDegrees, Range{0.0, 90.0}, Label{"Min Slope"}, Unit{"deg"});
-    field("maxSlopeDegrees", &S::maxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"}, Unit{"deg"});
-    field("slopeFadeDegrees", &S::slopeFadeDegrees, Range{0.01, 45.0}, Label{"Slope Fade"}, Unit{"deg"});
-    field("minHeightMeters", &S::minHeightMeters, Range{-100000.0, 100000.0}, Label{"Min Height"}, Unit{"m"});
-    field("maxHeightMeters", &S::maxHeightMeters, Range{-100000.0, 100000.0}, Label{"Max Height"}, Unit{"m"});
-    field("heightFadeMeters", &S::heightFadeMeters, Range{0.01, 4096.0}, Label{"Height Fade"}, Unit{"m"});
-    field("minWetness", &S::minWetness, Slider(0.0, 1.0), Label{"Min Wetness"});
-    field("maxWetness", &S::maxWetness, Slider(0.0, 1.0), Label{"Max Wetness"});
-    field("wetnessFade", &S::wetnessFade, Range{0.01, 1.0}, Label{"Wetness Fade"});
-    field("minPosition", &S::minPosition, Range{-1.0, 1.0}, Label{"Min Position"});
-    field("maxPosition", &S::maxPosition, Range{-1.0, 1.0}, Label{"Max Position"});
-    field("positionFade", &S::positionFade, Range{0.01, 2.0}, Label{"Position Fade"});
+          Help{"Size of instances where density is low, such as at the edge of a forest."}, Group{"Instances"});
+    field("alignToGround", &S::alignToGround, Slider(0.0, 1.0), Label{"Align To Ground"}, Group{"Instances"});
+    field("minSlopeDegrees", &S::minSlopeDegrees, Range{0.0, 90.0}, Label{"Min Slope"}, Unit{"deg"}, Group{"Slope"});
+    field("maxSlopeDegrees", &S::maxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"}, Unit{"deg"}, Group{"Slope"});
+    field("slopeFadeDegrees", &S::slopeFadeDegrees, Range{0.01, 45.0}, Label{"Slope Fade"}, Unit{"deg"},
+          Group{"Slope"});
+    field("minHeightMeters", &S::minHeightMeters, Range{-100000.0, 100000.0}, Label{"Min Height"}, Unit{"m"},
+          Group{"Height"});
+    field("maxHeightMeters", &S::maxHeightMeters, Range{-100000.0, 100000.0}, Label{"Max Height"}, Unit{"m"},
+          Group{"Height"});
+    field("heightFadeMeters", &S::heightFadeMeters, Range{0.01, 4096.0}, Label{"Height Fade"}, Unit{"m"},
+          Group{"Height"});
+    field("minWetness", &S::minWetness, Slider(0.0, 1.0), Label{"Min Wetness"}, Group{"Wetness"});
+    field("maxWetness", &S::maxWetness, Slider(0.0, 1.0), Label{"Max Wetness"}, Group{"Wetness"});
+    field("wetnessFade", &S::wetnessFade, Range{0.01, 1.0}, Label{"Wetness Fade"}, Group{"Wetness"});
+    field("minPosition", &S::minPosition, Range{-1.0, 1.0}, Label{"Min Position"}, Group{"Ridge Or Valley"});
+    field("maxPosition", &S::maxPosition, Range{-1.0, 1.0}, Label{"Max Position"}, Group{"Ridge Or Valley"});
+    field("positionFade", &S::positionFade, Range{0.01, 2.0}, Label{"Position Fade"}, Group{"Ridge Or Valley"});
     field("surfaceMask", &S::surfaceMask, Range{0.0, 4294967295.0}, Label{"Surface Slots"},
-          Help{"Bit mask of the surface slots allowed."});
+          Help{"Bit mask of the surface slots allowed."}, Group{"Allowed Surfaces"});
     field("maskLayer", &S::maskLayer, Range{0.0, 4294967295.0}, Label{"Mask Layer"},
-          Help{"Terrain layer whose painted mask multiplies the density. 0 means none."});
+          Help{"Terrain layer whose painted mask multiplies the density. 0 means none."}, Group{"Density Mask"});
     field("clusterAmount", &S::clusterAmount, Slider(0.0, 1.0), Label{"Clustering"},
-          Help{"How strongly noise groups instances into stands and clearings."});
-    field("clusterScaleMeters", &S::clusterScaleMeters, Range{1.0, 8192.0}, Label{"Cluster Size"}, Unit{"m"});
-    field("avoidSplines", &S::avoidSplines, Label{"Avoid Roads And Rivers"});
+          Help{"How strongly noise groups instances into stands and clearings."}, Group{"Clustering"});
+    field("clusterScaleMeters", &S::clusterScaleMeters, Range{1.0, 8192.0}, Label{"Cluster Size"}, Unit{"m"},
+          Group{"Clustering"});
+    field("avoidSplines", &S::avoidSplines, Label{"Avoid Roads And Rivers"}, Group{"Clustering"});
 };
 
 // 沿線に並べる規則：栅栏、電柱、石垣など。

@@ -26,6 +26,8 @@ struct EditorViewportInput {
     float deltaSeconds = 0.0f;
     // ペンの筆圧（0..1）。マウスは常に 1。
     float pressure = 1.0f;
+    // ポインタが視口にある間に打たれた文字（無ければ 0）。'[' や ']' は押し続けると繰り返す。
+    uint32_t typedCharacter = 0u;
 };
 
 // 視口工具が今のフレームに描く線と文字（筆の光標など）。座標は世界空間。
@@ -74,6 +76,8 @@ class IEditorSceneListener {
 public:
     virtual ~IEditorSceneListener() = default;
     virtual void OnSceneSaved(std::string_view scenePathUtf8) = 0;
+    // 場景の視口を描くフレームごとに呼ばれる。
+    virtual void OnViewportCamera(const GameProjectFloat3& /*position*/) {}
 };
 
 // モジュールが登録されている間有効。IEditorOperationRegistrar::SceneServices から受け取る。
@@ -85,6 +89,8 @@ public:
     virtual bool ActivateViewportTool(std::string_view toolId) = 0;
     // 模型から遠景模型を焼いて導入を予約し、その GUID を outFarModelGuid へ書く（終端込み）。理由はログへ。
     virtual bool BakeFarModel(std::string_view modelAssetGuid, char* outFarModelGuid, size_t capacity) = 0;
+    // 場景の視口の相機を動かす。
+    virtual void SetViewportCamera(const GameProjectFloat3& position, const GameProjectFloat3& target) = 0;
 };
 
 } // namespace HIKARI::EDITOR_PROJECT

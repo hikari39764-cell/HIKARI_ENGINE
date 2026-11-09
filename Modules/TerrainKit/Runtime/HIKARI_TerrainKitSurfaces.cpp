@@ -228,6 +228,43 @@ bool CookSurface(const std::filesystem::path& file, const TerrainSurfaceAsset& a
            CompressWithMips(detail, DXGI_FORMAT_BC7_UNORM, false, out.detail, error);
 }
 
+// 一覧の縮図：焼いた色の BC7 の段を解いて作る。A に入っている高さは捨てる。
+void MakeThumbnail(CookedSurface& surface) {
+    uint32_t size = kSurfaceTextureSize;
+    size_t offset = 0u;
+    const auto levelBytes = [](uint32_t side) {
+        const size_t blocks = (static_cast<size_t>(side) + 3u) / 4u;
+        return blocks * blocks * 16u;
+    };
+    while (size > kSurfaceThumbnailSize) {
+        offset += levelBytes(size);
+        size /= 2u;
+    }
+    if (size != kSurfaceThumbnailSize || surface.colorHeight.size() < offset + levelBytes(size)) {
+        return;
+    }
+    DirectX::Image level{};
+    level.width = size;
+    level.height = size;
+    level.format = DXGI_FORMAT_BC7_UNORM_SRGB;
+    level.rowPitch = (static_cast<size_t>(size) + 3u) / 4u * 16u;
+    level.slicePitch = levelBytes(size);
+    level.pixels = surface.colorHeight.data() + offset;
+    DirectX::ScratchImage decoded{};
+    if (FAILED(DirectX::Decompress(level, DXGI_FORMAT_R8G8B8A8_UNORM_SRGB, decoded))) {
+        return;
+    }
+    const DirectX::Image* image = decoded.GetImage(0u, 0u, 0u);
+    surface.thumbnail.resize(static_cast<size_t>(size) * size * 4u);
+    for (uint32_t row = 0u; row < size; ++row) {
+        std::memcpy(surface.thumbnail.data() + static_cast<size_t>(row) * size * 4u,
+                    image->pixels + row * image->rowPitch, static_cast<size_t>(size) * 4u);
+    }
+    for (size_t index = 3u; index < surface.thumbnail.size(); index += 4u) {
+        surface.thumbnail[index] = 255u;
+    }
+}
+
 bool ReadCooked(const std::filesystem::path& path, CookedSurface& out) {
     std::ifstream file(path, std::ios::binary);
     CookHeader header{};
@@ -313,6 +350,54 @@ bool ReadTerrainSurfaceAsset(const std::filesystem::path& file, TerrainSurfaceAs
     }
 }
 
+bool SaveTerrainSurfaceAs(const std::filesystem::path& projectRoot, const std::string& sourceName,
+                          const std::string& newName, const TerrainSurfaceGrass& grass, std::string& error) {
+    if (newName.empty() || newName.find_first_of("\\/:*?\"<>|") != std::string::npos) {
+        error = "Give the new surface a name without \\ / : * ? \" < > |.";
+        return false;
+    }
+    const std::vector<SurfaceCatalogEntry> catalog = ListTerrainSurfaces(projectRoot);
+    const auto named = [&](const std::string& name) {
+        return std::find_if(catalog.begin(), catalog.end(),
+                            [&](const SurfaceCatalogEntry& entry) { return entry.name == name; });
+    };
+    if (named(newName) != catalog.end()) {
+        error = "A surface named " + newName + " already exists.";
+        return false;
+    }
+    const auto source = named(sourceName);
+    TerrainSurfaceAsset asset{};
+    if (source == catalog.end()) {
+        error = "Unknown terrain surface: " + sourceName;
+        return false;
+    }
+    if (!ReadTerrainSurfaceAsset(source->file, asset, error)) {
+        return false;
+    }
+    const std::filesystem::path directory = projectRoot / "Assets" / "TerrainSurfaces" / Utf8Path(newName);
+    std::error_code ec{};
+    std::filesystem::create_directories(directory, ec);
+    for (std::string* part : {&asset.color, &asset.normal, &asset.height, &asset.roughness, &asset.ao}) {
+        if (part->empty()) {
+            continue;
+        }
+        const std::filesystem::path image = source->file.parent_path() / Utf8Path(*part);
+        std::filesystem::copy_file(image, directory / image.filename(), std::filesystem::copy_options::skip_existing,
+                                   ec);
+        if (ec) {
+            error = "Could not copy " + image.generic_string() + ": " + ec.message();
+            return false;
+        }
+        const std::u8string fileName = image.filename().u8string();
+        part->assign(reinterpret_cast<const char*>(fileName.data()), fileName.size());
+    }
+    asset.name = newName;
+    nlohmann::json json{};
+    JSONFIELDS::Write(json, asset, kTerrainSurfaceAssetFields);
+    JSONFIELDS::Write(json, grass, kTerrainSurfaceGrassFields);
+    return WriteTerrainJson(directory / Utf8Path(newName + kSurfaceExtension), json, error);
+}
+
 std::vector<SurfaceCatalogEntry> ListTerrainSurfaces(const std::filesystem::path& projectRoot) {
     std::vector<SurfaceCatalogEntry> entries{};
     const auto scan = [&](const std::filesystem::path& directory, bool builtin) {
@@ -380,6 +465,8 @@ void TerrainSurfaceLibrary::SetSlots(const std::filesystem::path& projectRoot, s
             if (!error.empty()) {
                 loaded.error = error;
                 surface.asset.name = name;
+            } else {
+                MakeThumbnail(surface);
             }
             loaded.surfaces.push_back(std::move(surface));
             ++shared->finished;

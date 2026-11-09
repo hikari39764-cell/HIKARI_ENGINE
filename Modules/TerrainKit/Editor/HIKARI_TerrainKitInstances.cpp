@@ -282,9 +282,9 @@ public:
         TerrainStore& store = TerrainStore::Get();
         const bool hasSet = store.World().FindInstanceSet(ComponentTypeId{shared_->selectedInstanceSet}) != nullptr;
         const bool moving = shared_->instanceBrush.mode == InstanceBrushMode::Move;
-        canvas.DrawHint(!hasSet  ? "Place Instances: add or select an instance set in the Terrain window first"
-                        : moving ? "Move Instances: drag an instance to move it. It stays when the rules recompute"
-                                 : "Place Instances: drag to place, Shift erases, Ctrl + wheel sets the radius",
+        canvas.DrawHint(!hasSet  ? "Place: pick an instance set on the left, or make a new one"
+                        : moving ? "Move: drag an instance to move it. It stays when the rules update"
+                                 : "Place: drag to place, Shift erases, [ ] or Ctrl + wheel size",
                         kInstanceColor);
         if (!store.IsOpen() || !hasSet) {
             return;

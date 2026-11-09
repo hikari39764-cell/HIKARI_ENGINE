@@ -55,6 +55,7 @@ struct EditorShared {
     TERRAIN::DATA::ErosionRequest erosion{};
     TERRAIN::DATA::ValleySettings valleys{};
     InstanceBrushSettings instanceBrush{};
+    std::string brushShape{}; // 筆の形の名前。空は丸い筆
     uint64_t selectedInstanceSet = 0u;
     uint64_t instanceRandom = 0x51D3A7u;
     bool lakeFillArmed = false; // 次のクリックで窪地へ水を張る
@@ -133,11 +134,27 @@ bool PlaceInstances(EditorShared& shared, ComponentTypeId setId, float x, float 
                     uint32_t& outPlaced);
 bool EraseInstances(EditorShared& shared, ComponentTypeId setId, float x, float z, float radius, uint32_t& outErased);
 
+// 筆の形（内蔵 + project の Assets/TerrainBrushes の画像）。
+struct BrushShapeEntry {
+    std::string name{};
+    TERRAIN::DATA::BrushShape shape{};
+    std::vector<uint8_t> thumbnail{}; // 一覧の絵（RGBA8、64x64）
+};
+const std::vector<BrushShapeEntry>& ListBrushShapes(const TerrainStore& store);
+// 今の筆の形。丸い筆なら null。
+const TERRAIN::DATA::BrushShape* CurrentBrushShape(const EditorShared& shared);
+
 // 視口の工具で共有する部品。
 void DrawGroundCircle(EDITOR_PROJECT::IEditorViewportCanvas& canvas, const TerrainStore& store, const float center[3],
                       float radius, EDITOR_PROJECT::EditorWorkspaceColor color);
+// 筆の光標：縁の円、全力で効く内側の円、中心の十字。
+void DrawBrushCursor(EDITOR_PROJECT::IEditorViewportCanvas& canvas, const TerrainStore& store, const float center[3],
+                     float radius, float hardness, EDITOR_PROJECT::EditorWorkspaceColor color);
 bool RayToGround(const EDITOR_PROJECT::EditorViewportInput& input, const TerrainStore& store, float hit[3]);
 void AdjustBrushRadius(const EDITOR_PROJECT::EditorViewportInput& input, float& radius);
+
+// 地形全体が見えるように視口の相機を置く。
+void FrameTerrainView(const EditorShared& shared);
 
 // 書き出し先（<root>/Library/TerrainKit）。
 std::filesystem::path TerrainOutputDirectory(const TerrainStore& store);
@@ -155,7 +172,7 @@ std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeStampTool(std::shared_p
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakePaintTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeSplineTool(std::shared_ptr<EditorShared> shared);
 std::unique_ptr<EDITOR_PROJECT::IEditorViewportTool> MakeInstanceTool(std::shared_ptr<EditorShared> shared);
-std::unique_ptr<EDITOR_PROJECT::IEditorPanel> MakeTerrainPanel(std::shared_ptr<EditorShared> shared);
+std::unique_ptr<EDITOR_PROJECT::IEditorWorkspace> MakeTerrainWorkspace(std::shared_ptr<EditorShared> shared);
 
 // 操作の登録。handlers は登録の間生きている必要がある（呼び手が持つ）。
 void RegisterTerrainOperations(EDITOR_PROJECT::IEditorOperationRegistrar& registrar,

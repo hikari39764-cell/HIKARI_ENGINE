@@ -7,8 +7,10 @@
 
 #include <algorithm>
 #include <array>
+#include <cmath>
 #include <string>
 #include <string_view>
+#include <unordered_map>
 #include <utility>
 #include <vector>
 
@@ -53,6 +55,45 @@ public:
     ~GameProjectEditorWorkspaceUi() override { previewTarget_.Reset(); }
 
 private:
+    struct Thumbnail {
+        int handle = -1;
+        uint64_t revision = 0u;
+    };
+
+    // モジュールが渡す縮図。行ごとに一枚持ち、版が変わった時だけ作り直す。
+    D3D12_GPU_DESCRIPTOR_HANDLE ThumbnailTexture(const std::string& key, const uint8_t* pixels, uint32_t width,
+                                                 uint32_t height, uint64_t revision) {
+        Thumbnail& thumbnail = thumbnails_[key];
+        if (thumbnail.handle < 0 || thumbnail.revision != revision) {
+            if (thumbnail.handle >= 0) {
+                DXTEX::DxTextureManager::ReleaseTextureDeferred(thumbnail.handle);
+            }
+            const std::vector<uint8_t> copy(pixels, pixels + static_cast<size_t>(width) * height * 4u);
+            thumbnail.handle = DXTEX::DxTextureManager::CreateRgbaTexture(
+                "editor/workspace/thumbnail/" + key + "/" + std::to_string(revision), width, height, copy,
+                DXTEX::TextureColorSpace::Srgb);
+            thumbnail.revision = revision;
+        }
+        if (thumbnail.handle < 0) {
+            return {};
+        }
+        return DXTEX::DxTextureManager::GetSrvGpuHandle(thumbnail.handle);
+    }
+
+    static void PushSelectionColor(bool selected) {
+        if (selected) {
+            const ImVec4 accent = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
+            ImGui::PushStyleColor(ImGuiCol_Header, ImVec4(accent.x, accent.y, accent.z, 0.72f));
+        }
+    }
+
+    static void PopSelectionColor(bool selected) {
+        if (selected) {
+            ImGui::PopStyleColor();
+        }
+    }
+
+    std::unordered_map<std::string, Thumbnail> thumbnails_{};
     GameUiPreviewTarget previewTarget_;
     GAME_UI::GameUiPresentationService previewContent_;
     std::filesystem::path previewRoot_;
@@ -67,10 +108,18 @@ public:
         assets_ = &registry;
     }
     bool TextureField(std::string_view id, std::string_view label, char* buffer, size_t capacity) override {
+        return AssetField(AssetType::Texture, id, label, buffer, capacity,
+                          TEXT::LocalizeWindow("editor.noImage", "画像なし"));
+    }
+    bool ModelField(std::string_view id, std::string_view label, char* buffer, size_t capacity) override {
+        return AssetField(AssetType::Model, id, label, buffer, capacity, "None");
+    }
+    bool AssetField(AssetType type, std::string_view id, std::string_view label, char* buffer, size_t capacity,
+                    const std::string& emptyName) {
         if (!assets_ || !buffer || !capacity)
             return false;
         const auto* record = database_->FindByGuid(AssetGuid{buffer});
-        const std::string shown = record ? record->displayName : "画像なし";
+        const std::string shown = record ? record->displayName : emptyName;
         bool changed = false;
         const auto assign = [&](std::string_view guid) {
             if (guid.size() >= capacity)
@@ -81,9 +130,9 @@ public:
         };
         const auto stable = MakeStableLabel(label, workspaceId_, id);
         if (ImGui::BeginCombo(stable.c_str(), shown.c_str())) {
-            if (ImGui::Selectable(TEXT::LocalizeWindow("editor.noImage", "画像なし").c_str(), buffer[0] == '\0'))
+            if (ImGui::Selectable(emptyName.c_str(), buffer[0] == '\0'))
                 assign({});
-            for (const auto* descriptor : assets_->CollectByType(AssetType::Texture)) {
+            for (const auto* descriptor : assets_->CollectByType(type)) {
                 const auto* asset = database_->FindByGuid(descriptor->id);
                 const auto name = asset ? asset->displayName : descriptor->sourcePath;
                 ImGui::PushID(descriptor->id.value.c_str());
@@ -94,7 +143,7 @@ public:
             ImGui::EndCombo();
         }
         DroppedAssetPayload payload;
-        if (AcceptAssetDropOfType(*database_, AssetType::Texture, payload) && payload.record)
+        if (AcceptAssetDropOfType(*database_, type, payload) && payload.record)
             assign(payload.guid.value);
         return changed;
     }
@@ -203,7 +252,7 @@ public:
         floatingPanelCount_ = 0;
     }
 
-    void DrawDockSpace(bool reset) {
+    void DrawDockSpace(bool reset, bool wideCenter) {
         const auto* viewport = ImGui::GetMainViewport();
         const std::string name = "HIKARI_ProjectWorkspace/" + workspaceId_;
         const ImGuiID root = ImGui::GetID(name.c_str());
@@ -214,10 +263,10 @@ public:
             ImGui::DockBuilderSetNodePos(root, viewport->WorkPos);
             ImGui::DockBuilderSetNodeSize(root, viewport->WorkSize);
             ImGuiID body = root;
-            ImGui::DockBuilderSplitNode(body, ImGuiDir_Up, 0.08f, &dockRegions_[1], &body);
+            ImGui::DockBuilderSplitNode(body, ImGuiDir_Up, wideCenter ? 0.06f : 0.08f, &dockRegions_[1], &body);
             ImGui::DockBuilderSplitNode(body, ImGuiDir_Left, 0.21f, &dockRegions_[2], &body);
             ImGui::DockBuilderSplitNode(body, ImGuiDir_Right, 0.30f, &dockRegions_[3], &body);
-            ImGui::DockBuilderSplitNode(body, ImGuiDir_Down, 0.25f, &dockRegions_[4], &body);
+            ImGui::DockBuilderSplitNode(body, ImGuiDir_Down, wideCenter ? 0.11f : 0.25f, &dockRegions_[4], &body);
             dockRegions_[0] = body;
             ImGui::DockBuilderFinish(root);
         } else {
@@ -408,7 +457,102 @@ public:
 
     bool Selectable(std::string_view stableControlId, std::string_view label, bool selected) override {
         const std::string stableLabel = MakeStableLabel(label, workspaceId_, stableControlId);
-        return ImGui::Selectable(stableLabel.c_str(), selected);
+        PushSelectionColor(selected);
+        const bool pressed = ImGui::Selectable(stableLabel.c_str(), selected);
+        PopSelectionColor(selected);
+        return pressed;
+    }
+
+    bool Choice(std::string_view stableControlId, std::string_view label, bool selected) override {
+        const std::string stableLabel = MakeStableLabel(label, workspaceId_, stableControlId);
+        const std::string text(label);
+        PushSelectionColor(selected);
+        const bool pressed =
+            ImGui::Selectable(stableLabel.c_str(), selected, 0, ImGui::CalcTextSize(text.c_str(), nullptr, true));
+        PopSelectionColor(selected);
+        return pressed;
+    }
+
+    bool SliderFloat(std::string_view stableControlId, std::string_view label, float* value, float minimum,
+                     float maximum) override {
+        if (value == nullptr || !(minimum < maximum)) {
+            return false;
+        }
+        const std::string stableLabel = MakeStableLabel(label, workspaceId_, stableControlId);
+        const float span = maximum - minimum;
+        const bool wide = minimum > 0.0f ? maximum / minimum >= 100.0f : minimum == 0.0f && maximum >= 1000.0f;
+        // 対数の滑块は値の大きさで桁を変える。0 まである物は 0 の近くを潰さないよう桁を固定する。
+        const float shown = std::fabs(*value);
+        const char* format = wide
+                                 ? (minimum == 0.0f   ? "%.3f"
+                                    : shown >= 100.0f ? "%.0f"
+                                    : shown >= 10.0f  ? "%.1f"
+                                    : shown >= 1.0f   ? "%.2f"
+                                                      : "%.3f")
+                                 : (span > 500.0f ? "%.0f" : (span > 20.0f ? "%.1f" : (span > 1.5f ? "%.2f" : "%.3f")));
+        return ImGui::SliderFloat(stableLabel.c_str(), value, minimum, maximum, format,
+                                  ImGuiSliderFlags_AlwaysClamp | (wide ? ImGuiSliderFlags_Logarithmic : 0));
+    }
+
+    bool Section(std::string_view stableControlId, std::string_view label, bool defaultOpen) override {
+        const std::string stableLabel = MakeStableLabel(label, workspaceId_, stableControlId);
+        return ImGui::CollapsingHeader(stableLabel.c_str(), defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
+    }
+
+    void Tooltip(std::string_view utf8Text) override {
+        if (!utf8Text.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
+            ImGui::SetTooltip("%.*s", static_cast<int>(utf8Text.size()), utf8Text.data());
+        }
+    }
+
+    bool Combo(std::string_view stableControlId, std::string_view label, std::span<const std::string_view> items,
+               int32_t* selected) override {
+        if (selected == nullptr) {
+            return false;
+        }
+        const std::string stableLabel = MakeStableLabel(label, workspaceId_, stableControlId);
+        const bool valid = *selected >= 0 && static_cast<size_t>(*selected) < items.size();
+        const std::string shown = valid ? std::string(items[static_cast<size_t>(*selected)]) : std::string();
+        bool changed = false;
+        if (ImGui::BeginCombo(stableLabel.c_str(), shown.c_str())) {
+            for (size_t index = 0u; index < items.size(); ++index) {
+                const std::string item(items[index]);
+                ImGui::PushID(static_cast<int>(index));
+                if (ImGui::Selectable(item.c_str(), valid && static_cast<size_t>(*selected) == index)) {
+                    *selected = static_cast<int32_t>(index);
+                    changed = true;
+                }
+                ImGui::PopID();
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    }
+
+    bool ImageSelectable(std::string_view stableControlId, std::string_view label, const uint8_t* pixels,
+                         uint32_t width, uint32_t height, uint64_t revision, bool selected, float rowHeight) override {
+        const std::string stableLabel = MakeStableLabel("", workspaceId_, stableControlId);
+        const ImVec2 start = ImGui::GetCursorScreenPos();
+        const float row = (std::max)(rowHeight, ImGui::GetTextLineHeight());
+        PushSelectionColor(selected);
+        const bool pressed = ImGui::Selectable(stableLabel.c_str(), selected, 0, ImVec2(0.0f, row));
+        PopSelectionColor(selected);
+        ImDrawList* drawList = ImGui::GetWindowDrawList();
+        float textX = start.x + 6.0f;
+        if (pixels != nullptr && width != 0u && height != 0u) {
+            const D3D12_GPU_DESCRIPTOR_HANDLE srv = ThumbnailTexture(stableLabel, pixels, width, height, revision);
+            if (srv.ptr != 0u) {
+                const float picture = row - 4.0f;
+                const ImVec2 corner(start.x + 2.0f, start.y + 2.0f);
+                drawList->AddImage(reinterpret_cast<ImTextureID>(static_cast<uintptr_t>(srv.ptr)), corner,
+                                   ImVec2(corner.x + picture, corner.y + picture));
+                textX = corner.x + picture + 8.0f;
+            }
+        }
+        const std::string text(label);
+        drawList->AddText(ImVec2(textX, start.y + (row - ImGui::GetTextLineHeight()) * 0.5f),
+                          ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
+        return pressed;
     }
 
     bool BeginTable(std::string_view stableTableId, uint32_t columnCount) override {
@@ -685,7 +829,8 @@ void GameProjectEditorWorkspaceHost::Draw(EditorWorkspaceHost& host, float unsca
     }
     registry_.ProcessPending();
     ui_->SetWorkspaceId(registry_.GetActiveWorkspaceId());
-    ui_->DrawDockSpace(resetLayout_ || host.ConsumeReset(EditorWorkspaceId::Project));
+    ui_->DrawDockSpace(resetLayout_ || host.ConsumeReset(EditorWorkspaceId::Project),
+                       ActiveWorkspaceRequestsSceneViewport());
     resetLayout_ = false;
     DrawWorkspaceSelector(host);
     DrawClosePrompt();

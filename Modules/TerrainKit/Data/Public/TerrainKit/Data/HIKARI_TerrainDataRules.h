@@ -57,32 +57,41 @@ inline constexpr auto kSurfaceRuleFields = [](auto&& field) {
     field("enabled", &S::enabled, Label{"Enabled"});
     field("surface", &S::surface, Range{0.0, 31.0}, Label{"Surface Slot"});
     field("strength", &S::strength, Slider(0.0, 1.0), Label{"Strength"});
-    field("minSlopeDegrees", &S::minSlopeDegrees, Range{0.0, 90.0}, Label{"Min Slope"}, Unit{"deg"});
-    field("maxSlopeDegrees", &S::maxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"}, Unit{"deg"});
-    field("slopeFadeDegrees", &S::slopeFadeDegrees, Range{0.01, 45.0}, Label{"Slope Fade"}, Unit{"deg"});
-    field("minHeightMeters", &S::minHeightMeters, Range{-100000.0, 100000.0}, Label{"Min Height"}, Unit{"m"});
-    field("maxHeightMeters", &S::maxHeightMeters, Range{-100000.0, 100000.0}, Label{"Max Height"}, Unit{"m"});
-    field("heightFadeMeters", &S::heightFadeMeters, Range{0.01, 4096.0}, Label{"Height Fade"}, Unit{"m"});
-    field("minConcavityMeters", &S::minConcavityMeters, Range{-1000.0, 1000.0}, Label{"Min Concavity"}, Unit{"m"});
-    field("maxConcavityMeters", &S::maxConcavityMeters, Range{-1000.0, 1000.0}, Label{"Max Concavity"}, Unit{"m"});
-    field("concavityFadeMeters", &S::concavityFadeMeters, Range{0.01, 100.0}, Label{"Concavity Fade"}, Unit{"m"});
-    field("facingDegrees", &S::facingDegrees, Range{-360.0, 360.0}, Label{"Facing"}, Unit{"deg"});
-    field("facingAmount", &S::facingAmount, Slider(0.0, 1.0), Label{"Facing Amount"});
+    field("minSlopeDegrees", &S::minSlopeDegrees, Range{0.0, 90.0}, Label{"Min Slope"}, Unit{"deg"}, Group{"Slope"});
+    field("maxSlopeDegrees", &S::maxSlopeDegrees, Range{0.0, 90.0}, Label{"Max Slope"}, Unit{"deg"}, Group{"Slope"});
+    field("slopeFadeDegrees", &S::slopeFadeDegrees, Range{0.01, 45.0}, Label{"Slope Fade"}, Unit{"deg"},
+          Group{"Slope"});
+    field("minHeightMeters", &S::minHeightMeters, Range{-100000.0, 100000.0}, Label{"Min Height"}, Unit{"m"},
+          Group{"Height"});
+    field("maxHeightMeters", &S::maxHeightMeters, Range{-100000.0, 100000.0}, Label{"Max Height"}, Unit{"m"},
+          Group{"Height"});
+    field("heightFadeMeters", &S::heightFadeMeters, Range{0.01, 4096.0}, Label{"Height Fade"}, Unit{"m"},
+          Group{"Height"});
+    field("minConcavityMeters", &S::minConcavityMeters, Range{-1000.0, 1000.0}, Label{"Min Concavity"}, Unit{"m"},
+          Group{"Concavity"});
+    field("maxConcavityMeters", &S::maxConcavityMeters, Range{-1000.0, 1000.0}, Label{"Max Concavity"}, Unit{"m"},
+          Group{"Concavity"});
+    field("concavityFadeMeters", &S::concavityFadeMeters, Range{0.01, 100.0}, Label{"Concavity Fade"}, Unit{"m"},
+          Group{"Concavity"});
+    field("facingDegrees", &S::facingDegrees, Range{-360.0, 360.0}, Label{"Facing"}, Unit{"deg"}, Group{"Facing"});
+    field("facingAmount", &S::facingAmount, Slider(0.0, 1.0), Label{"Facing Amount"}, Group{"Facing"});
     field("minWetness", &S::minWetness, Slider(0.0, 1.0), Label{"Min Wetness"},
-          Help{"Where water collects: 0 is a dry ridge, 1 is a valley floor."});
-    field("maxWetness", &S::maxWetness, Slider(0.0, 1.0), Label{"Max Wetness"});
-    field("wetnessFade", &S::wetnessFade, Range{0.01, 1.0}, Label{"Wetness Fade"});
+          Help{"Where water collects: 0 is a dry ridge, 1 is a valley floor."}, Group{"Wetness"});
+    field("maxWetness", &S::maxWetness, Slider(0.0, 1.0), Label{"Max Wetness"}, Group{"Wetness"});
+    field("wetnessFade", &S::wetnessFade, Range{0.01, 1.0}, Label{"Wetness Fade"}, Group{"Wetness"});
     field("minPosition", &S::minPosition, Range{-1.0, 1.0}, Label{"Min Position"},
-          Help{"Place in the landform: -1 is a ridge, 1 is a valley."});
-    field("maxPosition", &S::maxPosition, Range{-1.0, 1.0}, Label{"Max Position"});
-    field("positionFade", &S::positionFade, Range{0.01, 2.0}, Label{"Position Fade"});
+          Help{"Place in the landform: -1 is a ridge, 1 is a valley."}, Group{"Ridge Or Valley"});
+    field("maxPosition", &S::maxPosition, Range{-1.0, 1.0}, Label{"Max Position"}, Group{"Ridge Or Valley"});
+    field("positionFade", &S::positionFade, Range{0.01, 2.0}, Label{"Position Fade"}, Group{"Ridge Or Valley"});
     field("coverage", &S::coverage, Slider(0.0, 1.0), Label{"Coverage"},
-          Help{"Share of the ground this rule covers, as patches of noise. 1 means everywhere."});
-    field("coverageScaleMeters", &S::coverageScaleMeters, Range{1.0, 8192.0}, Label{"Coverage Scale"}, Unit{"m"});
+          Help{"Share of the ground this rule covers, as patches of noise. 1 means everywhere."}, Group{"Patches"});
+    field("coverageScaleMeters", &S::coverageScaleMeters, Range{1.0, 8192.0}, Label{"Coverage Scale"}, Unit{"m"},
+          Group{"Patches"});
     field("coverageSoftness", &S::coverageSoftness, Range{0.01, 2.0}, Label{"Coverage Softness"},
-          Help{"Width of the patch edges. Larger values fade the patches in gradually."});
-    field("noiseScaleMeters", &S::noiseScaleMeters, Range{0.25, 4096.0}, Label{"Noise Scale"}, Unit{"m"});
-    field("noiseAmount", &S::noiseAmount, Range{0.0, 4.0}, Label{"Noise Amount"});
+          Help{"Width of the patch edges. Larger values fade the patches in gradually."}, Group{"Patches"});
+    field("noiseScaleMeters", &S::noiseScaleMeters, Range{0.25, 4096.0}, Label{"Noise Scale"}, Unit{"m"},
+          Group{"Edge Noise"});
+    field("noiseAmount", &S::noiseAmount, Range{0.0, 4.0}, Label{"Noise Amount"}, Group{"Edge Noise"});
 };
 
 struct SurfaceRuleSet {

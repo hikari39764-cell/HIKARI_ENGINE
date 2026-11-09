@@ -53,8 +53,7 @@ public:
         }
         const HeightLayer* layer = SelectedSpline(*shared_);
         if (layer == nullptr) {
-            canvas.DrawHint("Road and River: select or add a road, river or ramp layer in the Terrain window.",
-                            kSplineColor);
+            canvas.DrawHint("Roads and Water: pick a road or river on the left, or make a new one", kSplineColor);
             Finish();
             return;
         }

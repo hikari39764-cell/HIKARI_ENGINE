@@ -11,6 +11,7 @@
 
 #include <json.hpp>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "HIKARI/Project/WorldView.h"
 #include "HIKARI_TerrainKitGpuErosion.h"
 #include "HIKARI_TerrainKitRivers.h"
@@ -67,6 +68,14 @@ struct TerrainWeather {
     float snowAmount = 0.0f;
     float wetness = 0.0f;
     bool operator==(const TerrainWeather&) const = default;
+};
+
+// 地形に重ねて見る数据図（編集の時だけ。保存しない）。
+enum class TerrainOverlay : uint32_t { None = 0, Height = 1, Slope = 2, Wetness = 3, Surfaces = 4, Grass = 5 };
+
+inline constexpr TEXT::EnumName<TerrainOverlay> kTerrainOverlayNames[] = {
+    {TerrainOverlay::None, "Normal"},     {TerrainOverlay::Height, "Height"},     {TerrainOverlay::Slope, "Slope"},
+    {TerrainOverlay::Wetness, "Wetness"}, {TerrainOverlay::Surfaces, "Surfaces"}, {TerrainOverlay::Grass, "Grass"},
 };
 
 // 草の全体の設定。どの地表にどんな草が生えるかは地表材質の資産が持つ。
@@ -177,13 +186,18 @@ public:
     const TerrainWeather& Weather() const noexcept { return weather_; }
     void SetWeather(const TerrainWeather& weather);
     const TerrainGrassSettings& Grass() const noexcept { return grass_; }
+    TerrainOverlay Overlay() const noexcept { return overlay_; }
+    void SetOverlay(TerrainOverlay overlay) noexcept { overlay_ = overlay; }
     void SetGrass(const TerrainGrassSettings& grass);
     // 背景の thread を全部止める。DLL を外す前に呼ぶ。
     void ShutdownWorkers();
     // 変わった瓦片とその周り（法線が縁の標本を見る）を焼き直し、保存の対象にする。
     void RebakeChanged(std::span<const TERRAIN::DATA::TileCoord> tiles);
     void MarkSaveDirty(std::span<const TERRAIN::DATA::TileCoord> tiles);
-    bool HasUnsavedTiles() const noexcept { return !unsavedTiles_.empty() || stackDirty_ || scatter_.HasUnsaved(); }
+    // 利用者の編集が残っているか。開くたびに同じ物が作れる規則の結果（derivedTiles_）は数えない。
+    bool HasUnsavedTiles() const noexcept {
+        return !unsavedTiles_.empty() || stackDirty_ || surfaceSlotsDirty_ || scatter_.HasUnsaved();
+    }
 
     // 場面の .cells へ書く。変わった瓦片と層の記述だけ。
     bool Save(const std::filesystem::path& scenePath, std::string& error);
@@ -216,6 +230,8 @@ private:
     uint32_t sculptLayer_ = 0u;
     std::map<TERRAIN::DATA::TileCoord, TileRuntime> tiles_{};
     std::vector<TERRAIN::DATA::TileCoord> unsavedTiles_{};
+    // 規則の再計算で制御図が変わった瓦片。次の保存で一緒に書くが、閉じる時に確認はしない。
+    std::vector<TERRAIN::DATA::TileCoord> derivedTiles_{};
     bool stackDirty_ = false;
     uint64_t layoutRevision_ = 1u;
     TerrainRenderResources render_{};
@@ -228,6 +244,7 @@ private:
     TerrainScatter scatter_{};
     TerrainWeather weather_{};
     TerrainGrassSettings grass_{};
+    TerrainOverlay overlay_ = TerrainOverlay::None;
     std::map<uint32_t, std::string> loadedImageKeys_{};
 };
 

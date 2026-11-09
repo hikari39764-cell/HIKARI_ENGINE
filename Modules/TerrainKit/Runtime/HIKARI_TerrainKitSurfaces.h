@@ -21,6 +21,7 @@ namespace HIKARI::TERRAINKIT {
 
 inline constexpr uint32_t kSurfaceTextureSize = 1024u;
 inline constexpr uint32_t kSurfaceTextureMips = 11u;
+inline constexpr uint32_t kSurfaceThumbnailSize = 64u;
 
 // この地表に生える草（Ghost of Tsushima の草の考え方。HIKARI_TerrainKitGrass と Render3D_TerrainKitGrass が読む）。
 // 焼いた図の鍵に入れないよう表を分ける（値を変えても図を焼き直さない）。ファイルでは同じ段に並ぶ。
@@ -54,30 +55,31 @@ inline constexpr auto kTerrainSurfaceGrassFields = [](auto&& field) {
     using S = TerrainSurfaceGrass;
     using namespace JSONFIELDS;
     field("grassDensity", &S::density, Slider(0.0, 1.0), Label{"Grass Density"},
-          Help{"0 means no grass grows on this surface."});
-    field("grassHeightMin", &S::heightMin, Range{0.01, 5.0}, Label{"Grass Height Min"}, Unit{"m"});
-    field("grassHeightMax", &S::heightMax, Range{0.01, 5.0}, Label{"Grass Height Max"}, Unit{"m"});
-    field("grassWidth", &S::width, Range{0.001, 0.2}, Label{"Blade Half Width"}, Unit{"m"});
-    field("grassTilt", &S::tiltDegrees, Range{0.0, 80.0}, Label{"Lean"}, Unit{"deg"});
-    field("grassTiltVariation", &S::tiltVariationDegrees, Range{0.0, 60.0}, Label{"Lean Variation"}, Unit{"deg"});
-    field("grassBend", &S::bend, Slider(0.0, 1.0), Label{"Tip Droop"});
-    field("grassClumpMeters", &S::clumpMeters, Range{0.1, 16.0}, Label{"Clump Size"}, Unit{"m"});
-    field("grassClumpHeight", &S::clumpHeight, Slider(0.0, 1.0), Label{"Clump Height Difference"});
-    field("grassClumpPull", &S::clumpPull, Slider(0.0, 1.0), Label{"Pull To Clump Center"});
-    field("grassClumpFacing", &S::clumpFacing, Slider(0.0, 1.0), Label{"Clump Same Direction"});
-    field("grassClumpAway", &S::clumpAway, Slider(0.0, 2.0), Label{"Lean Away From Center"});
-    field("grassRootColor", &S::rootColor, Label{"Root Color"}, Help{"sRGB 0..1."});
-    field("grassTipColor", &S::tipColor, Label{"Tip Color"}, Help{"sRGB 0..1."});
-    field("grassTranslucency", &S::translucency, Slider(0.0, 1.0), Label{"Translucency"});
-    field("grassRoughness", &S::roughness, Slider(0.05, 1.0), Label{"Roughness"});
+          Help{"0 means no grass grows on this surface."}, Group{"Shape"});
+    field("grassHeightMin", &S::heightMin, Range{0.01, 5.0}, Label{"Grass Height Min"}, Unit{"m"}, Group{"Shape"});
+    field("grassHeightMax", &S::heightMax, Range{0.01, 5.0}, Label{"Grass Height Max"}, Unit{"m"}, Group{"Shape"});
+    field("grassWidth", &S::width, Range{0.001, 0.2}, Label{"Blade Half Width"}, Unit{"m"}, Group{"Shape"});
+    field("grassTilt", &S::tiltDegrees, Range{0.0, 80.0}, Label{"Lean"}, Unit{"deg"}, Group{"Shape"});
+    field("grassTiltVariation", &S::tiltVariationDegrees, Range{0.0, 60.0}, Label{"Lean Variation"}, Unit{"deg"},
+          Group{"Shape"});
+    field("grassBend", &S::bend, Slider(0.0, 1.0), Label{"Tip Droop"}, Group{"Shape"});
+    field("grassRootColor", &S::rootColor, Label{"Root Color"}, Help{"sRGB 0..1."}, Group{"Color"});
+    field("grassTipColor", &S::tipColor, Label{"Tip Color"}, Help{"sRGB 0..1."}, Group{"Color"});
+    field("grassTranslucency", &S::translucency, Slider(0.0, 1.0), Label{"Translucency"}, Group{"Color"});
+    field("grassRoughness", &S::roughness, Slider(0.05, 1.0), Label{"Roughness"}, Group{"Color"});
     field("grassColorVariation", &S::colorVariation, Slider(0.0, 0.5), Label{"Clump Color Difference"},
-          Help{"Keep this small for a painted look."});
-    field("grassGroundBlend", &S::groundBlend, Slider(0.0, 1.0), Label{"Root Takes Ground Color"});
-    field("grassWind", &S::wind, Range{0.0, 3.0}, Label{"Wind Response"});
-    field("grassRootShade", &S::rootShade, Slider(0.0, 1.0), Label{"Root Brightness"});
+          Help{"Keep this small for a painted look."}, Group{"Color"});
+    field("grassGroundBlend", &S::groundBlend, Slider(0.0, 1.0), Label{"Root Takes Ground Color"}, Group{"Color"});
+    field("grassRootShade", &S::rootShade, Slider(0.0, 1.0), Label{"Root Brightness"}, Group{"Color"});
+    field("grassClumpMeters", &S::clumpMeters, Range{0.1, 16.0}, Label{"Clump Size"}, Unit{"m"}, Group{"Clumps"});
+    field("grassClumpHeight", &S::clumpHeight, Slider(0.0, 1.0), Label{"Clump Height Difference"}, Group{"Clumps"});
+    field("grassClumpPull", &S::clumpPull, Slider(0.0, 1.0), Label{"Pull To Clump Center"}, Group{"Clumps"});
+    field("grassClumpFacing", &S::clumpFacing, Slider(0.0, 1.0), Label{"Clump Same Direction"}, Group{"Clumps"});
+    field("grassClumpAway", &S::clumpAway, Slider(0.0, 2.0), Label{"Lean Away From Center"}, Group{"Clumps"});
+    field("grassWind", &S::wind, Range{0.0, 3.0}, Label{"Wind Response"}, Group{"Wind"});
     field("grassPlumeShare", &S::plumeShare, Slider(0.0, 1.0), Label{"Plume Share"},
-          Help{"Share of blades that end in a plume, such as pampas grass."});
-    field("grassPlumeColor", &S::plumeColor, Label{"Plume Color"}, Help{"sRGB 0..1."});
+          Help{"Share of blades that end in a plume, such as pampas grass."}, Group{"Plume"});
+    field("grassPlumeColor", &S::plumeColor, Label{"Plume Color"}, Help{"sRGB 0..1."}, Group{"Plume"});
 };
 
 struct TerrainSurfaceAsset {
@@ -139,6 +141,7 @@ struct CookedSurface {
     std::vector<uint8_t> colorHeight{};                  // BC7 全段を続けて（RGB sRGB + 高さ）
     std::vector<uint8_t> detail{};                       // BC7 全段を続けて（法線 xy、粗さ、AO）
     std::array<float, 3> averageColor{0.5f, 0.5f, 0.5f}; // 線形
+    std::vector<uint8_t> thumbnail{};                    // 一覧の縮図（RGBA8 sRGB）
     bool cooked = false;                                 // 今回焼いた（false は Library から読んだ）
 };
 
@@ -150,6 +153,9 @@ struct SurfaceCatalogEntry {
 };
 std::vector<SurfaceCatalogEntry> ListTerrainSurfaces(const std::filesystem::path& projectRoot);
 bool ReadTerrainSurfaceAsset(const std::filesystem::path& file, TerrainSurfaceAsset& out, std::string& error);
+// 材質を別名で project の Assets/TerrainSurfaces へ書く（図も写すので引擎の内容に依らない）。草は今の値を入れる。
+bool SaveTerrainSurfaceAs(const std::filesystem::path& projectRoot, const std::string& sourceName,
+                          const std::string& newName, const TerrainSurfaceGrass& grass, std::string& error);
 // 地形の色の図で使う配色。
 TERRAIN::DATA::SurfaceMapStyle MakeSurfaceMapStyle(const CookedSurface& surface);
 

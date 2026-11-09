@@ -65,11 +65,16 @@ public:
     }
 
     void DrawHint(std::string_view utf8Text, EDITOR_PROJECT::EditorWorkspaceColor color) override {
-        drawList_.AddText(ImVec2(viewport_.x + 14.0f, viewport_.y + 14.0f), ToColor(color), utf8Text.data(),
-                          utf8Text.data() + utf8Text.size());
+        const ImVec2 position(viewport_.x + 14.0f, viewport_.y + 14.0f + 22.0f * static_cast<float>(hintLines_++));
+        const ImVec2 size = ImGui::CalcTextSize(utf8Text.data(), utf8Text.data() + utf8Text.size());
+        drawList_.AddRectFilled(ImVec2(position.x - 6.0f, position.y - 2.0f),
+                                ImVec2(position.x + size.x + 6.0f, position.y + size.y + 2.0f), IM_COL32(0, 0, 0, 170),
+                                3.0f);
+        drawList_.AddText(position, ToColor(color), utf8Text.data(), utf8Text.data() + utf8Text.size());
     }
 
 private:
+    int hintLines_ = 0;
     bool Project(const GameProjectFloat3& point, ImVec2& outScreen) const {
         const MATH::Vec4 clip = viewProjection_.TransformPoint({point.x, point.y, point.z, 1.0f});
         if (clip.w <= 1.0e-4f) {
@@ -189,6 +194,10 @@ bool ModuleEditorExtensions::SetPanelOpen(std::string_view panelId, bool open) {
 
 bool ModuleEditorExtensions::UpdateViewport(const Camera3D& camera, const SceneViewportRect& viewport, bool hovered,
                                             float deltaSeconds, ImDrawList& drawList) {
+    const GameProjectFloat3 cameraPosition = ToFloat3(camera.GetPosition());
+    for (EDITOR_PROJECT::IEditorSceneListener* listener : sceneListeners_) {
+        listener->OnViewportCamera(cameraPosition);
+    }
     if (activeTool_ >= tools_.size()) {
         return false;
     }
@@ -204,6 +213,8 @@ bool ModuleEditorExtensions::UpdateViewport(const Camera3D& camera, const SceneV
     input.wheel = hovered ? io.MouseWheel : 0.0f;
     input.deltaSeconds = deltaSeconds;
     input.pressure = PLATFORM::CurrentPenPressure();
+    input.typedCharacter =
+        hovered && !io.WantTextInput && io.InputQueueCharacters.Size > 0 ? io.InputQueueCharacters[0] : 0u;
     const float normalizedX = (io.MousePos.x - viewport.x) / (std::max)(viewport.width, 1.0f);
     const float normalizedY = (io.MousePos.y - viewport.y) / (std::max)(viewport.height, 1.0f);
     EditorPointerRay ray{};

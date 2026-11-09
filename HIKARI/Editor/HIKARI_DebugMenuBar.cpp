@@ -10,7 +10,7 @@
 #include "Editor/Menus/HIKARI_EditorDocumentMenu.h"
 #include "Editor/Platform/HIKARI_EditorFileDialog.h"
 #include "Editor/Platform/HIKARI_EditorShellActions.h"
-#include "Editor/Project/HIKARI_ModuleEditorExtensions.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "Editor/Projects/HIKARI_EditorProjectSession.h"
 #include "Editor/Tools/HIKARI_BuiltInEditorTools.h"
 #include "Editor/Tools/HIKARI_EditorToolHost.h"
@@ -397,7 +397,7 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
                         EDITOR::EditorProjectSessionController& projectSession, bool projectTransitionAllowed,
                         bool hasUnsavedProjectChanges, EDITOR::GameExportJob& exportJob,
                         EDITOR::EditorOperationRegistry& operations,
-                        EDITOR::ModuleEditorExtensions* moduleExtensions) const {
+                        EDITOR::GameProjectEditorWorkspaceHost* projectWorkspaces) const {
     if (!ImGui::BeginMainMenuBar()) {
         return;
     }
@@ -414,6 +414,19 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
             EDITOR::EditorWorkspaceOpenRequest request{};
             request.workspaceId = workspaceId;
             (void)workspaceHost.RequestOpen(std::move(request));
+        }
+
+        // モジュールの作業区も引擎の作業区と同じ所に並べる。
+        if (projectWorkspaces != nullptr && projectWorkspaces->IsAvailable()) {
+            const auto& registry = projectWorkspaces->Registry();
+            for (size_t index = 0u; index < registry.GetWorkspaceCount(); ++index) {
+                const auto info = registry.GetWorkspaceInfo(index);
+                const bool active = info.active && workspaceHost.IsActive(EDITOR::EditorWorkspaceId::Project);
+                if (ImGui::MenuItem(std::string(info.displayName).c_str(), nullptr, active, !info.disabled)) {
+                    projectWorkspaces->RequestWorkspace(std::string(info.workspaceId));
+                    (void)workspaceHost.RequestOpen({EDITOR::EditorWorkspaceId::Project});
+                }
+            }
         }
 
         ImGui::Separator();
@@ -466,8 +479,8 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
             ImGui::MenuItem(TEXT::Localize("menu.aiAssistant").c_str(), nullptr, &windows.runtime.showAiAssistant);
             ImGui::EndMenu();
         }
-        if (moduleExtensions != nullptr) {
-            moduleExtensions->DrawMenu();
+        if (projectWorkspaces != nullptr) {
+            projectWorkspaces->Extensions().DrawMenu();
         }
 
         ImGui::Separator();

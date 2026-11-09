@@ -59,6 +59,10 @@ struct TerrainDrawConstants {
     float snowAmount = 0.0f;
     float wetness = 0.0f;
     float reserved = 0.0f;
+    float overlayHeightMin = 0.0f; // 高さの数据図の範囲（実際の地形の最低と最高）
+    float overlayHeightRange = 1.0f;
+    float reserved1 = 0.0f;
+    float reserved2 = 0.0f;
 };
 
 // 地形の部品。設定を場面に保存し、自分をその世界のモジュールの面として登録する。
@@ -182,6 +186,17 @@ public:
         constants.heightRange = store.Settings().grid.heightRange;
         constants.tileSize = tileSize;
         constants.tileCells = static_cast<float>(store.Settings().grid.tileCells);
+        constants.debugFlags = static_cast<uint32_t>(store.Overlay());
+        if (store.Overlay() == TerrainOverlay::Height) {
+            float lowest = 1.0e9f;
+            float highest = -1.0e9f;
+            for (const auto& [tile, runtime] : store.Tiles()) {
+                lowest = (std::min)(lowest, runtime.minHeight);
+                highest = (std::max)(highest, runtime.maxHeight);
+            }
+            constants.overlayHeightMin = lowest;
+            constants.overlayHeightRange = (std::max)(highest - lowest, 1.0f);
+        }
         const auto& surfaces = store.Surfaces().Surfaces();
         constants.surfaceCount = render.surfacesUploaded == surfaces.size() && render.surfaceParams != 0u
                                      ? static_cast<uint32_t>(surfaces.size())

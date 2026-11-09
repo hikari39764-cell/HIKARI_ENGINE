@@ -11,7 +11,7 @@ class IEditorOperationRegistrar;
 class IEditorViewportTool;
 class IEditorPanel;
 
-inline constexpr uint32_t kGameProjectEditorModuleAbiVersion = 5u;
+inline constexpr uint32_t kGameProjectEditorModuleAbiVersion = 6u;
 inline constexpr char kGameProjectEditorModuleApiEntryPoint[] = "HIKARI_GetGameProjectEditorModuleApi";
 
 struct GameProjectEditorModuleApi {

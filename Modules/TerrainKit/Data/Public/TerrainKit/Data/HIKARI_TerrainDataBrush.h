@@ -30,6 +30,12 @@ inline constexpr TEXT::EnumName<HeightBrushOp> kHeightBrushOpNames[] = {
     {HeightBrushOp::Terrace, "terrace"},
 };
 
+// 筆の形：正方形の濃淡の図（0..1）。dab の円の中へ、dab ごとに回して重ねる。
+struct BrushShape {
+    uint32_t size = 0u;
+    std::vector<float> values{}; // size * size
+};
+
 struct HeightBrushSettings {
     HeightBrushOp op = HeightBrushOp::Raise;
     float radiusMeters = 16.0f;
@@ -126,9 +132,10 @@ std::vector<MATH::Vec2> PlaceBrushDabs(std::span<const MATH::Vec2> path, float r
 // 手彫り層へ高さの筆刷をかける。recorder があれば変更前のタイルを記録する。
 bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSettings& settings,
                       std::span<const MATH::Vec2> path, TerrainEditRecorder* recorder, BrushEditResult& result,
-                      std::string& error);
+                      std::string& error, const BrushShape* shape = nullptr);
 // 制御図へ材質・穴の筆刷をかける。
 bool ApplyControlBrush(TerrainData& data, const ControlBrushSettings& settings, std::span<const MATH::Vec2> path,
-                       TerrainEditRecorder* recorder, BrushEditResult& result, std::string& error);
+                       TerrainEditRecorder* recorder, BrushEditResult& result, std::string& error,
+                       const BrushShape* shape = nullptr);
 
 } // namespace HIKARI::TERRAIN::DATA

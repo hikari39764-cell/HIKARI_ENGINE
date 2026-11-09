@@ -178,7 +178,9 @@ void TerrainStore::Close() {
     sculptLayer_ = 0u;
     tiles_.clear();
     unsavedTiles_.clear();
+    derivedTiles_.clear();
     stackDirty_ = false;
+    surfaceSlotsDirty_ = false;
     scatter_.Clear();
     ++layoutRevision_;
 }
@@ -545,7 +547,9 @@ void TerrainStore::ApplyRuleResult(TileCoord tile, std::vector<uint32_t> control
             next.values = std::move(control);
             raster.Assign(tile, std::move(next));
             data_->MarkChanged();
-            MarkSaveDirty(std::span(&tile, 1u));
+            if (std::find(derivedTiles_.begin(), derivedTiles_.end(), tile) == derivedTiles_.end()) {
+                derivedTiles_.push_back(tile);
+            }
             runtime.controlX0 = 0u;
             runtime.controlZ0 = 0u;
             runtime.controlX1 = samples - 1u;
@@ -824,6 +828,11 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
     }
     const HeightStackEvaluator evaluator(*data_);
     std::vector<TileCoord> tiles = unsavedTiles_;
+    for (const TileCoord tile : derivedTiles_) {
+        if (std::find(tiles.begin(), tiles.end(), tile) == tiles.end()) {
+            tiles.push_back(tile);
+        }
+    }
     if (!samePath) {
         tiles.clear();
         for (const auto& [tile, runtime] : tiles_) {
@@ -839,6 +848,7 @@ bool TerrainStore::Save(const std::filesystem::path& scenePath, std::string& err
         }
     }
     unsavedTiles_.clear();
+    derivedTiles_.clear();
     stackDirty_ = false;
     scenePath_ = scenePath;
     return true;

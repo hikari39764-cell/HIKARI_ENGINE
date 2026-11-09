@@ -31,17 +31,46 @@ void ForEachRow(uint32_t rows, RowFunction function) {
     std::for_each(std::execution::par, indices.begin(), indices.end(), function);
 }
 
+// 筆の形を (-1..1, -1..1) で読む（双線形）。
+float SampleBrushShape(const BrushShape& shape, float u, float v) noexcept {
+    const float scale = static_cast<float>(shape.size - 1u);
+    const float x = std::clamp((u * 0.5f + 0.5f) * scale, 0.0f, scale);
+    const float y = std::clamp((v * 0.5f + 0.5f) * scale, 0.0f, scale);
+    const uint32_t x0 = static_cast<uint32_t>(x);
+    const uint32_t y0 = static_cast<uint32_t>(y);
+    const uint32_t x1 = (std::min)(x0 + 1u, shape.size - 1u);
+    const uint32_t y1 = (std::min)(y0 + 1u, shape.size - 1u);
+    const float fx = x - static_cast<float>(x0);
+    const float fy = y - static_cast<float>(y0);
+    const auto at = [&](uint32_t column, uint32_t row) { return shape.values[row * shape.size + column]; };
+    const float top = at(x0, y0) + (at(x1, y0) - at(x0, y0)) * fx;
+    const float bottom = at(x0, y1) + (at(x1, y1) - at(x0, y1)) * fx;
+    return top + (bottom - top) * fy;
+}
+
+// dab ごとの形の回し方（黄金角で並びを崩す）。
+float DabRotation(std::size_t index) noexcept { return static_cast<float>(index) * 2.39996f; }
+
 // dab 1 つの重み（矩形の標本ごと）。全て 0 なら false。
 bool DabWeights(const TerrainGrid& grid, const SampleRect& rect, MATH::Vec2 center, float radius, float hardness,
-                std::vector<float>& weights) {
+                std::vector<float>& weights, const BrushShape* shape = nullptr, float rotation = 0.0f) {
     const double spacing = SampleSpacing(grid);
+    const float cosine = std::cos(rotation);
+    const float sine = std::sin(rotation);
+    const bool shaped = shape != nullptr && shape->size > 1u && shape->values.size() == shape->size * shape->size;
     weights.assign(rect.Count(), 0.0f);
     ForEachRow(rect.height, [&](uint32_t z) {
         const double dz = static_cast<double>(rect.z0 + z) * spacing - center.y;
         for (uint32_t x = 0u; x < rect.width; ++x) {
             const double dx = static_cast<double>(rect.x0 + x) * spacing - center.x;
             const float distance = static_cast<float>(std::sqrt(dx * dx + dz * dz)) / radius;
-            weights[static_cast<std::size_t>(z) * rect.width + x] = BrushFalloff(distance, hardness);
+            float weight = BrushFalloff(distance, hardness);
+            if (shaped && weight > 0.0f) {
+                const float u = static_cast<float>(dx) / radius;
+                const float v = static_cast<float>(dz) / radius;
+                weight *= SampleBrushShape(*shape, u * cosine - v * sine, u * sine + v * cosine);
+            }
+            weights[static_cast<std::size_t>(z) * rect.width + x] = weight;
         }
     });
     return std::any_of(weights.begin(), weights.end(), [](float weight) { return weight > 0.0f; });
@@ -140,7 +169,7 @@ std::vector<MATH::Vec2> PlaceBrushDabs(std::span<const MATH::Vec2> path, float r
 
 bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSettings& requested,
                       std::span<const MATH::Vec2> path, TerrainEditRecorder* recorder, BrushEditResult& result,
-                      std::string& error) {
+                      std::string& error, const BrushShape* shape) {
     result = {};
     const HeightLayer* layer = data.FindLayer(layerId);
     TiledRaster<float>* values = data.LayerValues(layerId);
@@ -203,13 +232,15 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
             rampEndHeight = rampStartHeight + rampLength * std::tan(settings.rampSlopeDegrees * 0.0174533f);
         }
     }
+    std::size_t dabIndex = 0u;
     for (const MATH::Vec2& dab : dabs) {
         const SampleRect rect = SampleRectAround(grid, dab.x, dab.y, settings.radiusMeters);
         if (rect.Count() > kTerrainMaximumRectSamples) {
             error = "height brush radius covers too many samples";
             return false;
         }
-        if (!DabWeights(grid, rect, dab, settings.radiusMeters, settings.hardness, weights)) {
+        if (!DabWeights(grid, rect, dab, settings.radiusMeters, settings.hardness, weights, shape,
+                        DabRotation(dabIndex++))) {
             continue;
         }
         if (recorder != nullptr) {
@@ -295,7 +326,8 @@ bool ApplyHeightBrush(TerrainData& data, uint32_t layerId, const HeightBrushSett
 }
 
 bool ApplyControlBrush(TerrainData& data, const ControlBrushSettings& requested, std::span<const MATH::Vec2> path,
-                       TerrainEditRecorder* recorder, BrushEditResult& result, std::string& error) {
+                       TerrainEditRecorder* recorder, BrushEditResult& result, std::string& error,
+                       const BrushShape* shape) {
     result = {};
     if (path.empty() || !FinitePath(path)) {
         error = "control brush path is empty or not finite";
@@ -306,13 +338,15 @@ bool ApplyControlBrush(TerrainData& data, const ControlBrushSettings& requested,
     TiledRaster<uint32_t>& control = data.Control();
     std::vector<float> weights;
     std::vector<uint32_t> texels;
+    std::size_t dabIndex = 0u;
     for (const MATH::Vec2& dab : PlaceBrushDabs(path, settings.radiusMeters, settings.spacing)) {
         const SampleRect rect = SampleRectAround(grid, dab.x, dab.y, settings.radiusMeters);
         if (rect.Count() > kTerrainMaximumRectSamples) {
             error = "control brush radius covers too many samples";
             return false;
         }
-        if (!DabWeights(grid, rect, dab, settings.radiusMeters, settings.hardness, weights)) {
+        if (!DabWeights(grid, rect, dab, settings.radiusMeters, settings.hardness, weights, shape,
+                        DabRotation(dabIndex++))) {
             continue;
         }
         if (recorder != nullptr) {

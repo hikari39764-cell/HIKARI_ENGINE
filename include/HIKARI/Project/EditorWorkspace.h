@@ -3,12 +3,13 @@
 #include <cstddef>
 #include <cstdint>
 #include "HIKARI/Project/UiTypes.h"
+#include <span>
 #include <string_view>
 #include <type_traits>
 
 namespace HIKARI::EDITOR_PROJECT {
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 5u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 6u;
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
@@ -164,6 +165,26 @@ public:
     virtual bool CanvasPreviewText(std::string_view fontPath, std::string_view text,
                                    const GameProjectUiTextRequest&) = 0;
     virtual bool EndCanvasPreview(EditorWorkspacePoint minimum, EditorWorkspacePoint maximum) = 0;
+    // Selectable sized to its text, for several choices on one line.
+    virtual bool Choice(std::string_view stableControlId, std::string_view label, bool selected) = 0;
+    // Slider over a range. Ctrl + click types a value. Wide positive ranges use a logarithmic scale.
+    virtual bool SliderFloat(std::string_view stableControlId, std::string_view label, float* value, float minimum,
+                             float maximum) = 0;
+    // Collapsible heading. Returns whether its contents should be drawn; there is no matching end call.
+    virtual bool Section(std::string_view stableControlId, std::string_view label, bool defaultOpen = true) = 0;
+    // Shown when the pointer rests on the control drawn just before this call.
+    virtual void Tooltip(std::string_view utf8Text) = 0;
+    // Drop-down list; *selected is the index into items.
+    virtual bool Combo(std::string_view stableControlId, std::string_view label,
+                       std::span<const std::string_view> items, int32_t* selected) = 0;
+    // Model asset picker. Also accepts a model dragged from the asset browser.
+    virtual bool ModelField(std::string_view stableControlId, std::string_view label, char* assetGuidUtf8,
+                            size_t bufferCapacity) = 0;
+    // List row with a picture. rgba8Pixels is sRGB, width * height * 4 bytes. The host keeps its own copy per control
+    // and reads the pixels again only when revision changes. Null pixels draw a row without a picture.
+    virtual bool ImageSelectable(std::string_view stableControlId, std::string_view label, const uint8_t* rgba8Pixels,
+                                 uint32_t width, uint32_t height, uint64_t revision, bool selected,
+                                 float rowHeight) = 0;
 };
 
 // Results are borrowed for this callback only. Copy strings in the project

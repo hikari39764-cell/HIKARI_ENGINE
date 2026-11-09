@@ -5,6 +5,8 @@
 #include <numbers>
 #include <optional>
 
+#include <cstdio>
+
 #include "HIKARI_TerrainKitEditorCommon.h"
 
 namespace HIKARI::TERRAINKIT {
@@ -17,6 +19,7 @@ constexpr EditorWorkspaceColor kBrushColor{1.0f, 0.82f, 0.25f, 1.0f};
 constexpr EditorWorkspaceColor kMaskColor{0.35f, 0.85f, 1.0f, 1.0f};
 constexpr EditorWorkspaceColor kStampColor{0.55f, 1.0f, 0.55f, 1.0f};
 constexpr EditorWorkspaceColor kPaintColor{1.0f, 0.55f, 0.85f, 1.0f};
+constexpr EditorWorkspaceColor kBlockedColor{0.6f, 0.6f, 0.6f, 1.0f};
 
 } // namespace
 
@@ -43,9 +46,28 @@ bool RayToGround(const EditorViewportInput& input, const TerrainStore& store, fl
 }
 
 void AdjustBrushRadius(const EditorViewportInput& input, float& radius) {
+    float scale = 1.0f;
     if (input.control && input.wheel != 0.0f) {
-        radius = std::clamp(radius * (input.wheel > 0.0f ? 1.15f : 0.87f), 1.0f, 2048.0f);
+        scale = input.wheel > 0.0f ? 1.15f : 0.87f;
+    } else if (input.typedCharacter == U']') {
+        scale = 1.1f;
+    } else if (input.typedCharacter == U'[') {
+        scale = 0.91f;
     }
+    radius = std::clamp(radius * scale, 1.0f, 2048.0f);
+}
+
+void DrawBrushCursor(IEditorViewportCanvas& canvas, const TerrainStore& store, const float center[3], float radius,
+                     float hardness, EditorWorkspaceColor color) {
+    DrawGroundCircle(canvas, store, center, radius, color);
+    // 内側の円までは全力、そこから縁へ弱まる。
+    EditorWorkspaceColor inner = color;
+    inner.a = 0.55f;
+    DrawGroundCircle(canvas, store, center, radius * std::clamp(hardness, 0.0f, 1.0f), inner);
+    const float cross = (std::max)(radius * 0.05f, 0.25f);
+    const float y = center[1] + 0.2f;
+    canvas.DrawLine({center[0] - cross, y, center[2]}, {center[0] + cross, y, center[2]}, color, 2.0f);
+    canvas.DrawLine({center[0], y, center[2] - cross}, {center[0], y, center[2] + cross}, color, 2.0f);
 }
 
 namespace {
@@ -63,10 +85,22 @@ public:
             return;
         }
         AdjustBrushRadius(input, Radius());
+        if (input.shift && input.wheel != 0.0f && !input.control) {
+            Strength() = std::clamp(Strength() + (input.wheel > 0.0f ? 0.05f : -0.05f), 0.01f, 1.0f);
+        }
+        char values[96]{};
+        std::snprintf(values, sizeof(values),
+                      "Size %.1f m   Strength %.2f   [ ] or Ctrl + wheel size   Shift + wheel strength", Radius(),
+                      Strength());
+        canvas.DrawHint(values, Color());
         float hit[3]{};
         const bool hasHit = RayToGround(input, store, hit);
         if (hasHit) {
-            DrawGroundCircle(canvas, store, hit, Radius(), Color());
+            const bool blocked = OutsideLimits(store, hit);
+            DrawBrushCursor(canvas, store, hit, Radius(), Hardness(), blocked ? kBlockedColor : Color());
+            if (blocked) {
+                canvas.DrawHint("This spot is outside the brush's slope and height limits", kBlockedColor);
+            }
         }
         if (input.primaryPressed && hasHit && recorder_ == nullptr) {
             recorder_ = std::make_unique<TerrainEditRecorder>(store.Data());
@@ -102,9 +136,13 @@ protected:
     virtual std::string_view Hint() const = 0;
     virtual EditorWorkspaceColor Color() const = 0;
     virtual float& Radius() = 0;
+    virtual float& Strength() = 0;
+    virtual float Hardness() const = 0;
     virtual const char* UndoLabel() const = 0;
     // 坂のように、離した時に始点から終点まで一度に適用する工具は false。
     virtual bool AppliesWhileDragging() const { return true; }
+    // 光標の地点が筆の条件から外れていて、ここでは効かない。
+    virtual bool OutsideLimits(const TerrainStore&, const float[3]) const { return false; }
     virtual void ApplyPath(TerrainStore& store, std::span<const MATH::Vec2> path, const EditorViewportInput& input,
                            TerrainEditRecorder& recorder) = 0;
 
@@ -149,19 +187,44 @@ public:
     const char* GetDisplayName() const noexcept override { return "Terrain Sculpt"; }
 
 protected:
-    std::string_view Hint() const override {
-        return "Terrain Sculpt: drag to apply, Shift inverts, Ctrl + wheel sets the radius";
-    }
+    std::string_view Hint() const override { return "Sculpt: drag to apply, Shift inverts"; }
     EditorWorkspaceColor Color() const override { return kBrushColor; }
     float& Radius() override { return shared_->brush.radiusMeters; }
+    float& Strength() override { return shared_->brush.strength; }
+    float Hardness() const override { return shared_->brush.hardness; }
     const char* UndoLabel() const override { return "Sculpt Terrain"; }
     bool AppliesWhileDragging() const override { return shared_->brush.op != HeightBrushOp::Ramp; }
+
+    bool OutsideLimits(const TerrainStore& store, const float hit[3]) const override {
+        const HeightBrushSettings& brush = shared_->brush;
+        if (hit[1] < brush.limitMinHeightMeters || hit[1] > brush.limitMaxHeightMeters) {
+            return true;
+        }
+        if (brush.limitMinSlopeDegrees <= 0.0f && brush.limitMaxSlopeDegrees >= 90.0f) {
+            return false;
+        }
+        constexpr float kStep = 1.0f;
+        const float x0 = store.HeightAt(hit[0] - kStep, hit[2]).value_or(hit[1]);
+        const float x1 = store.HeightAt(hit[0] + kStep, hit[2]).value_or(hit[1]);
+        const float z0 = store.HeightAt(hit[0], hit[2] - kStep).value_or(hit[1]);
+        const float z1 = store.HeightAt(hit[0], hit[2] + kStep).value_or(hit[1]);
+        const float slope =
+            std::atan(std::hypot(x1 - x0, z1 - z0) / (2.0f * kStep)) * 180.0f / std::numbers::pi_v<float>;
+        return slope < brush.limitMinSlopeDegrees || slope > brush.limitMaxSlopeDegrees;
+    }
 
     void ApplyPath(TerrainStore& store, std::span<const MATH::Vec2> path, const EditorViewportInput& input,
                    TerrainEditRecorder& recorder) override {
         HeightBrushSettings brush = shared_->brush;
         if (AppliesWhileDragging()) {
             brush.strength *= std::clamp(input.pressure, 0.0f, 1.0f);
+        }
+        // 上げ下げと噪声の強さは dab あたりの m。窓では筆の大きさに比べた割合にして、小さな筆で細部、大きな筆で山を
+        // 作れるようにする。押し続けた時に帧率で効きが変わらないよう時間も掛ける。
+        if (brush.op == HeightBrushOp::Raise || brush.op == HeightBrushOp::Lower || brush.op == HeightBrushOp::Noise) {
+            constexpr float kMetersPerRadius = 0.02f;
+            brush.strength *=
+                brush.radiusMeters * kMetersPerRadius * std::clamp(input.deltaSeconds * 60.0f, 0.25f, 2.0f);
         }
         if (input.shift && brush.op == HeightBrushOp::Raise) {
             brush.op = HeightBrushOp::Lower;
@@ -170,7 +233,8 @@ protected:
         }
         BrushEditResult edit{};
         std::string error{};
-        if (ApplyHeightBrush(store.Data(), TargetSculptLayer(*shared_), brush, path, &recorder, edit, error)) {
+        if (ApplyHeightBrush(store.Data(), TargetSculptLayer(*shared_), brush, path, &recorder, edit, error,
+                             CurrentBrushShape(*shared_))) {
             store.RebakeRect(edit.touched);
         }
     }
@@ -184,10 +248,12 @@ public:
 
 protected:
     std::string_view Hint() const override {
-        return "Layer Mask: drag to hide the selected layer, Shift brings it back, Ctrl + wheel sets the radius";
+        return "Layer Mask: drag to hide the selected layer, Shift brings it back";
     }
     EditorWorkspaceColor Color() const override { return kMaskColor; }
     float& Radius() override { return shared_->maskBrush.radiusMeters; }
+    float& Strength() override { return shared_->maskBrush.strength; }
+    float Hardness() const override { return 0.5f; }
     const char* UndoLabel() const override { return "Paint Terrain Mask"; }
 
     void ApplyPath(TerrainStore& store, std::span<const MATH::Vec2> path, const EditorViewportInput& input,
@@ -219,11 +285,12 @@ public:
 
 protected:
     std::string_view Hint() const override {
-        return "Terrain Paint: drag to paint the selected surface, Shift hands it back to the rules, Ctrl + wheel sets "
-               "the radius";
+        return "Paint: drag to paint the selected surface, Shift hands it back to the rules";
     }
     EditorWorkspaceColor Color() const override { return kPaintColor; }
     float& Radius() override { return shared_->paintBrush.radiusMeters; }
+    float& Strength() override { return shared_->paintBrush.strength; }
+    float Hardness() const override { return shared_->paintBrush.hardness; }
     const char* UndoLabel() const override { return "Paint Terrain"; }
 
     void ApplyPath(TerrainStore& store, std::span<const MATH::Vec2> path, const EditorViewportInput& input,
@@ -235,7 +302,7 @@ protected:
         }
         BrushEditResult edit{};
         std::string error{};
-        if (ApplyControlBrush(store.Data(), brush, path, &recorder, edit, error)) {
+        if (ApplyControlBrush(store.Data(), brush, path, &recorder, edit, error, CurrentBrushShape(*shared_))) {
             store.MarkControlChanged(edit.touched);
         }
     }
@@ -249,7 +316,7 @@ public:
 
     void Update(const EditorViewportInput& input, IEditorViewportCanvas& canvas) override {
         TerrainStore& store = TerrainStore::Get();
-        canvas.DrawHint("Terrain Stamp: click to place, Ctrl + wheel sets the radius, Alt + wheel rotates",
+        canvas.DrawHint("Stamp: click to place, Shift cuts in, [ ] or Ctrl + wheel size, Alt + wheel rotates",
                         kStampColor);
         if (!store.IsOpen()) {
             return;

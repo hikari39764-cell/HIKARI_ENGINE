@@ -12,6 +12,7 @@
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
+#include "Core/Text/HIKARI_HumanizeKey.h"
 #include "HIKARI/Project/EditorWorkspace.h"
 
 // JSONFIELDS の項目表から窓の欄を作る。資産の読み書きと同じ一つの表を使い、項目ごとの UI を書かない。
@@ -33,6 +34,30 @@ struct FieldUiDrawer {
     const std::string& prefix; // 欄の ID の頭（同じ表を何度も並べる時に分ける）
     bool& changed;
     const Custom& custom;
+    std::string& group;  // 今の節の名前
+    bool& groupOpen;     // 今の節の中身を描くか
+    int& groupsLeftOpen; // 既定で開いておく節の残り
+
+    // 節が変わったら見出しを描く。項目を描いてよければ true。
+    bool EnterGroup(const JSONFIELDS::Meta& meta) const {
+        const std::string name = meta.advanced ? "Advanced" : meta.group;
+        if (name != group) {
+            group = name;
+            groupOpen = name.empty() ||
+                        ui.Section(prefix + "group" + name, name + "##" + prefix, !meta.advanced && groupsLeftOpen > 0);
+            --groupsLeftOpen;
+        }
+        return groupOpen;
+    }
+
+    // 滑块で扱える範囲か。負の側まである広い範囲は細かい値を作れないので数値の欄にする。
+    static bool UsesSlider(const JSONFIELDS::Meta& meta) {
+        if (!meta.hasRange) {
+            return false;
+        }
+        const double span = meta.range.max - meta.range.min;
+        return meta.range.slider || (meta.range.min >= 0.0 ? span <= 20000.0 : span <= 100.0);
+    }
 
     std::string Label(const char* key, const JSONFIELDS::Meta& meta) const {
         std::string label = JSONFIELDS::LabelOf(meta, key);
@@ -55,7 +80,7 @@ struct FieldUiDrawer {
         requires std::is_base_of_v<C, T>
     void operator()(const char* key, M C::* member, const Options&... options) const {
         const JSONFIELDS::Meta meta = JSONFIELDS::MetaOf(options...);
-        if (meta.hidden || meta.readOnly || !(Allowed(options) && ...) || custom(key, object)) {
+        if (meta.hidden || meta.readOnly || !(Allowed(options) && ...) || !EnterGroup(meta) || custom(key, object)) {
             return;
         }
         const std::string id = prefix + key;
@@ -63,16 +88,23 @@ struct FieldUiDrawer {
         if constexpr (std::is_same_v<M, bool>) {
             changed |= ui.Checkbox(id, Label(key, meta), &value);
         } else if constexpr (std::is_floating_point_v<M>) {
-            EDITOR_PROJECT::EditorWorkspaceFloatInputOptions input{};
-            if (meta.hasRange) {
-                const double span = meta.range.max - meta.range.min;
-                input.step = span > 1000.0 ? 1.0f : (span > 10.0 ? 0.1f : 0.01f);
-                input.minimum = static_cast<float>(meta.range.min);
-                input.maximum = static_cast<float>(meta.range.max);
-                input.clampToRange = 1u;
-            }
             auto edited = static_cast<float>(value);
-            if (ui.InputFloat(id, Label(key, meta), &edited, input)) {
+            bool edit = false;
+            if (UsesSlider(meta)) {
+                edit = ui.SliderFloat(id, Label(key, meta), &edited, static_cast<float>(meta.range.min),
+                                      static_cast<float>(meta.range.max));
+            } else {
+                EDITOR_PROJECT::EditorWorkspaceFloatInputOptions input{};
+                if (meta.hasRange) {
+                    const double span = meta.range.max - meta.range.min;
+                    input.step = span > 1000.0 ? 1.0f : (span > 10.0 ? 0.1f : 0.01f);
+                    input.minimum = static_cast<float>(meta.range.min);
+                    input.maximum = static_cast<float>(meta.range.max);
+                    input.clampToRange = 1u;
+                }
+                edit = ui.InputFloat(id, Label(key, meta), &edited, input);
+            }
+            if (edit) {
                 value = static_cast<M>(edited);
                 changed = true;
             }
@@ -103,6 +135,7 @@ struct FieldUiDrawer {
                 changed = true;
             }
         }
+        ui.Tooltip(meta.help);
     }
 
     template <class C, class E, std::size_t N, class... Options>
@@ -110,15 +143,15 @@ struct FieldUiDrawer {
     void operator()(const char* key, E C::* member, const TEXT::EnumName<E> (&names)[N],
                     const Options&... options) const {
         const JSONFIELDS::Meta meta = JSONFIELDS::MetaOf(options...);
-        if (meta.hidden || meta.readOnly || !(Allowed(options) && ...) || custom(key, object)) {
+        if (meta.hidden || meta.readOnly || !(Allowed(options) && ...) || !EnterGroup(meta) || custom(key, object)) {
             return;
         }
         E& value = object.*member;
         ui.Text(JSONFIELDS::LabelOf(meta, key));
         for (const TEXT::EnumName<E>& entry : names) {
             ui.SameLine();
-            if (ui.Selectable(prefix + key + entry.name, std::string(entry.name) + "##" + prefix,
-                              value == entry.value) &&
+            if (ui.Choice(prefix + key + entry.name, TEXT::HumanizeKey(entry.name) + "##" + prefix,
+                          value == entry.value) &&
                 value != entry.value) {
                 value = entry.value;
                 changed = true;
@@ -127,12 +160,14 @@ struct FieldUiDrawer {
     }
 };
 
-// 表の全項目を描き、どれかが変わったら true。
+// 表の全項目を描き、どれかが変わったら true。Group の節は折りたためて、先頭の openGroups 個だけ既定で開く。
 template <class T, class Fields, class Custom = NoCustomFieldUi>
 bool DrawFieldUi(EDITOR_PROJECT::IEditorWorkspaceUi& ui, const std::string& prefix, T& object, const Fields& fields,
-                 const Custom& custom = {}) {
+                 const Custom& custom = {}, int openGroups = 64) {
     bool changed = false;
-    fields(FieldUiDrawer<T, Custom>{ui, object, prefix, changed, custom});
+    std::string group{};
+    bool groupOpen = true;
+    fields(FieldUiDrawer<T, Custom>{ui, object, prefix, changed, custom, group, groupOpen, openGroups});
     return changed;
 }
 

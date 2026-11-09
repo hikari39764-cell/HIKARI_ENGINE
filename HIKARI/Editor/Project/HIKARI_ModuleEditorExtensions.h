@@ -25,6 +25,7 @@ public:
     using UndoRecorder = std::function<void(std::string, std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry>)>;
     // 模型の GUID を受け、遠景模型の GUID を返す（失敗は空）。
     using FarModelBaker = std::function<std::string(std::string_view)>;
+    using ViewportCameraSetter = std::function<void(const GameProjectFloat3&, const GameProjectFloat3&)>;
     struct Tool {
         std::string moduleId{};
         std::string id{};
@@ -52,11 +53,17 @@ public:
     // 場面の撤销の持ち主（編集器の制御部）が設定する。
     void SetUndoRecorder(UndoRecorder recorder) { undoRecorder_ = std::move(recorder); }
     void SetFarModelBaker(FarModelBaker baker) { farModelBaker_ = std::move(baker); }
+    void SetViewportCameraSetter(ViewportCameraSetter setter) { viewportCameraSetter_ = std::move(setter); }
     void NotifySceneSaved(std::string_view scenePathUtf8);
     void RecordUndo(std::string_view label, std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry) override;
     void SetSceneListener(EDITOR_PROJECT::IEditorSceneListener* listener) override;
     bool ActivateViewportTool(std::string_view toolId) override { return ActivateTool(toolId); }
     bool BakeFarModel(std::string_view modelAssetGuid, char* outFarModelGuid, size_t capacity) override;
+    void SetViewportCamera(const GameProjectFloat3& position, const GameProjectFloat3& target) override {
+        if (viewportCameraSetter_) {
+            viewportCameraSetter_(position, target);
+        }
+    }
 
     // 有効な工具があれば今のフレームの入力を渡す。戻り値はマウスを取ったか（工具が有効なら常に真）。
     bool UpdateViewport(const Camera3D& camera, const SceneViewportRect& viewport, bool hovered, float deltaSeconds,
@@ -70,6 +77,7 @@ private:
     size_t activeTool_ = static_cast<size_t>(-1);
     UndoRecorder undoRecorder_{};
     FarModelBaker farModelBaker_{};
+    ViewportCameraSetter viewportCameraSetter_{};
     std::vector<EDITOR_PROJECT::IEditorSceneListener*> sceneListeners_{};
 };
 

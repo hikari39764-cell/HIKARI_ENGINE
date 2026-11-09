@@ -142,8 +142,9 @@ void RecordTerrainGrass(const RenderSurfaceView& view, IRenderSurfaceCommands& c
     const TerrainGrassSettings& settings = store.Grass();
     const TerrainRenderResources& render = store.Render();
     const auto& surfaces = store.Surfaces().Surfaces();
-    if (!settings.enabled || settings.density <= 0.0f || render.surfaceParams == 0u ||
-        render.surfacesUploaded != surfaces.size() ||
+    // 数据図を見ている間は葉で隠さない。
+    if (!settings.enabled || settings.density <= 0.0f || store.Overlay() != TerrainOverlay::None ||
+        render.surfaceParams == 0u || render.surfacesUploaded != surfaces.size() ||
         std::none_of(surfaces.begin(), surfaces.end(),
                      [](const CookedSurface& surface) { return surface.grass.density > 0.0f; })) {
         return;

@@ -50,6 +50,10 @@ cbuffer RenderSurfaceConstants : register(b3)
     float gTerrainSnowAmount;
     float gTerrainWetness;
     float gTerrainReserved;
+    float gTerrainOverlayHeightMin;
+    float gTerrainOverlayHeightRange;
+    float gTerrainReserved1;
+    float gTerrainReserved2;
 };
 
 struct TerrainVertex
@@ -144,10 +148,51 @@ TerrainGeometryFeatureOutput SurfaceGeometryFeaturePS(TerrainVertex input)
     return output;
 }
 
+// 編集の時に重ねて見る数据図（TerrainOverlay と番号を揃える）。自分で光らせ、光の影響を受けない。
+float3 TerrainOverlayColor(TerrainVertex input, float3 normal)
+{
+    const float3 cool = float3(0.05f, 0.18f, 0.55f);
+    const float3 warm = float3(0.85f, 0.15f, 0.05f);
+    const uint control = gTerrainControl.Load(int4(int2(input.tileUv * (gTerrainTileCells + 1.0f)), input.tileLayer, 0));
+    const uint surface = min(control & 31u, max(gTerrainSurfaceCount, 1u) - 1u);
+    if (gTerrainDebugFlags == 1u)
+    {
+        // 高さ：青から赤、10 m ごとの等高線。
+        const float share = saturate((input.worldPosition.y - gTerrainOverlayHeightMin) / gTerrainOverlayHeightRange);
+        const float band = frac(input.worldPosition.y / 10.0f);
+        const float contour = smoothstep(0.0f, 0.06f, band) * smoothstep(1.0f, 0.94f, band);
+        return lerp(cool, warm, share) * lerp(0.35f, 1.0f, contour);
+    }
+    if (gTerrainDebugFlags == 2u)
+    {
+        // 傾き：平らは緑、45 度で赤。
+        const float slopeDegrees = degrees(acos(saturate(normal.y)));
+        return lerp(float3(0.1f, 0.55f, 0.1f), warm, saturate(slopeDegrees / 45.0f));
+    }
+    if (gTerrainDebugFlags == 3u)
+    {
+        return lerp(float3(0.5f, 0.45f, 0.35f), float3(0.05f, 0.25f, 0.8f), (float)((control >> 28u) & 15u) / 15.0f);
+    }
+    if (gTerrainDebugFlags == 4u)
+    {
+        // 地表：枠ごとに違う色。
+        const float hue = frac((float)surface * 0.618034f);
+        return saturate(abs(frac(hue + float3(0.0f, 0.667f, 0.333f)) * 6.0f - 3.0f) - 1.0f) * 0.7f + 0.15f;
+    }
+    // 草の密度：無ければ灰、濃いほど緑。
+    const float density = gTerrainSurfaceParams.Load(int4(surface, 2, 0, 0)).x;
+    return lerp(float3(0.25f, 0.25f, 0.25f), float3(0.1f, 0.75f, 0.1f), saturate(density));
+}
+
 float4 SurfaceForwardPS(TerrainVertex input) : SV_TARGET
 {
     const float3 worldPosition = input.worldPosition;
     const float3 normal = TerrainNormalAt(input);
+    if (gTerrainDebugFlags != 0u)
+    {
+        const float shade = 0.65f + 0.35f * saturate(dot(normal, normalize(float3(0.4f, 0.8f, 0.3f))));
+        return float4(TerrainOverlayColor(input, normal) * shade, 1.0f);
+    }
     const float3 view = HikariCameraViewDirection(worldPosition);
     float3 albedo;
     float roughness;
