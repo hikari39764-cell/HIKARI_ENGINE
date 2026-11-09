@@ -122,13 +122,13 @@ struct RuntimeRayTracingSurfaceBindings {
 };
 
 struct RuntimeRayTracingBudget {
-    uint64_t maximumBytes = 128ull * 1024 * 1024;
+    uint64_t maximumBytes = 384ull * 1024 * 1024;
     uint32_t trianglesPerChunk = 131072;
     uint32_t rangesPerChunk = 128;
     uint32_t chunksPerAsset = 1024;
     uint32_t buildsPerFrame = 2;
     uint32_t geometryUploadsPerFrame = 1;
-    uint32_t maximumInstances = 262144; // 大量配置を含む（一つの個体が一つ。超えると大量配置を外す）
+    uint32_t maximumInstances = 524288; // 大量配置を含む（一つの個体が一つ。超えると大量配置を外す）
     uint32_t maximumHitRecords = 262144;
 };
 

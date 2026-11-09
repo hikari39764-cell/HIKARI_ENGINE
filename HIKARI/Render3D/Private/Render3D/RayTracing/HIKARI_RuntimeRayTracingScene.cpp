@@ -18,6 +18,8 @@
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
+#include <string>
+
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
@@ -641,13 +643,16 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     }
     // 大量配置は最後に並べる。種類ごとの hit 記録を個体が共有する。予算に収まらなければ大量配置だけを外す。
     const size_t massFirstInstance = instances.size(), massFirstHit = hits.size();
-    const auto dropMass = [&] {
+    const auto dropMass = [&](const char* reason) {
         // カスケードの影も大量配置を描かないので、外すとその影がまるごと消える。黙って起きないよう一度だけ書く。
         static bool reported = false;
         if (!reported) {
             reported = true;
-            HIKARI_LOG_WARN("[RT][Mass] mass instances left the ray scene (over the instance or memory budget); they "
-                            "cast no ray traced shadow and GI rays pass through them");
+            HIKARI_LOG_WARN(std::string("[RT][Mass] mass instances left the ray scene (") + reason +
+                            "); they cast no ray traced shadow and GI rays pass through them. instances=" +
+                            std::to_string(instances.size()) + " resident MB=" +
+                            std::to_string(state.stats.residentBytes / 1048576u) + " retiring MB=" +
+                            std::to_string(state.stats.retiringBytes / 1048576u));
         }
         instances.resize(massFirstInstance);
         hits.resize(massFirstHit);
@@ -697,7 +702,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
         }
         massIncluded = fits && state.mass.Append(*mass, shapes, budget.maximumInstances, instances);
         if (!massIncluded)
-            dropMass();
+            dropMass("over the instance or hit record budget");
     }
     if (instances.empty()) // 大量配置の形がまだ組み途中で、他に入れる面が無い
         return publishEmpty();
@@ -715,7 +720,11 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             keepHits = state.hitUploads.Current() && SameBytes(hits, state.lastHits);
             desc = CD3DX12_RESOURCE_DESC::Buffer(hits.size() * sizeof(RuntimeRayTracingHitRecord));
             const uint64_t bytes = keepHits ? 0 : graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
-            const uint64_t available = state.Available(budget);
+            // 解放待ちは数フレームで消えるので、大量配置を残す判断には数えない（外すと森の影が一瞬消える）。
+            const uint64_t strictAvailable = state.Available(budget);
+            const uint64_t available = massIncluded && state.stats.residentBytes < budget.maximumBytes
+                                           ? budget.maximumBytes - state.stats.residentBytes
+                                           : strictAvailable;
             auto built = std::make_unique<AccelerationStructure>();
             if (bytes != UINT64_MAX && bytes < available &&
                 built->BuildTopLevel(graphics, instances, available - bytes, true,
@@ -725,7 +734,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
                 top = std::move(built);
             } else if (massIncluded) {
                 massIncluded = false;
-                dropMass();
+                dropMass("over the memory budget");
                 if (instances.empty())
                     return publishEmpty();
             } else {

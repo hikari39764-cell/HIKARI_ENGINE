@@ -104,7 +104,7 @@ bool RuntimeRayTracingScene::State::SameStructure(const GPUDRIVEN::GpuDrivenScen
     }
     Available(budget);
     return lastHits.size() <= budget.maximumHitRecords && lastInstances.size() <= budget.maximumInstances &&
-           stats.residentBytes + stats.retiringBytes <= budget.maximumBytes;
+           stats.residentBytes <= budget.maximumBytes; // 解放待ちは数フレームで消えるので数えない
 }
 std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPlace(
     const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
