@@ -17,7 +17,7 @@ namespace HIKARI::EDITOR_PROJECT {
 struct EditorNodeGraphDesc;
 struct EditorNodeGraphResult;
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 7u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 8u;
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
@@ -35,7 +35,8 @@ struct EditorWorkspaceInteraction {
     uint32_t editing = 0u;
     // The author asked to undo / redo (Ctrl+Z, Ctrl+Y, the Edit menu or the toolbar) while this workspace is active.
     // Reported only to workspaces that edit their own documents. A workspace that shows the Scene viewport
-    // (RequestSceneViewport) shares the Scene history instead: record entries with IEditorSceneServices::RecordUndo.
+    // (RequestSceneViewport) shares the Scene history instead (record entries with IEditorSceneServices::RecordUndo),
+    // unless it also sets OwnHistory.
     uint32_t undoPressed = 0u;
     uint32_t redoPressed = 0u;
     uint32_t deletePressed = 0u;
@@ -68,7 +69,11 @@ enum class EditorWorkspaceStatusSeverity : uint32_t {
 
 enum class EditorWorkspaceOption : uint32_t {
     None = 0u,
+    // Show the Scene viewport (the game view during Play) as a panel of the workspace, in sceneViewportRegion.
     RequestSceneViewport = 1u << 0u,
+    // With RequestSceneViewport: undo / redo still go to the workspace (EditorWorkspaceInteraction) instead of the
+    // Scene history, for a workspace that edits its own documents and only watches the Scene.
+    OwnHistory = 1u << 1u,
 };
 
 enum class EditorWorkspacePointerButton : uint32_t {
@@ -84,7 +89,9 @@ struct EditorWorkspaceDescriptor {
     const char* workspaceId = nullptr;
     const char* displayName = nullptr;
     uint32_t options = static_cast<uint32_t>(EditorWorkspaceOption::None);
-    uint32_t reserved = 0u;
+    // Where the Scene viewport of a RequestSceneViewport workspace is docked in the default layout: Center, Left,
+    // Right or Bottom (an EditorWorkspaceDockRegion value). Left and Right put it above that column's panels.
+    uint32_t sceneViewportRegion = static_cast<uint32_t>(EditorWorkspaceDockRegion::Center);
 };
 
 struct EditorWorkspacePoint {
@@ -237,6 +244,9 @@ public:
     // transactions and diagnostics as AI. Worker-only actions are rejected.
     virtual void ExecuteOperation(std::string_view operationId, std::string_view parametersJson,
                                   IEditorOperationResultSink& result) = 0;
+    // Shows or hides the Scene viewport of a RequestSceneViewport workspace. While hidden the Scene is not rendered
+    // (Play keeps running). Shown again each time the workspace is activated.
+    virtual void SetSceneViewportVisible(bool visible) = 0;
 };
 
 class IEditorDocumentService;
@@ -289,6 +299,7 @@ static_assert(std::is_standard_layout_v<EditorWorkspaceDescriptor>);
 static_assert(std::is_trivially_copyable_v<EditorWorkspaceDescriptor>);
 static_assert(sizeof(EditorWorkspaceDescriptor) == 32u);
 static_assert(offsetof(EditorWorkspaceDescriptor, options) == 24u);
+static_assert(offsetof(EditorWorkspaceDescriptor, sceneViewportRegion) == 28u);
 static_assert(offsetof(EditorWorkspaceDescriptor, structSize) == 0u);
 static_assert(offsetof(EditorWorkspaceDescriptor, apiVersion) == 4u);
 static_assert(offsetof(EditorWorkspaceDescriptor, workspaceId) == 8u);

@@ -161,8 +161,9 @@ void GameProjectEditorWorkspaceHost::Draw(EditorWorkspaceHost& host, float unsca
     }
     registry_.ProcessPending();
     ui_->SetWorkspaceId(registry_.GetActiveWorkspaceId());
+    const GameProjectSceneViewportUse viewport = ActiveSceneViewport();
     ui_->DrawDockSpace(resetLayout_ || host.ConsumeReset(EditorWorkspaceId::Project),
-                       ActiveWorkspaceRequestsSceneViewport());
+                       viewport.requested ? std::optional(viewport.region) : std::nullopt);
     resetLayout_ = false;
     DrawToolbar(host);
     DrawClosePrompt();
@@ -207,8 +208,8 @@ bool GameProjectEditorWorkspaceHost::IsAvailable() const noexcept {
     return registry_.GetWorkspaceCount() != 0u || !moduleFailureMessage_.empty();
 }
 
-bool GameProjectEditorWorkspaceHost::ActiveWorkspaceRequestsSceneViewport() const noexcept {
-    return registry_.ActiveWorkspaceRequestsSceneViewport();
+GameProjectSceneViewportUse GameProjectEditorWorkspaceHost::ActiveSceneViewport() const noexcept {
+    return registry_.ActiveSceneViewport();
 }
 
 bool GameProjectEditorWorkspaceHost::HasUnsavedChanges() const noexcept {
@@ -216,7 +217,7 @@ bool GameProjectEditorWorkspaceHost::HasUnsavedChanges() const noexcept {
 }
 
 std::string GameProjectEditorWorkspaceHost::PrepareSceneViewportWindow() {
-    if (ui_ && ActiveWorkspaceRequestsSceneViewport()) {
+    if (ui_ && ActiveSceneViewport().requested) {
         ui_->PrepareSceneViewportWindow();
     }
     return "Project Scene View/" + std::string(registry_.GetActiveWorkspaceId());

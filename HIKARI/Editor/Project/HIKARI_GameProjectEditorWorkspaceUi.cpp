@@ -76,11 +76,17 @@ void GameProjectEditorWorkspaceUi::SetWorkspaceId(std::string_view workspaceId) 
 
 void GameProjectEditorWorkspaceUi::ClearDockRegions() noexcept {
     dockRegions_.fill(0u);
+    viewportDock_ = 0u;
     forceDock_ = false;
     floatingPanelCount_ = 0;
 }
 
-void GameProjectEditorWorkspaceUi::DrawDockSpace(bool reset, bool wideCenter) {
+void GameProjectEditorWorkspaceUi::DrawDockSpace(
+    bool reset, std::optional<EDITOR_PROJECT::EditorWorkspaceDockRegion> viewportRegion) {
+    using EDITOR_PROJECT::EditorWorkspaceDockRegion;
+    const bool wideCenter = viewportRegion == EditorWorkspaceDockRegion::Center;
+    const bool viewportInColumn =
+        viewportRegion == EditorWorkspaceDockRegion::Left || viewportRegion == EditorWorkspaceDockRegion::Right;
     const auto* viewport = ImGui::GetMainViewport();
     const std::string name = "HIKARI_ProjectWorkspace/" + workspaceId_;
     const ImGuiID root = ImGui::GetID(name.c_str());
@@ -98,20 +104,30 @@ void GameProjectEditorWorkspaceUi::DrawDockSpace(bool reset, bool wideCenter) {
                                     &dockRegions_[1], &body);
         fitToolbarFrames_ = 3;
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Left, 0.21f, &dockRegions_[2], &body);
-        ImGui::DockBuilderSplitNode(body, ImGuiDir_Right, 0.30f, &dockRegions_[3], &body);
+        // 視口を右の列に置く時は、画面が小さくなり過ぎないよう列を広げる。
+        ImGui::DockBuilderSplitNode(body, ImGuiDir_Right,
+                                    viewportRegion == EditorWorkspaceDockRegion::Right ? 0.36f : 0.30f,
+                                    &dockRegions_[3], &body);
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Down, wideCenter ? 0.11f : 0.25f, &dockRegions_[4], &body);
         dockRegions_[0] = body;
+        viewportDock_ = viewportRegion ? dockRegions_[static_cast<size_t>(*viewportRegion)] : 0u;
+        if (viewportInColumn) {
+            // 左右の列：上に視口、下にその列のパネル。
+            ImGuiID& column = dockRegions_[static_cast<size_t>(*viewportRegion)];
+            ImGui::DockBuilderSplitNode(column, ImGuiDir_Up, 0.45f, &viewportDock_, &column);
+        }
         ImGui::DockBuilderFinish(root);
     } else {
         // 保存済みレイアウトは ImGui が管理する。新規パネルだけ中央へ入れる。
         dockRegions_.fill(root);
+        viewportDock_ = root;
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(root, viewport);
 }
 
 void GameProjectEditorWorkspaceUi::PrepareSceneViewportWindow() {
-    if (dockRegions_[0] != 0u) {
-        ImGui::SetNextWindowDockID(dockRegions_[0], forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+    if (viewportDock_ != 0u) {
+        ImGui::SetNextWindowDockID(viewportDock_, forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
     }
 }
 

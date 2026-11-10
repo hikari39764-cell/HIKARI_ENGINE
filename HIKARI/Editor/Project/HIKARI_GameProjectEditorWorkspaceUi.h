@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,7 +39,8 @@ public:
     void SetWorkspaceId(std::string_view workspaceId);
     // 場景の作業区の窓はプロジェクト作業区のドックに入れない。
     void ClearDockRegions() noexcept;
-    void DrawDockSpace(bool reset, bool wideCenter);
+    // viewportRegion：場景の視口を持つ工作区で、視口を置く区画（無ければ視口なし）。
+    void DrawDockSpace(bool reset, std::optional<EDITOR_PROJECT::EditorWorkspaceDockRegion> viewportRegion);
     // 作業区の工具栏（作業区に一つ、題は作業区の名前）を開く。宿主が先に自分の一行を描く。このあとモジュールが
     // Toolbar 区画へ出すパネルは、別の窓にならず同じ窓の続きになる。EndPanel で閉じる。
     bool BeginToolbar(std::string_view title);
@@ -156,6 +158,8 @@ private:
     size_t tableDepth_ = 0u;
     bool canvasActive_ = false;
     std::array<ImGuiID, 5> dockRegions_{};
+    // 場景の視口を入れるドック（区画そのもの、または左右の列の上半分）。
+    ImGuiID viewportDock_ = 0u;
     bool forceDock_ = false;
     std::string toolbarLabel_{};
     // 配置を組み直した直後の数フレーム、工具栏の高さを中身に合わせる。
