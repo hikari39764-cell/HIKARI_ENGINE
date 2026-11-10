@@ -1241,6 +1241,7 @@ void CheckModuleAssetTypes(const fs::path& root) {
     manifest.id = "Test.Module";
     manifest.name = "Test";
     manifest.version = "1.0.0";
+    manifest.sdkVersion = "1.0.0";
     manifest.runtimeLibrary = "Module.dll";
     manifest.assetTypes.push_back({"Test.Rule", ".htestrule", "Test Rule"});
     assert(SaveModuleManifest(project / "Test.Module.hmodule", manifest));

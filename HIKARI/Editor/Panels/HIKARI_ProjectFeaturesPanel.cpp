@@ -72,6 +72,8 @@ void ProjectFeaturesPanel::ReloadDraft(const std::filesystem::path& projectRoot)
         statusIsError_ = false;
     }
     draftFeatureIds_ = settingsService_.GetSettings().enabledRuntimeFeatures;
+    moduleListStale_ = true;
+    moduleMessage_.clear();
     dirty_ = false;
     draftNeedsNormalization_ = true;
 }
@@ -248,24 +250,99 @@ void ProjectFeaturesPanel::Draw(DocumentSceneBase& scene) {
                            statusMessage_.c_str());
     }
 
-    if (const std::span<const InstalledModuleStatus> modules = scene.GetInstalledModules(); !modules.empty()) {
-        ImGui::SeparatorText(TEXT::Localize("ui.projectFeatures.modules").c_str());
-        for (const InstalledModuleStatus& module : modules) {
-            const char* state = TEXT::Localize(!module.runtimeLoaded ? "ui.projectFeatures.moduleFailed"
-                                               : module.editorLoaded ? "ui.projectFeatures.moduleLoadedWithEditor"
-                                                                     : "ui.projectFeatures.moduleLoaded")
-                                    .c_str();
-            ImGui::BulletText("%s %s - %s", module.manifest.id.c_str(), module.manifest.version.c_str(), state);
-            ImGui::Indent();
-            ImGui::TextDisabled("%s", TEXT::PathToUtf8(module.manifest.directory).c_str());
-            for (const std::string& feature : scene.GetRuntimeExtensionFeatures(module.manifest.id)) {
-                ImGui::TextDisabled("%s", feature.c_str());
+    DrawModules(scene);
+}
+
+void ProjectFeaturesPanel::DrawModules(DocumentSceneBase& scene) {
+    const ImVec4 errorColor(1.0f, 0.4f, 0.35f, 1.0f);
+    const ImVec4 pendingColor(1.0f, 0.72f, 0.25f, 1.0f);
+    ImGui::SeparatorText(TEXT::Localize("ui.projectFeatures.modules").c_str());
+    ImGui::TextWrapped("%s", TEXT::Localize("ui.projectFeatures.modulesIntro").c_str());
+    if (ImGui::Button(TEXT::Localize("ui.projectFeatures.moduleRefresh").c_str())) {
+        moduleListStale_ = true;
+        moduleMessage_.clear();
+    }
+    if (moduleListStale_) {
+        moduleList_ = EDITOR::BuildProjectModuleList(scene);
+        moduleListStale_ = false;
+    }
+    if (!moduleList_.error.empty()) {
+        ImGui::TextColored(errorColor, "%s", moduleList_.error.c_str());
+        return;
+    }
+    if (moduleList_.rows.empty()) {
+        ImGui::TextDisabled("%s", TEXT::Localize("ui.projectFeatures.moduleNone").c_str());
+    }
+
+    bool reopenPending = false;
+    for (const EDITOR::ProjectModuleRow& row : moduleList_.rows) {
+        const ProjectModuleOption& option = row.option;
+        const ModuleManifest& manifest = option.manifest;
+        reopenPending = reopenPending || row.reopenPending;
+        ImGui::PushID(manifest.id.c_str());
+        const bool required = !option.requiredBy.empty();
+        bool enabled = option.enabled || required;
+        // 他の有効なモジュールが要る包は外せない。使えない包は新しく有効にできない（外すことはできる）。
+        ImGui::BeginDisabled(required || (!option.enabled && !option.problem.empty()));
+        if (ImGui::Checkbox("##Enabled", &enabled)) {
+            if (!SetProjectModuleEnabled(loadedProjectRoot_, GetEngineModulesDirectory(), manifest.id, enabled,
+                                         &moduleMessage_)) {
+                moduleMessage_ = manifest.id + ": " + moduleMessage_;
             }
-            if (!module.error.empty()) {
-                ImGui::TextColored(ImVec4(1.0f, 0.4f, 0.35f, 1.0f), "%s", module.error.c_str());
-            }
-            ImGui::Unindent();
+            moduleListStale_ = true;
         }
+        ImGui::EndDisabled();
+        if (required && ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled)) {
+            ImGui::SetTooltip(TEXT::Localize("ui.projectFeatures.requiredByFormat").c_str(),
+                              JoinNames(option.requiredBy).c_str());
+        }
+        ImGui::SameLine();
+        ImGui::TextUnformatted(manifest.name.empty() ? manifest.id.c_str() : manifest.name.c_str());
+        ImGui::SameLine();
+        const InstalledModuleStatus* installed = row.installed;
+        ImGui::TextDisabled("%s  %s", manifest.version.c_str(),
+                            TEXT::Localize(installed == nullptr        ? "ui.projectFeatures.moduleNotLoaded"
+                                           : !installed->runtimeLoaded ? "ui.projectFeatures.moduleFailed"
+                                           : installed->editorLoaded   ? "ui.projectFeatures.moduleLoadedWithEditor"
+                                                                       : "ui.projectFeatures.moduleLoaded")
+                                .c_str());
+        if (row.reopenPending) {
+            ImGui::SameLine();
+            ImGui::TextColored(pendingColor, "%s", TEXT::Localize("ui.projectFeatures.moduleReopenPending").c_str());
+        }
+        ImGui::Indent();
+        ImGui::TextDisabled(
+            "%s  -  %s", manifest.id.c_str(),
+            TEXT::Localize(option.source == ModuleSource::ProjectPlugins ? "ui.projectFeatures.moduleSourceProject"
+                           : option.source == ModuleSource::Engine       ? "ui.projectFeatures.moduleSourceEngine"
+                                                                         : "ui.projectFeatures.moduleSourcePath")
+                .c_str());
+        // フォルダの路径は長いので、行を分けて折り返す。
+        ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+        ImGui::TextWrapped("%s", TEXT::PathToUtf8(manifest.directory).c_str());
+        ImGui::PopStyleColor();
+        for (const std::string& feature : scene.GetRuntimeExtensionFeatures(manifest.id)) {
+            ImGui::TextDisabled("%s", feature.c_str());
+        }
+        if (!option.problem.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, errorColor);
+            ImGui::TextWrapped("%s", option.problem.c_str());
+            ImGui::PopStyleColor();
+        } else if (installed != nullptr && !installed->error.empty()) {
+            ImGui::PushStyleColor(ImGuiCol_Text, errorColor);
+            ImGui::TextWrapped("%s", installed->error.c_str());
+            ImGui::PopStyleColor();
+        }
+        ImGui::Unindent();
+        ImGui::PopID();
+    }
+    if (!moduleMessage_.empty()) {
+        ImGui::PushStyleColor(ImGuiCol_Text, errorColor);
+        ImGui::TextWrapped("%s", moduleMessage_.c_str());
+        ImGui::PopStyleColor();
+    }
+    if (reopenPending) {
+        ImGui::TextColored(pendingColor, "%s", TEXT::Localize("ui.projectFeatures.moduleReopenHint").c_str());
     }
 }
 

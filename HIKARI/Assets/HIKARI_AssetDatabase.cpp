@@ -1,6 +1,5 @@
 #include "HIKARI_AssetDatabase.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
-#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include "Project/HIKARI_ProjectModules.h"
 #include "Importers/HIKARI_StructuredAssetImporters.h"
@@ -58,8 +57,7 @@ static void LoadProjectModuleAssetTypes(const std::filesystem::path& projectRoot
         std::filesystem::exists(descriptorPath, ec) && LoadProjectDescriptor(descriptorPath, descriptor)) {
         std::vector<ModuleManifest> modules{};
         std::string message{};
-        if (ResolveProjectModules(descriptor.modules, projectRoot, PLATFORM::GetExecutableDirectory() / "Modules",
-                                  modules, &message)) {
+        if (ResolveProjectModules(descriptor.modules, projectRoot, GetEngineModulesDirectory(), modules, &message)) {
             for (const ModuleManifest& module : modules) {
                 for (const ModuleManifestAssetType& type : module.assetTypes) {
                     types.push_back({type.typeId, type.extension, type.displayName});

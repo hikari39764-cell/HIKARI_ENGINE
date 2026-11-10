@@ -472,16 +472,21 @@ bool DeployProjectModules(const std::filesystem::path& projectRoot, const std::f
         return true;
     }
     std::vector<ModuleManifest> modules{};
-    if (!ResolveProjectModules(descriptor.modules, projectRoot, engineDirectory / "Modules", modules, &outMessage)) {
+    if (!ResolveProjectModules(descriptor.modules, projectRoot, engineDirectory / kEngineModulesDirectory, modules,
+                               &outMessage)) {
         return false;
     }
     for (const ModuleManifest& module : modules) {
+        if (!IsModuleSdkCompatible(module, &outMessage)) {
+            return false;
+        }
         if (module.shippingRuntimeLibrary.empty()) {
             outMessage = "Module " + module.id + " does not declare a shipping runtime library.";
             return false;
         }
         const std::filesystem::path sourceLibrary = module.directory / module.shippingRuntimeLibrary;
-        const std::filesystem::path targetDirectory = stagingDirectory / "Modules" / TEXT::PathFromUtf8(module.id);
+        const std::filesystem::path targetDirectory =
+            stagingDirectory / kEngineModulesDirectory / TEXT::PathFromUtf8(module.id);
         std::error_code ec{};
         std::filesystem::create_directories(targetDirectory, ec);
         if (ec || !CopyFileChecked(sourceLibrary, targetDirectory / sourceLibrary.filename(), outMessage)) {
@@ -503,7 +508,7 @@ bool DeployProjectModules(const std::filesystem::path& projectRoot, const std::f
                 return false;
             }
         }
-        if (!SaveModuleManifest(MakeBuiltinModuleManifestPath(stagingDirectory / "Modules", module.id), packaged,
+        if (!SaveModuleManifest(MakeModuleManifestPath(stagingDirectory / kEngineModulesDirectory, module.id), packaged,
                                 &outMessage)) {
             return false;
         }

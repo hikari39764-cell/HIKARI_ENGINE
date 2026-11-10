@@ -6,8 +6,10 @@
 #include <string>
 #include <vector>
 
+#include "Core/Text/HIKARI_EnumNames.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "Editor/Project/HIKARI_ProjectModuleList.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
@@ -18,6 +20,12 @@ namespace {
 bool Contains(const std::vector<std::string>& values, std::string_view value) {
     return std::find(values.begin(), values.end(), value) != values.end();
 }
+
+constexpr TEXT::EnumName<ModuleSource> kModuleSourceNames[] = {
+    {ModuleSource::ProjectPlugins, "project"},
+    {ModuleSource::Engine, "engine"},
+    {ModuleSource::ManifestPath, "path"},
+};
 
 nlohmann::json DescribeFeature(const RuntimeFeatureInfo& info, const std::vector<std::string>& enabled) {
     return {{"id", info.featureId},
@@ -37,9 +45,8 @@ void DocumentSceneEditorController::RegisterProjectOperations() {
     EDITOR::EditorOperationDefinition features{
         "project.features",
         "List the project's runtime features (Vfx, Cinematics, Physics, ...): whether each is enabled, what it "
-        "requires and which component types it provides, plus the modules installed in Project.hikari with their "
-        "version, load state and features. Components of a disabled feature cannot be added; enable the feature "
-        "with project.features.edit.",
+        "requires and which component types it provides. Components of a disabled feature cannot be added; enable "
+        "the feature with project.features.edit. Module packages are listed by project.modules.",
         "general",
         {},
         [this](const nlohmann::json&) -> EDITOR::EditorOperationResult {
@@ -52,23 +59,81 @@ void DocumentSceneEditorController::RegisterProjectOperations() {
             nlohmann::json list = nlohmann::json::array();
             for (const RuntimeFeatureInfo& info : aiOperationScene_->GetRuntimeFeatureCatalog().GetFeatureInfos())
                 list.push_back(DescribeFeature(info, enabled));
-            nlohmann::json modules = nlohmann::json::array();
-            for (const InstalledModuleStatus& module : aiOperationScene_->GetInstalledModules()) {
-                modules.push_back({{"id", module.manifest.id},
-                                   {"name", module.manifest.name},
-                                   {"version", module.manifest.version},
-                                   {"directory", TEXT::PathToUtf8(module.manifest.directory)},
-                                   {"runtimeLoaded", module.runtimeLoaded},
-                                   {"editorLoaded", module.editorLoaded},
-                                   {"error", module.error},
-                                   {"features", aiOperationScene_->GetRuntimeExtensionFeatures(module.manifest.id)}});
-            }
-            return EDITOR::OperationOk("Runtime features.",
-                                       {{"features", std::move(list)}, {"modules", std::move(modules)}});
+            return EDITOR::OperationOk("Runtime features.", {{"features", std::move(list)}});
         }};
     features.permission = EDITOR::EditorOperationPermission::ReadEditorState;
-    features.searchTerms = {"runtime feature", "enable UI", "enable vfx", "module", "运行时功能", "项目功能"};
+    features.searchTerms = {"runtime feature", "enable UI", "enable vfx", "运行时功能", "项目功能"};
     operationRegistry_.Register(std::move(features), EDITOR::EditorOperationKind::Query, false);
+
+    // 挿件包（外部モジュール）。項目の Plugins フォルダか引擎に同梱のフォルダにある包を、Project.hikari の参照で
+    // 有効にする。DLL の読み込みは項目を開く時だけなので、変更は開き直すまで反映されない。
+    EDITOR::EditorOperationDefinition modules{
+        "project.modules",
+        "List the module packages this project can use: the ones in the project's Plugins folder, the ones shipped "
+        "with the engine and the ones Project.hikari references by path. Each entry tells whether the project "
+        "enables it, whether it is loaded in this session, the features it provides, and any problem (unreadable "
+        "manifest, built for another SDK version, missing dependency). reopenPending is true when Project.hikari "
+        "and the loaded modules differ; reopen the project to apply. Enable or disable with "
+        "project.modules.set_enabled.",
+        "general",
+        {},
+        [this](const nlohmann::json&) -> EDITOR::EditorOperationResult {
+            if (aiOperationScene_ == nullptr)
+                return EDITOR::OperationFailure("NO_SCENE", "Open a project first.");
+            const EDITOR::ProjectModuleList list = EDITOR::BuildProjectModuleList(*aiOperationScene_);
+            if (!list.error.empty())
+                return EDITOR::OperationFailure("PROJECT_UNREADABLE", list.error);
+            nlohmann::json entries = nlohmann::json::array();
+            bool reopenPending = false;
+            for (const EDITOR::ProjectModuleRow& row : list.rows) {
+                const ModuleManifest& manifest = row.option.manifest;
+                reopenPending = reopenPending || row.reopenPending;
+                entries.push_back({{"id", manifest.id},
+                                   {"name", manifest.name},
+                                   {"version", manifest.version},
+                                   {"sdkVersion", manifest.sdkVersion},
+                                   {"source", TEXT::EnumToName(kModuleSourceNames, row.option.source)},
+                                   {"directory", TEXT::PathToUtf8(manifest.directory)},
+                                   {"enabled", row.option.enabled},
+                                   {"requiredBy", row.option.requiredBy},
+                                   {"problem", row.option.problem},
+                                   {"runtimeLoaded", row.installed != nullptr && row.installed->runtimeLoaded},
+                                   {"editorLoaded", row.installed != nullptr && row.installed->editorLoaded},
+                                   {"loadError", row.installed != nullptr ? row.installed->error : std::string{}},
+                                   {"features", aiOperationScene_->GetRuntimeExtensionFeatures(manifest.id)},
+                                   {"reopenPending", row.reopenPending}});
+            }
+            return EDITOR::OperationOk("Module packages.",
+                                       {{"modules", std::move(entries)}, {"reopenPending", reopenPending}});
+        }};
+    modules.permission = EDITOR::EditorOperationPermission::ReadEditorState;
+    modules.searchTerms = {"module", "plugin", "package", "插件", "模块", "插件包"};
+    operationRegistry_.Register(std::move(modules), EDITOR::EditorOperationKind::Query, false);
+
+    EDITOR::EditorOperationDefinition moduleEnabled{
+        "project.modules.set_enabled",
+        "Enable or disable a module package for this project by writing Project.hikari. Module libraries load only "
+        "when a project opens, so the change takes effect after the project is reopened. A package with a problem "
+        "cannot be enabled, and a module another enabled module depends on cannot be disabled.",
+        "general",
+        {{"module", EDITOR::EditorOperationParameterType::String, true, "Module id from project.modules"},
+         {"enabled", EDITOR::EditorOperationParameterType::Bool, true, "True enables the module, false disables it"}},
+        [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+            if (aiOperationScene_ == nullptr)
+                return EDITOR::OperationFailure("NO_SCENE", "Open a project first.");
+            const std::string id = parameters.value("module", std::string{});
+            const bool enabled = parameters.value("enabled", false);
+            std::string message{};
+            if (!SetProjectModuleEnabled(aiOperationScene_->GetAssetDatabase().GetProjectRoot(),
+                                         GetEngineModulesDirectory(), id, enabled, &message))
+                return EDITOR::OperationFailure("MODULE_NOT_CHANGED", message);
+            return EDITOR::OperationOk(std::string(enabled ? "Enabled " : "Disabled ") + id +
+                                           ". Reopen the project to apply.",
+                                       {{"module", id}, {"enabled", enabled}, {"reopenRequired", true}});
+        }};
+    moduleEnabled.permission = EDITOR::EditorOperationPermission::ModifyProjectFiles;
+    moduleEnabled.searchTerms = {"enable module", "install plugin", "启用模块", "安装插件"};
+    operationRegistry_.Register(std::move(moduleEnabled), EDITOR::EditorOperationKind::Mutation, false);
 
     EDITOR::EditorOperationDefinition moduleExtensions{
         "module.extensions",

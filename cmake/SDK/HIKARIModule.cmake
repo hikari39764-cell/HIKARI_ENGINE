@@ -5,7 +5,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/HIKARIModuleTargets.cmake")
 # 項目をまたいで使う外部モジュールを構築し、そのまま配れる挿件包のフォルダを作る：
 #
 #   <HIKARI_MODULE_PACKAGE_ROOT>/<id>/
-#       <id>.hmodule            構築が書く清単（元の清単 + DLL の路径）
+#       <id>.hmodule            構築が書く清単（元の清単 + SDK の版 + DLL の路径）
 #       <library>.dll           EditorRelease の実行 DLL
 #       <library>Editor.dll     編集器の DLL（SINGLE_LIBRARY なら実行 DLL が兼ねる）
 #       Shipping/<library>.dll  Shipping の実行 DLL（編集器の分を含まない）
@@ -46,15 +46,18 @@ function(hikari_add_module)
     if(_error OR _id STREQUAL "")
         message(FATAL_ERROR "HIKARI Module MANIFEST has no id: ${_manifest_path}")
     endif()
-    foreach(_built IN ITEMS runtimeLibrary shippingRuntimeLibrary editorLibrary)
+    foreach(_built IN ITEMS sdkVersion runtimeLibrary shippingRuntimeLibrary editorLibrary)
         string(JSON _value ERROR_VARIABLE _error GET "${_manifest}" "${_built}")
         if(NOT _error)
             message(
                 FATAL_ERROR
-                "HIKARI Module ${_id}: remove ${_built} from ${_manifest_path}. The build writes the library "
-                "paths into the packaged manifest.")
+                "HIKARI Module ${_id}: remove ${_built} from ${_manifest_path}. The build writes the SDK version "
+                "and the library paths into the packaged manifest.")
         endif()
     endforeach()
+    if(NOT HIKARI_VERSION)
+        message(FATAL_ERROR "HIKARI Module ${_id}: call find_package(HIKARI CONFIG REQUIRED) before hikari_add_module.")
+    endif()
 
     set(_library "${HIKARI_MODULE_LIBRARY_NAME}")
     if(NOT _library)
@@ -128,7 +131,9 @@ function(hikari_add_module)
     endif()
 
     # 挿件包の清単。内容が変わった時だけ書く。
+    # sdkVersion：引擎は major と minor が同じ SDK で作った DLL だけを読み込む。
     set(_packaged "${_manifest}")
+    string(JSON _packaged SET "${_packaged}" sdkVersion "\"${HIKARI_VERSION}\"")
     string(JSON _packaged SET "${_packaged}" runtimeLibrary "\"${_library}.dll\"")
     string(JSON _packaged SET "${_packaged}" shippingRuntimeLibrary "\"Shipping/${_library}.dll\"")
     if(_editor_library_file)

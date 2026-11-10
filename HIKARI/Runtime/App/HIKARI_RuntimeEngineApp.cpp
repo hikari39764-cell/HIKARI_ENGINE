@@ -6,7 +6,6 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
-#include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
@@ -90,8 +89,8 @@ bool RuntimeEngineApp::ComposeInstalledModules(DocumentSceneBase& scene) {
     const bool failureIsFatal = !SERVICES::IsEditorHost();
     std::vector<ModuleManifest> manifests{};
     std::string message{};
-    if (!ResolveProjectModules(project.GetDescriptor().modules, project.GetRoot(),
-                               PLATFORM::GetExecutableDirectory() / "Modules", manifests, &message)) {
+    if (!ResolveProjectModules(project.GetDescriptor().modules, project.GetRoot(), GetEngineModulesDirectory(),
+                               manifests, &message)) {
         HIKARI_LOG_ERROR("[ProjectModules] " + message);
         return !failureIsFatal;
     }
@@ -100,7 +99,9 @@ bool RuntimeEngineApp::ComposeInstalledModules(DocumentSceneBase& scene) {
         status.manifest = std::move(manifest);
         const ModuleManifest& loaded = status.manifest;
         auto library = std::make_unique<GameProjectModuleLibrary>();
-        if (!library->LoadInstalledModule(loaded.directory / loaded.runtimeLibrary, status.error)) {
+        // 版の合わない DLL は読まない（仮想関数表が合わず、読むと落ちる）。
+        if (!IsModuleSdkCompatible(loaded, &status.error) ||
+            !library->LoadInstalledModule(loaded.directory / loaded.runtimeLibrary, status.error)) {
             HIKARI_LOG_ERROR("[ProjectModules] " + loaded.id + ": " + status.error);
         } else if (library->GetModuleId() != loaded.id) {
             status.error = "the library reports module id " + std::string(library->GetModuleId());

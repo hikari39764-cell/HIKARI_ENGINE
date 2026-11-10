@@ -186,13 +186,17 @@ void AssertRegistryClean(const HIKARI::ComponentRegistry& components,
 }
 
 // 項目のモジュール一覧：依存が先に並ぶ、同梱のモジュールで依存を補う、欠落・循環・id の食い違いは断る。
+// 項目の Plugins は同梱より先に探す。版の合わない包は有効に出来ず、依存されている包は外せない。
 void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
     std::filesystem::remove_all(scratch);
+    const std::string currentSdk =
+        std::to_string(HIKARI::SDK::kVersionMajor) + "." + std::to_string(HIKARI::SDK::kVersionMinor) + ".0";
     const auto writeManifest = [&](const std::filesystem::path& directory, const std::string& id,
-                                   const std::vector<std::string>& dependencies) {
+                                   const std::vector<std::string>& dependencies, const std::string& sdkVersion = {}) {
         HIKARI::ModuleManifest manifest{};
         manifest.id = id;
         manifest.version = "1.0.0";
+        manifest.sdkVersion = sdkVersion.empty() ? currentSdk : sdkVersion;
         manifest.runtimeLibrary = "HIKARI_GameProject.dll";
         manifest.dependencies = dependencies;
         std::filesystem::create_directories(directory);
@@ -240,8 +244,40 @@ void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
     assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded));
     assert(reloaded.modules.size() == 2u && reloaded.modules[0].id == "Test.Kit" &&
            reloaded.modules[0].manifest == kit.manifest && reloaded.modules[1].manifest.empty());
+
+    const std::filesystem::path plugins = project / HIKARI::kProjectPluginsDirectory;
+    writeManifest(plugins / "Test.Base", "Test.Base", {});
+    writeManifest(plugins / "Test.Old", "Test.Old", {}, "1.0.0");
+    assert(HIKARI::ResolveProjectModules({{"Test.Base", {}}}, project, builtin, resolved) && resolved.size() == 1u &&
+           std::filesystem::equivalent(resolved[0].directory, plugins / "Test.Base"));
+    const auto findOption = [&](const std::string& id) {
+        for (HIKARI::ProjectModuleOption& option : HIKARI::ListProjectModuleOptions(reloaded, project, builtin)) {
+            if (option.manifest.id == id) {
+                return std::move(option);
+            }
+        }
+        return HIKARI::ProjectModuleOption{};
+    };
+    const HIKARI::ProjectModuleOption base = findOption("Test.Base");
+    assert(base.enabled && base.source == HIKARI::ModuleSource::ProjectPlugins && base.problem.empty() &&
+           base.requiredBy == std::vector<std::string>{"Test.Kit"});
+    assert(findOption("Test.Kit").source == HIKARI::ModuleSource::ManifestPath);
+    const HIKARI::ProjectModuleOption old = findOption("Test.Old");
+    assert(!old.enabled && old.problem.find("built for HIKARI SDK 1.0.0") != std::string::npos);
+    assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Old", true, &message) &&
+           message.find("HIKARI SDK") != std::string::npos);
+    assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", false, &message) &&
+           message.find("required by Test.Kit") != std::string::npos);
+    assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Nowhere", true, &message));
+    assert(HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Kit", false) &&
+           HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", false));
+    assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded) && reloaded.modules.empty());
+    assert(HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", true));
+    assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded) && reloaded.modules.size() == 1u &&
+           reloaded.modules[0].id == "Test.Base" && reloaded.modules[0].manifest.empty());
     std::filesystem::remove_all(scratch);
-    std::cout << "project modules: dependency order, missing, cycle and id mismatch checked\n";
+    std::cout << "project modules: dependency order, missing, cycle, id mismatch, Plugins folder, SDK version and "
+                 "enable/disable checked\n";
 }
 
 // 世界の物体ごとの名前・親・局所変換・型ごとの部品属性（同じ型の中の並びは保つ）。
