@@ -878,10 +878,11 @@ bool GameProjectEditorWorkspaceHost::HasUnsavedChanges() const noexcept {
     return (documents_ != nullptr && documents_->HasUnsavedDocuments()) || registry_.HasUnsavedWorkspaceChanges();
 }
 
-void GameProjectEditorWorkspaceHost::PrepareSceneViewportWindow() {
+std::string GameProjectEditorWorkspaceHost::PrepareSceneViewportWindow() {
     if (ui_ && ActiveWorkspaceRequestsSceneViewport()) {
         ui_->PrepareSceneViewportWindow();
     }
+    return "Project Scene View/" + std::string(registry_.GetActiveWorkspaceId());
 }
 
 GameProjectEditorWorkspaceRegistry& GameProjectEditorWorkspaceHost::Registry() noexcept { return registry_; }

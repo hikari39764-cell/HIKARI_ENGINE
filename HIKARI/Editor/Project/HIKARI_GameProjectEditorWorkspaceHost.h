@@ -37,7 +37,9 @@ public:
     void Draw(EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase&, AssetRegistry&);
     bool ActiveWorkspaceRequestsSceneViewport() const noexcept;
     bool HasUnsavedChanges() const noexcept;
-    void PrepareSceneViewportWindow();
+    // 作業区ごとの視口窓をその作業区のドックへ入れる準備をし、窓の固定 ID を返す。視口窓を作業区の間で共有すると、
+    // 別の作業区のドックに入ったまま隠れて残り、他の作業区では表示されなくなる。
+    std::string PrepareSceneViewportWindow();
     void Shutdown() noexcept;
 
     bool IsAvailable() const noexcept;
