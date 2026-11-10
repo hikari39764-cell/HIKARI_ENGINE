@@ -342,6 +342,21 @@ bool GameProjectEditorWorkspaceUi::Selectable(std::string_view stableControlId, 
     return pressed;
 }
 
+void GameProjectEditorWorkspaceUi::DragSource(std::string_view payloadType, std::string_view payload,
+                                              std::string_view label) {
+    if (payloadType.empty() || payloadType.size() > 31u || payload.size() > 255u ||
+        !ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+        return;
+    }
+    // 受け取る側が文字として読めるよう、終わりの 0 まで渡す。
+    const std::string type(payloadType);
+    const std::string data(payload);
+    ImGui::SetDragDropPayload(type.c_str(), data.c_str(), data.size() + 1u);
+    const std::string shown(Shown(label));
+    ImGui::TextUnformatted(shown.c_str());
+    ImGui::EndDragDropSource();
+}
+
 bool GameProjectEditorWorkspaceUi::Choice(std::string_view stableControlId, std::string_view label, bool selected) {
     const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const std::string text(Shown(label));

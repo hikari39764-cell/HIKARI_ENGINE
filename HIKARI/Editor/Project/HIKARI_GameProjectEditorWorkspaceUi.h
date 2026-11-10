@@ -112,6 +112,7 @@ public:
                      float maximum) override;
     bool Section(std::string_view stableControlId, std::string_view label, bool defaultOpen) override;
     void Tooltip(std::string_view utf8Text) override;
+    void DragSource(std::string_view payloadType, std::string_view payload, std::string_view label) override;
     bool Combo(std::string_view stableControlId, std::string_view label, std::span<const std::string_view> items,
                int32_t* selected) override;
     bool ModuleAssetField(std::string_view stableControlId, std::string_view label, std::string_view moduleAssetTypeId,

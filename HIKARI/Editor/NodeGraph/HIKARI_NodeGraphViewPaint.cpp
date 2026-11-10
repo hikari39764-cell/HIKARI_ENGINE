@@ -196,6 +196,10 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
                       smallSize, IM_COL32(244, 247, 250, 190), badge);
     }
     PaintNodeBody(node, layout, minimum, maximum);
+    if (HasFlag(node.flags, EditorNodeGraphNodeFlag::Disabled)) {
+        // 止めた節は灰色に沈める。
+        drawList.AddRectFilled(minimum, maximum, IM_COL32(15, 18, 23, 150), rounding);
+    }
     for (uint32_t pinIndex = 0u; pinIndex < node.inputCount + node.outputCount; ++pinIndex) {
         const PinLayout& pin = pins_[layout.firstPin + pinIndex];
         const std::string_view label = View(pin.pin->label);

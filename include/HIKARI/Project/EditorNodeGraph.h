@@ -71,6 +71,20 @@ enum class EditorNodeGraphNodeFlag : uint32_t {
     Collapsible = 1u << 0u,
     // 畳んである（三角の向きと、hiddenCount の数を出す）。
     Collapsed = 1u << 1u,
+    // 止めてある（灰色に沈めて描く）。
+    Disabled = 1u << 2u,
+};
+
+// 節を作る献立が何のために開いたか（EditorNodeGraphResult::createMode）。
+enum class EditorNodeGraphCreateMode : uint32_t {
+    // 何も無い所（createPosition に置く）。
+    Place = 0u,
+    // 選んでいる節の子に足す（Tab）。
+    AddChild,
+    // 選んでいる節と親の間に挟む（Shift+Tab）。
+    Wrap,
+    // 選んでいる節の種類を替える。
+    Replace,
 };
 
 struct EditorNodeGraphPin {
@@ -154,6 +168,11 @@ struct EditorNodeGraphMenuItem {
     const char* label = nullptr;
     // 献立の小見出し。無ければ直下に並ぶ（nodeActions では使わない）。
     const char* category = nullptr;
+    // 絞り込みで label の他に当てる字（種類の型名、説明など。英字は大文字小文字を区別しない）。
+    const char* keywords = nullptr;
+    // createItems：出す献立（1 << EditorNodeGraphCreateMode の組み合わせ）。0 はどの献立にも出す。
+    uint32_t modes = 0u;
+    uint32_t reserved = 0u;
 };
 
 struct EditorNodeGraphDesc {
@@ -197,6 +216,12 @@ struct EditorNodeGraphDesc {
     float nodeMaxWidth = 0.0f;
     // 0 以外：この節が画面の外にあれば、見える所まで視点を動かす（走っている節を追う時など）。
     uint64_t followNodeId = 0u;
+    // 使える作る献立（1 << EditorNodeGraphCreateMode）。AddChild / Wrap / Replace を入れると、節の右クリックの献立に
+    // 「子を足す…」「挟む…」「置き換える…」が並び、Tab と Shift+Tab で選んでいる節の横に開く。
+    uint32_t createModes = 0u;
+    uint32_t reserved2 = 0u;
+    // 面板の項目から引いてきた物（IEditorWorkspaceUi::DragSource の payloadType）を受け取る。無ければ受け取らない。
+    const char* dropPayloadType = nullptr;
 };
 
 struct EditorNodeGraphMovedNode {
@@ -253,6 +278,15 @@ struct EditorNodeGraphResult {
     // 名前を変え終えた節と、新しい名前（空なら名前を消す）。無ければ 0。
     uint64_t renamedNodeId = 0u;
     const char* renameText = nullptr;
+    // createItemIndex を選んだ献立（AddChild / Wrap / Replace の対象は選んでいる節）。
+    EditorNodeGraphCreateMode createMode = EditorNodeGraphCreateMode::Place;
+    uint32_t reserved = 0u;
+    // 面板から引いてきて図の上で離された物（DragSource の payload）。無ければ nullptr。
+    const char* droppedPayload = nullptr;
+    // 離した所の節と線（無ければ 0）と、図の座標。
+    uint64_t dropPayloadNodeId = 0u;
+    uint64_t dropPayloadLinkId = 0u;
+    EditorWorkspacePoint dropPayloadPosition{};
 };
 
 static_assert(std::is_standard_layout_v<EditorNodeGraphPin> && std::is_trivially_copyable_v<EditorNodeGraphPin>);
@@ -264,12 +298,12 @@ static_assert(sizeof(EditorNodeGraphNode) == 168u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphLink> && std::is_trivially_copyable_v<EditorNodeGraphLink>);
 static_assert(sizeof(EditorNodeGraphLink) == 48u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphMenuItem>);
-static_assert(sizeof(EditorNodeGraphMenuItem) == 16u);
+static_assert(sizeof(EditorNodeGraphMenuItem) == 32u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphDesc> && std::is_trivially_copyable_v<EditorNodeGraphDesc>);
-static_assert(sizeof(EditorNodeGraphDesc) == 144u);
+static_assert(sizeof(EditorNodeGraphDesc) == 160u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphMovedNode>);
 static_assert(sizeof(EditorNodeGraphMovedNode) == 16u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphResult> && std::is_trivially_copyable_v<EditorNodeGraphResult>);
-static_assert(sizeof(EditorNodeGraphResult) == 184u);
+static_assert(sizeof(EditorNodeGraphResult) == 224u);
 
 } // namespace HIKARI::EDITOR_PROJECT

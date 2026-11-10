@@ -329,6 +329,7 @@
     {"ui.assetInspector.tabSummary", "摘要"}, {"ui.assetInspector.typeFormat", "类型：%s"},
     {"ui.assetInspector.unlit", "不受光"}, {"ui.assetInspector.unsavedEdits", "未保存的材质编辑"},
     {"ui.nodeGraph.addNode", "添加节点"}, {"ui.nodeGraph.copy", "复制"}, {"ui.nodeGraph.cut", "剪切"},
+    {"ui.nodeGraph.addChild", "添加子节点…"}, {"ui.nodeGraph.wrapWith", "套一层…"}, {"ui.nodeGraph.replaceWith", "替换为…"},
     {"ui.nodeGraph.paste", "粘贴"}, {"ui.nodeGraph.duplicate", "复制一份"}, {"ui.nodeGraph.frameAll", "显示全部"},
     {"ui.common.apply", "应用"}, {"ui.common.cancel", "取消"}, {"ui.common.delete", "删除"}, {"ui.common.no", "否"},
     {"ui.common.none", "<无>"}, {"ui.common.reset", "重置"}, {"ui.common.save", "保存"},

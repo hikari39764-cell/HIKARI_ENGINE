@@ -20,7 +20,7 @@ namespace HIKARI::EDITOR_PROJECT {
 struct EditorNodeGraphDesc;
 struct EditorNodeGraphResult;
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 9u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 10u;
 
 // 界面の文字の言語：モジュールが IEditorWorkspaceUi に渡す固定の英文（ボタン、見出し、Tooltip、ui.Text、節点図の題など）は、
 // 宿主が描く前にモジュールの包の Text/zh.json、ja.json（と項目の ProjectSettings/Text）で今の言語へ引く。
@@ -230,6 +230,10 @@ public:
     // English source text (a fixed sentence or a template with {0}, {1}...) in the current editor language, from the
     // module's text tables. Valid until the end of the frame. Use FormatText for sentences with names or numbers.
     virtual std::string_view Translate(std::string_view englishText) = 0;
+    // Makes the control drawn just before this call a drag source. Dragging it carries payload (UTF-8, at most 255
+    // bytes) under payloadType (at most 31 bytes); label is shown next to the pointer. A NodeGraph whose
+    // desc.dropPayloadType is the same type receives it (EditorNodeGraphResult::droppedPayload).
+    virtual void DragSource(std::string_view payloadType, std::string_view payload, std::string_view label) = 0;
 };
 
 // Marks text that the host must show as it is (names, values, sentences already translated).

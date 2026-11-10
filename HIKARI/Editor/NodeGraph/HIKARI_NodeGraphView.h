@@ -34,6 +34,8 @@ private:
         Canvas,
         Node,
         Link,
+        // 選んでいる節に対する作る献立（子を足す、挟む、置き換える）。
+        Create,
     };
 
     struct NodeLayout {
@@ -112,6 +114,12 @@ private:
     void DrawRename(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame,
                     EDITOR_PROJECT::EditorNodeGraphResult& outResult);
     void BeginRename(const EDITOR_PROJECT::EditorNodeGraphNode& node);
+    // 面板の項目から引いてきた物を受け取る（desc.dropPayloadType の時だけ）。
+    void AcceptPayload(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, Frame& frame,
+                       EDITOR_PROJECT::EditorNodeGraphResult& outResult);
+    // 選んでいる節の横に、mode の作る献立を開く（desc.createModes に無い mode は開かない）。
+    void OpenCreateMenu(const EDITOR_PROJECT::EditorNodeGraphDesc& desc,
+                        EDITOR_PROJECT::EditorNodeGraphCreateMode mode);
 
     NodeGraphCanvasState canvas_{};
     bool framed_ = false;
@@ -130,12 +138,23 @@ private:
     bool renameFocus_ = false;
     std::array<char, 128> renameBuffer_{};
     std::string renameText_{};
+    // 受け取った物の字（outResult.droppedPayload が指す）。
+    std::string payloadText_{};
     uint64_t dragPinId_ = 0u;
     MATH::Vec2 boxStart_{};
     bool boxAdditive_ = false;
     MenuTarget menuTarget_ = MenuTarget::Canvas;
     MATH::Vec2 menuPosition_{};
     uint64_t menuFromPinId_ = 0u;
+    EDITOR_PROJECT::EditorNodeGraphCreateMode createMode_ = EDITOR_PROJECT::EditorNodeGraphCreateMode::Place;
+    // 節の献立で選んだ「子を足す…」などを、献立を閉じた後で開き直す。
+    bool reopen_ = false;
+    EDITOR_PROJECT::EditorNodeGraphCreateMode reopenMode_ = EDITOR_PROJECT::EditorNodeGraphCreateMode::Place;
+    // このフレームの画布の左上（画面の座標）。
+    MATH::Vec2 frameOrigin_{};
+    // 次に開く献立を置く所（画面の座標）。
+    bool placeMenu_ = false;
+    MATH::Vec2 menuScreenPosition_{};
     std::array<char, 64> menuFilter_{};
 
     std::vector<uint64_t> selectedNodes_{};
