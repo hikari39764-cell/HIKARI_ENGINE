@@ -31,7 +31,8 @@ bool EditorEngineApp::Initialize() {
         HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
         gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
         gameProjectEditorModule_.Reset();
-    } else if (gameProjectEditorModule_.IsLoaded() && !RegisterEditorModule(gameProjectEditorModule_, moduleMessage)) {
+    } else if (gameProjectEditorModule_.IsLoaded() &&
+               !RegisterEditorModule(gameProjectEditorModule_, {}, moduleMessage)) {
         HIKARI_LOG_ERROR("[GameProjectEditor] " + moduleMessage);
         gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
         gameProjectEditorModule_.Reset();
@@ -43,7 +44,7 @@ bool EditorEngineApp::Initialize() {
         auto library = std::make_unique<GameProjectEditorModuleLibrary>();
         std::string message{};
         if (!library->Load(status.manifest.directory / status.manifest.editorLibrary, message) ||
-            !RegisterEditorModule(*library, message)) {
+            !RegisterEditorModule(*library, status.manifest.name, message)) {
             status.error = message;
             HIKARI_LOG_ERROR("[ProjectModules] " + status.manifest.id + " editor: " + message);
             gameProjectWorkspaceHost_.ReportModuleFailure(std::move(message));
@@ -57,14 +58,15 @@ bool EditorEngineApp::Initialize() {
     return true;
 }
 
-bool EditorEngineApp::RegisterEditorModule(GameProjectEditorModuleLibrary& module, std::string& outMessage) {
+bool EditorEngineApp::RegisterEditorModule(GameProjectEditorModuleLibrary& module, std::string_view displayName,
+                                           std::string& outMessage) {
     const std::string projectRootUtf8 = TEXT::PathToUtf8(GetProjectContext().GetRoot());
     if (projectRootUtf8.empty()) {
         outMessage = "Project root is unavailable for the requested Editor companion.";
         return false;
     }
-    if (!gameProjectWorkspaceHost_.RegisterModule(module, projectRootUtf8, documentSceneEditorController_.Operations(),
-                                                  outMessage)) {
+    if (!gameProjectWorkspaceHost_.RegisterModule(module, displayName, projectRootUtf8,
+                                                  documentSceneEditorController_.Operations(), outMessage)) {
         return false;
     }
     HIKARI_LOG_INFO("[GameProjectEditor] composed module=" + std::string(module.GetModuleId()) +

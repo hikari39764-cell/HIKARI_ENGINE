@@ -1415,7 +1415,7 @@
     {"log.detach", "Open as dockable panel"}, {"log.attach", "Return to sidebar"},
     {"log.readFailed", "Could not read the log file."}, {"log.exportFailed", "Could not export the log."},
 
-    {"shell.projectWorkspaces", "Project workspaces"}, {"shell.unsaved", "Unsaved changes"},
+    {"shell.projectModule", "This project"}, {"shell.module", "Module"}, {"shell.unsaved", "Unsaved changes"},
     {"shell.saveBeforeLeaving", "Save changes to '%s' before leaving?"},
     {"editor.ui.zu.reference.s.will.become.unresolved.f42d53", "%zu reference(s) will become unresolved."},
     {"editor.ui.blend.sample.83c942", "+ Blend Sample"}, {"editor.ui.condition.e937dd", "+ Condition"},

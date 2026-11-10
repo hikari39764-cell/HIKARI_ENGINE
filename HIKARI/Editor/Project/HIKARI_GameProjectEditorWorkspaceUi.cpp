@@ -63,6 +63,7 @@ void GameProjectEditorWorkspaceUi::SetAssets(AssetDatabase& database, AssetRegis
 
 void GameProjectEditorWorkspaceUi::BeginFrame(std::string_view workspaceId) {
     workspaceId_.assign(workspaceId);
+    toolbarLabel_.clear();
     previewOpen_ = false;
     previewContent_.DiscardPending();
     panelDepth_ = 0u;
@@ -90,7 +91,12 @@ void GameProjectEditorWorkspaceUi::DrawDockSpace(bool reset, bool wideCenter) {
         ImGui::DockBuilderSetNodePos(root, viewport->WorkPos);
         ImGui::DockBuilderSetNodeSize(root, viewport->WorkSize);
         ImGuiID body = root;
-        ImGui::DockBuilderSplitNode(body, ImGuiDir_Up, wideCenter ? 0.06f : 0.08f, &dockRegions_[1], &body);
+        // 工具栏はまず一行分。モジュールが行を足した時は BeginToolbar が中身に合わせ直す。
+        const float toolbarHeight = ImGui::GetFrameHeight() * 2.0f + ImGui::GetStyle().WindowPadding.y * 2.0f;
+        ImGui::DockBuilderSplitNode(body, ImGuiDir_Up,
+                                    std::clamp(toolbarHeight / (std::max)(viewport->WorkSize.y, 1.0f), 0.02f, 0.2f),
+                                    &dockRegions_[1], &body);
+        fitToolbarFrames_ = 3;
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Left, 0.21f, &dockRegions_[2], &body);
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Right, 0.30f, &dockRegions_[3], &body);
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Down, wideCenter ? 0.11f : 0.25f, &dockRegions_[4], &body);
@@ -124,9 +130,28 @@ void GameProjectEditorWorkspaceUi::EndFrame() noexcept {
     workspaceId_.clear();
 }
 
+bool GameProjectEditorWorkspaceUi::BeginToolbar(std::string_view title) {
+    toolbarLabel_ = MakeWorkspaceControlLabel(title, workspaceId_, "toolbar");
+    const bool visible = BeginPanel({}, {}, nullptr, EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar);
+    // ContentSize は前のフレームに描いた分（宿主の一行とモジュールが足した行）。
+    const ImGuiWindow* window = ImGui::GetCurrentWindow();
+    if (const ImGuiDockNode* node = window->DockNode;
+        fitToolbarFrames_ > 0 && node != nullptr && node->Size.x > 0.0f && window->ContentSize.y > 0.0f) {
+        --fitToolbarFrames_;
+        ImGui::DockBuilderSetNodeSize(node->ID, ImVec2(node->Size.x, window->ContentSize.y + ImGui::GetFrameHeight() +
+                                                                         ImGui::GetStyle().WindowPadding.y * 2.0f));
+    }
+    return visible;
+}
+
 bool GameProjectEditorWorkspaceUi::BeginPanel(std::string_view stablePanelId, std::string_view displayName, bool* open,
                                               EDITOR_PROJECT::EditorWorkspaceDockRegion region) {
-    const std::string label = MakeWorkspaceControlLabel(displayName, workspaceId_, stablePanelId);
+    const bool toolbar = region == EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar && !toolbarLabel_.empty();
+    const std::string label =
+        toolbar ? toolbarLabel_ : MakeWorkspaceControlLabel(displayName, workspaceId_, stablePanelId);
+    if (toolbar) {
+        open = nullptr;
+    }
     ++panelDepth_;
     const size_t slot = static_cast<size_t>(region);
     if (slot < dockRegions_.size() && dockRegions_[slot]) {

@@ -31,7 +31,9 @@ public:
     void Shutdown() override;
 
 private:
-    bool RegisterEditorModule(GameProjectEditorModuleLibrary& module, std::string& outMessage);
+    // displayName は挿件包の清単の名前。項目自身のコードのモジュールは空。
+    bool RegisterEditorModule(GameProjectEditorModuleLibrary& module, std::string_view displayName,
+                              std::string& outMessage);
 
     RUNTIME::RuntimeEngineApp runtimeApp_;
     DocumentSceneEditorController documentSceneEditorController_{};

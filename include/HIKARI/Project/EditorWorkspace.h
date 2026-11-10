@@ -21,6 +21,9 @@ inline constexpr uint32_t kEditorWorkspaceApiVersion = 7u;
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
+    // A workspace has one toolbar, titled with the workspace's name. The host draws its own row first (back to
+    // Scene, save, reset layout, the module the workspace belongs to, status). A panel that the workspace opens in
+    // this region continues in that same window: its displayName and open flag are not used.
     Toolbar,
     Left,
     Right,

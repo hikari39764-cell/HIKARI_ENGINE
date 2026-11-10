@@ -416,17 +416,9 @@ void DebugMenuBar::Draw(DebugWindowState& windows, EDITOR::EditorToolHost& toolH
             (void)workspaceHost.RequestOpen(std::move(request));
         }
 
-        // モジュールの作業区も引擎の作業区と同じ所に並べる。
-        if (projectWorkspaces != nullptr && projectWorkspaces->IsAvailable()) {
-            const auto& registry = projectWorkspaces->Registry();
-            for (size_t index = 0u; index < registry.GetWorkspaceCount(); ++index) {
-                const auto info = registry.GetWorkspaceInfo(index);
-                const bool active = info.active && workspaceHost.IsActive(EDITOR::EditorWorkspaceId::Project);
-                if (ImGui::MenuItem(std::string(info.displayName).c_str(), nullptr, active, !info.disabled)) {
-                    projectWorkspaces->RequestWorkspace(std::string(info.workspaceId));
-                    (void)workspaceHost.RequestOpen({EDITOR::EditorWorkspaceId::Project});
-                }
-            }
+        // モジュールの作業区も引擎の作業区と同じ所に、モジュールごとの見出しを付けて並べる。
+        if (projectWorkspaces != nullptr) {
+            projectWorkspaces->DrawWorkspaceMenuItems(workspaceHost);
         }
 
         ImGui::Separator();

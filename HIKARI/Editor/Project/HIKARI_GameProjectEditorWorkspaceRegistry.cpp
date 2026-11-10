@@ -458,8 +458,7 @@ bool GameProjectEditorWorkspaceRegistry::Activate(size_t index) noexcept {
     try {
         entry.workspace->OnActivate(context);
         active_ = index;
-        PublishStatus(EDITOR_PROJECT::EditorWorkspaceStatusSeverity::Info,
-                      "Activated project workspace '" + entry.displayName + "'.");
+        ClearStatus();
         return true;
     } catch (const std::exception& exception) {
         Disable(index, "OnActivate", ExceptionDetail(exception));

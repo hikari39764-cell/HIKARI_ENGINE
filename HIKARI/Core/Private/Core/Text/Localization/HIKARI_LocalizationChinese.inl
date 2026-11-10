@@ -1227,7 +1227,7 @@
     {"log.revealResource", "定位相关资源"}, {"log.detach", "作为可停靠面板打开"}, {"log.attach", "返回侧栏"},
     {"log.readFailed", "无法读取日志文件。"}, {"log.exportFailed", "无法导出日志。"},
 
-    {"shell.projectWorkspaces", "项目工作区"}, {"shell.unsaved", "有未保存的修改"},
+    {"shell.projectModule", "本项目"}, {"shell.module", "模块"}, {"shell.unsaved", "有未保存的修改"},
     {"shell.saveBeforeLeaving", "离开前保存“%s”的修改吗？"},
     {"editor.ui.zu.reference.s.will.become.unresolved.f42d53", "%zu 处引用将无法解析。"},
     {"editor.ui.blend.sample.83c942", "+ 混合样本"}, {"editor.ui.condition.e937dd", "+ 条件"},

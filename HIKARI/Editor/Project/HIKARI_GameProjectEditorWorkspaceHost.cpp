@@ -24,7 +24,7 @@ GameProjectEditorWorkspaceHost::GameProjectEditorWorkspaceHost()
 GameProjectEditorWorkspaceHost::~GameProjectEditorWorkspaceHost() = default;
 
 bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModuleLibrary& module,
-                                                    std::string_view projectRootUtf8,
+                                                    std::string_view displayName, std::string_view projectRootUtf8,
                                                     EditorOperationRegistry& operationRegistry,
                                                     std::string& outMessage) {
     if (!module.IsLoaded()) {
@@ -69,6 +69,9 @@ bool GameProjectEditorWorkspaceHost::RegisterModule(const GameProjectEditorModul
         operationRegistry_ = &operationRegistry;
         operationOwnerTokens_.push_back(operationOwnerToken);
         extensions_.Add(module);
+        if (!displayName.empty()) {
+            moduleNames_.emplace_back(module.GetModuleId(), displayName);
+        }
     } else {
         (void)operationRegistry.UnregisterOwner(operationOwnerToken);
         discardDocumentsOfFirstModule();
@@ -161,7 +164,7 @@ void GameProjectEditorWorkspaceHost::Draw(EditorWorkspaceHost& host, float unsca
     ui_->DrawDockSpace(resetLayout_ || host.ConsumeReset(EditorWorkspaceId::Project),
                        ActiveWorkspaceRequestsSceneViewport());
     resetLayout_ = false;
-    DrawWorkspaceSelector(host);
+    DrawToolbar(host);
     DrawClosePrompt();
     ui_->SetHistoryRequest(undoRequested_, redoRequested_);
     undoRequested_ = false;
@@ -195,6 +198,7 @@ void GameProjectEditorWorkspaceHost::Shutdown() noexcept {
     operationOwnerTokens_.clear();
     (void)extensions_.ActivateTool({});
     extensions_.Clear();
+    moduleNames_.clear();
     moduleFailureMessage_.clear();
     closePromptWasPending_ = false;
 }
@@ -224,32 +228,64 @@ const GameProjectEditorWorkspaceRegistry& GameProjectEditorWorkspaceHost::Regist
     return registry_;
 }
 
-void GameProjectEditorWorkspaceHost::DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter) {
-    if (!IsAvailable())
-        return;
-    ImGui::SeparatorText(TEXT::Localize("shell.projectWorkspaces").c_str());
+// 挿件包のモジュールは「模块 名前」、項目自身のコードは「本项目」。
+std::string GameProjectEditorWorkspaceHost::ModuleLabel(std::string_view moduleId) const {
+    for (const auto& [id, name] : moduleNames_) {
+        if (id == moduleId)
+            return TEXT::Localize("shell.module") + "  " + name;
+    }
+    return TEXT::Localize("shell.projectModule");
+}
+
+void GameProjectEditorWorkspaceHost::ListWorkspaces(EditorWorkspaceHost& host, const char* filter,
+                                                    const WorkspaceItem& drawItem) {
+    std::string_view module{};
     for (size_t i = 0; i < registry_.GetWorkspaceCount(); ++i) {
         const auto info = registry_.GetWorkspaceInfo(i);
         if (filter && filter[0] && info.displayName.find(filter) == std::string_view::npos)
             continue;
-        ImGui::BeginDisabled(info.disabled);
-        if (IconTextButton(EditorGlyph::Grid, std::string(info.displayName).c_str(),
-                           std::string(info.workspaceId).c_str(),
-                           info.active && host.IsActive(EditorWorkspaceId::Project) ? EditorButtonTone::Primary
-                                                                                    : EditorButtonTone::Quiet,
-                           {-1, 36})) {
+        if (info.moduleId != module) {
+            module = info.moduleId;
+            ImGui::SeparatorText(ModuleLabel(module).c_str());
+        }
+        if (drawItem(info, info.active && host.IsActive(EditorWorkspaceId::Project))) {
             requestedWorkspace_.assign(info.workspaceId);
             (void)host.RequestOpen({EditorWorkspaceId::Project});
         }
-        ImGui::EndDisabled();
     }
+}
+
+void GameProjectEditorWorkspaceHost::DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter) {
+    if (!IsAvailable())
+        return;
+    ListWorkspaces(host, filter, [](const GameProjectEditorWorkspaceInfo& info, bool active) {
+        ImGui::BeginDisabled(info.disabled);
+        const bool clicked = IconTextButton(EditorGlyph::Grid, std::string(info.displayName).c_str(),
+                                            std::string(info.workspaceId).c_str(),
+                                            active ? EditorButtonTone::Primary : EditorButtonTone::Quiet, {-1, 36});
+        ImGui::EndDisabled();
+        return clicked;
+    });
     if (!moduleFailureMessage_.empty())
         ImGui::TextWrapped("%s", moduleFailureMessage_.c_str());
 }
 
-void GameProjectEditorWorkspaceHost::DrawWorkspaceSelector(EditorWorkspaceHost& host) {
-    if (ui_->BeginPanel("HostToolbar", TEXT::Localize("shell.workspaces"), nullptr,
-                        EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar)) {
+void GameProjectEditorWorkspaceHost::DrawWorkspaceMenuItems(EditorWorkspaceHost& host) {
+    if (!IsAvailable())
+        return;
+    ListWorkspaces(host, nullptr, [](const GameProjectEditorWorkspaceInfo& info, bool active) {
+        const std::string label = std::string(info.displayName) + "###" + std::string(info.workspaceId);
+        return ImGui::MenuItem(label.c_str(), nullptr, active, !info.disabled);
+    });
+}
+
+// 作業区の工具栏は一つ。題は今の作業区の名前で、宿主の一行（場景へ戻る・保存・配置の初期化・どのモジュールの物か・
+// 状態）のあとへ、モジュールが Toolbar 区画へ出す内容が続く。
+void GameProjectEditorWorkspaceHost::DrawToolbar(EditorWorkspaceHost& host) {
+    GameProjectEditorWorkspaceInfo active{};
+    for (size_t i = 0; i < registry_.GetWorkspaceCount() && !active.active; ++i)
+        active = registry_.GetWorkspaceInfo(i);
+    if (ui_->BeginToolbar(active.active ? active.displayName : std::string_view{})) {
         if (IconButton(EditorGlyph::Scene, "backToScene", EditorButtonTone::Quiet, {},
                        TEXT::Localize("menu.workspace.scene").c_str()))
             (void)host.RequestOpen({EditorWorkspaceId::Scene});
@@ -261,11 +297,18 @@ void GameProjectEditorWorkspaceHost::DrawWorkspaceSelector(EditorWorkspaceHost& 
         if (IconButton(EditorGlyph::Refresh, "resetProjectLayout", EditorButtonTone::Quiet, {},
                        TEXT::Localize("shell.resetLayout").c_str()))
             resetLayout_ = true;
+        if (active.active) {
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextDisabled("%s", ModuleLabel(active.moduleId).c_str());
+        }
         if (registry_.IsActiveWorkspaceDirty()) {
             ImGui::SameLine();
             StatusBadge(TEXT::Localize("shell.unsaved").c_str(), EditorStatusTone::Warning);
         }
         if (!registry_.GetStatusMessage().empty()) {
+            ImGui::SameLine();
+            ImGui::AlignTextToFramePadding();
             ImGui::TextUnformatted(registry_.GetStatusMessage().data(),
                                    registry_.GetStatusMessage().data() + registry_.GetStatusMessage().size());
         }

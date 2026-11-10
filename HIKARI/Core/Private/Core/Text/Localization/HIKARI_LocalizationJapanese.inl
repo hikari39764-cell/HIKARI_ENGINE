@@ -1442,7 +1442,7 @@
     {"log.attach", "サイドバーに戻す"}, {"log.readFailed", "ログファイルを読み込めません。"},
     {"log.exportFailed", "ログを書き出せません。"},
 
-    {"shell.projectWorkspaces", "プロジェクトのワークスペース"}, {"shell.unsaved", "未保存の変更"},
+    {"shell.projectModule", "このプロジェクト"}, {"shell.module", "モジュール"}, {"shell.unsaved", "未保存の変更"},
     {"shell.saveBeforeLeaving", "移動する前に「%s」の変更を保存しますか？"},
     {"editor.ui.zu.reference.s.will.become.unresolved.f42d53", "%zu 件の参照が解決できなくなります。"},
     {"editor.ui.blend.sample.83c942", "+ ブレンドサンプル"}, {"editor.ui.condition.e937dd", "+ 条件"},
