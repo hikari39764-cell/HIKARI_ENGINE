@@ -93,6 +93,8 @@ bool SetLocalizationLanguage(Language language) noexcept {
     return true;
 }
 
+Language GetLocalizationLanguage() noexcept { return gLanguage; }
+
 const std::string& Localize(std::string_view key) {
     const std::string* translated = FindTranslation(key);
     return translated != nullptr ? *translated : InternMissingKey(key);

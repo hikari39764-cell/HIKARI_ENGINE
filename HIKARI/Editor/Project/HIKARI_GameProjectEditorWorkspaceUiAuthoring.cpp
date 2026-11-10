@@ -2,6 +2,7 @@
 
 #include <cstring>
 #include <string>
+#include <vector>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Editor/Inspectors/HIKARI_ImGuiInspectorBuilder.h"
@@ -50,7 +51,8 @@ bool GameProjectEditorWorkspaceUi::DrawAssetGuidField(std::string_view stableCon
     ImGui::PopID();
     if (!label.empty()) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        ImGui::TextUnformatted(label.data(), label.data() + label.size());
+        const std::string_view shown = Shown(label);
+        ImGui::TextUnformatted(shown.data(), shown.data() + shown.size());
     }
     ImGui::EndGroup();
     if (!changed || guid.size() >= bufferCapacity) {
@@ -83,7 +85,35 @@ void GameProjectEditorWorkspaceUi::NodeGraph(std::string_view stableGraphId,
         return;
     }
     const std::string key = MakeWorkspaceControlLabel({}, workspaceId_, stableGraphId);
-    nodeGraphs_[key].Draw(key.c_str(), desc, outResult);
+    // 節の題・小字・角標と献立の字を界面の言語にした写しで描く（写しの字はこの呼び出しの間だけ生きる）。
+    std::vector<EDITOR_PROJECT::EditorNodeGraphNode> nodes(desc.nodes, desc.nodes + desc.nodeCount);
+    std::vector<EDITOR_PROJECT::EditorNodeGraphMenuItem> createItems(desc.createItems,
+                                                                     desc.createItems + desc.createItemCount);
+    std::vector<EDITOR_PROJECT::EditorNodeGraphMenuItem> nodeActions(desc.nodeActions,
+                                                                     desc.nodeActions + desc.nodeActionCount);
+    std::vector<std::string> texts{};
+    texts.reserve(nodes.size() * 3u + (createItems.size() + nodeActions.size()) * 2u);
+    const auto shown = [&](const char*& text) {
+        if (text != nullptr) {
+            text = texts.emplace_back(Shown(text)).c_str();
+        }
+    };
+    for (EDITOR_PROJECT::EditorNodeGraphNode& node : nodes) {
+        shown(node.title);
+        shown(node.detail);
+        shown(node.badge);
+    }
+    for (auto* items : {&createItems, &nodeActions}) {
+        for (EDITOR_PROJECT::EditorNodeGraphMenuItem& item : *items) {
+            shown(item.label);
+            shown(item.category);
+        }
+    }
+    EDITOR_PROJECT::EditorNodeGraphDesc translated = desc;
+    translated.nodes = nodes.data();
+    translated.createItems = createItems.data();
+    translated.nodeActions = nodeActions.data();
+    nodeGraphs_[key].Draw(key.c_str(), translated, outResult);
 }
 
 void GameProjectEditorWorkspaceUi::SetClipboardText(std::string_view utf8Text) {

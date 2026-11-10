@@ -8,6 +8,7 @@
 #include <imgui_internal.h>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/Text/HIKARI_OwnedText.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 
 namespace HIKARI::EDITOR {
@@ -164,7 +165,7 @@ bool GameProjectEditorWorkspaceUi::BeginPanel(std::string_view stablePanelId, st
                                               EDITOR_PROJECT::EditorWorkspaceDockRegion region) {
     const bool toolbar = region == EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar && !toolbarLabel_.empty();
     const std::string label =
-        toolbar ? toolbarLabel_ : MakeWorkspaceControlLabel(displayName, workspaceId_, stablePanelId);
+        toolbar ? toolbarLabel_ : MakeWorkspaceControlLabel(Shown(displayName), workspaceId_, stablePanelId);
     if (toolbar) {
         open = nullptr;
     }
@@ -201,8 +202,8 @@ bool GameProjectEditorWorkspaceUi::InputTextMultiline(std::string_view id, std::
     if (!buffer || !capacity)
         return false;
     Text(label);
-    return ImGui::InputTextMultiline(MakeWorkspaceControlLabel(label, workspaceId_, id).c_str(), buffer, capacity,
-                                     ImVec2(-1.0f, height));
+    return ImGui::InputTextMultiline(MakeWorkspaceControlLabel(Shown(label), workspaceId_, id).c_str(), buffer,
+                                     capacity, ImVec2(-1.0f, height));
 }
 
 void GameProjectEditorWorkspaceUi::EndPanel() {
@@ -221,7 +222,19 @@ void GameProjectEditorWorkspaceUi::EndPanel() {
 }
 
 void GameProjectEditorWorkspaceUi::Text(std::string_view utf8Text) {
-    ImGui::TextUnformatted(utf8Text.data(), utf8Text.data() + utf8Text.size());
+    const std::string_view shown = Shown(utf8Text);
+    ImGui::TextUnformatted(shown.data(), shown.data() + shown.size());
+}
+
+std::string_view GameProjectEditorWorkspaceUi::Shown(std::string_view text) const {
+    if (!text.empty() && text.front() == EDITOR_PROJECT::kEditorTextVerbatim) {
+        return text.substr(1u);
+    }
+    return TEXT::TranslateOwnedText(textOwner_, text);
+}
+
+std::string_view GameProjectEditorWorkspaceUi::Translate(std::string_view englishText) {
+    return TEXT::TranslateOwnedText(textOwner_, englishText);
 }
 
 void GameProjectEditorWorkspaceUi::Separator() { ImGui::Separator(); }
@@ -229,7 +242,7 @@ void GameProjectEditorWorkspaceUi::Separator() { ImGui::Separator(); }
 void GameProjectEditorWorkspaceUi::SameLine() { ImGui::SameLine(); }
 
 bool GameProjectEditorWorkspaceUi::Button(std::string_view stableControlId, std::string_view label) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::Button(stableLabel.c_str());
 }
 
@@ -238,7 +251,7 @@ bool GameProjectEditorWorkspaceUi::InputText(std::string_view stableControlId, s
     if (utf8Buffer == nullptr || bufferCapacity == 0u) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::InputText(stableLabel.c_str(), utf8Buffer, bufferCapacity);
 }
 
@@ -246,7 +259,7 @@ bool GameProjectEditorWorkspaceUi::Checkbox(std::string_view stableControlId, st
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::Checkbox(stableLabel.c_str(), value);
 }
 
@@ -255,7 +268,7 @@ bool GameProjectEditorWorkspaceUi::InputInt(std::string_view stableControlId, st
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     int edited = static_cast<int>(*value);
     const bool changed = ImGui::InputInt(stableLabel.c_str(), &edited, std::max(1, static_cast<int>(options.step)));
     if (changed) {
@@ -272,7 +285,7 @@ bool GameProjectEditorWorkspaceUi::InputFloat(std::string_view stableControlId, 
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const bool changed = ImGui::InputFloat(stableLabel.c_str(), value, std::max(0.0f, options.step));
     if (changed && options.clampToRange != 0u && options.minimum <= options.maximum) {
         *value = std::clamp(*value, options.minimum, options.maximum);
@@ -286,7 +299,7 @@ bool GameProjectEditorWorkspaceUi::InputFloat2(std::string_view stableControlId,
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     float values[2]{value->x, value->y};
     const float speed = std::max(0.001f, options.step);
     const bool hasRange = options.clampToRange != 0u && options.minimum <= options.maximum;
@@ -309,7 +322,7 @@ bool GameProjectEditorWorkspaceUi::Color4(std::string_view stableControlId, std:
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     float color[4]{value->r, value->g, value->b, value->a};
     const bool changed = ImGui::ColorEdit4(stableLabel.c_str(), color);
     if (changed) {
@@ -322,7 +335,7 @@ bool GameProjectEditorWorkspaceUi::Color4(std::string_view stableControlId, std:
 }
 
 bool GameProjectEditorWorkspaceUi::Selectable(std::string_view stableControlId, std::string_view label, bool selected) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     PushSelectionColor(selected);
     const bool pressed = ImGui::Selectable(stableLabel.c_str(), selected);
     PopSelectionColor(selected);
@@ -330,8 +343,8 @@ bool GameProjectEditorWorkspaceUi::Selectable(std::string_view stableControlId, 
 }
 
 bool GameProjectEditorWorkspaceUi::Choice(std::string_view stableControlId, std::string_view label, bool selected) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
-    const std::string text(label);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
+    const std::string text(Shown(label));
     PushSelectionColor(selected);
     const bool pressed =
         ImGui::Selectable(stableLabel.c_str(), selected, 0, ImGui::CalcTextSize(text.c_str(), nullptr, true));
@@ -344,7 +357,7 @@ bool GameProjectEditorWorkspaceUi::SliderFloat(std::string_view stableControlId,
     if (value == nullptr || !(minimum < maximum)) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const float span = maximum - minimum;
     const bool wide = minimum > 0.0f ? maximum / minimum >= 100.0f : minimum == 0.0f && maximum >= 1000.0f;
     // 対数の滑块は値の大きさで桁を変える。0 まである物は 0 の近くを潰さないよう桁を固定する。
@@ -360,13 +373,14 @@ bool GameProjectEditorWorkspaceUi::SliderFloat(std::string_view stableControlId,
 }
 
 bool GameProjectEditorWorkspaceUi::Section(std::string_view stableControlId, std::string_view label, bool defaultOpen) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::CollapsingHeader(stableLabel.c_str(), defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 }
 
 void GameProjectEditorWorkspaceUi::Tooltip(std::string_view utf8Text) {
     if (!utf8Text.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-        ImGui::SetTooltip("%.*s", static_cast<int>(utf8Text.size()), utf8Text.data());
+        const std::string_view shown = Shown(utf8Text);
+        ImGui::SetTooltip("%.*s", static_cast<int>(shown.size()), shown.data());
     }
 }
 
@@ -375,13 +389,13 @@ bool GameProjectEditorWorkspaceUi::Combo(std::string_view stableControlId, std::
     if (selected == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const bool valid = *selected >= 0 && static_cast<size_t>(*selected) < items.size();
-    const std::string shown = valid ? std::string(items[static_cast<size_t>(*selected)]) : std::string();
+    const std::string shown = valid ? std::string(Shown(items[static_cast<size_t>(*selected)])) : std::string();
     bool changed = false;
     if (ImGui::BeginCombo(stableLabel.c_str(), shown.c_str())) {
         for (size_t index = 0u; index < items.size(); ++index) {
-            const std::string item(items[index]);
+            const std::string item(Shown(items[index]));
             ImGui::PushID(static_cast<int>(index));
             if (ImGui::Selectable(item.c_str(), valid && static_cast<size_t>(*selected) == index)) {
                 *selected = static_cast<int32_t>(index);
@@ -415,7 +429,7 @@ bool GameProjectEditorWorkspaceUi::ImageSelectable(std::string_view stableContro
             textX = corner.x + picture + 8.0f;
         }
     }
-    const std::string text(label);
+    const std::string text(Shown(label));
     drawList->AddText(ImVec2(textX, start.y + (row - ImGui::GetTextLineHeight()) * 0.5f),
                       ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
     return pressed;

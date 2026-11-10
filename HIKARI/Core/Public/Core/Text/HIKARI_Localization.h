@@ -13,6 +13,7 @@ enum class Language : uint8_t {
 };
 
 bool SetLocalizationLanguage(Language language) noexcept;
+Language GetLocalizationLanguage() noexcept;
 
 // Returns the translated UI string for a key; falls back to English, then to
 // the key itself when the table has no entry. 表は起動後に変化しないため、

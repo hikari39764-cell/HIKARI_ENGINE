@@ -51,6 +51,8 @@ public:
         undoRequested_ = undo;
         redoRequested_ = redo;
     }
+    // これから描くモジュール（文字表の持ち主）。空なら全部の表から引く。
+    void SetTextOwner(std::string_view owner) { textOwner_.assign(owner); }
 
     // ---- IEditorWorkspaceUi ----
     bool BeginPanel(std::string_view stablePanelId, std::string_view displayName, bool* open,
@@ -121,8 +123,11 @@ public:
                    EDITOR_PROJECT::EditorNodeGraphResult& outResult) override;
     void SetClipboardText(std::string_view utf8Text) override;
     size_t GetClipboardText(char* utf8Buffer, size_t bufferCapacity) override;
+    std::string_view Translate(std::string_view englishText) override;
 
 private:
+    // モジュールの字を画面に出す形へ：「訳さない」印があれば外し、無ければ文字表で今の言語へ。
+    std::string_view Shown(std::string_view text) const;
     struct Thumbnail {
         int handle = -1;
         uint64_t revision = 0u;
@@ -150,6 +155,7 @@ private:
     bool previewOpen_{}, previewFailed_{};
 
     std::string workspaceId_{};
+    std::string textOwner_{};
     bool undoRequested_ = false;
     bool redoRequested_ = false;
     AssetDatabase* database_{};

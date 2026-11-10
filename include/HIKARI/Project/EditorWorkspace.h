@@ -3,8 +3,11 @@
 #include <cstddef>
 #include <cstdint>
 #include "HIKARI/Project/AssetKind.h"
+#include "HIKARI/Project/TextTemplate.h"
 #include "HIKARI/Project/UiTypes.h"
+#include <initializer_list>
 #include <span>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -17,7 +20,13 @@ namespace HIKARI::EDITOR_PROJECT {
 struct EditorNodeGraphDesc;
 struct EditorNodeGraphResult;
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 8u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 9u;
+
+// 界面の文字の言語：モジュールが IEditorWorkspaceUi に渡す固定の英文（ボタン、見出し、Tooltip、ui.Text、節点図の題など）は、
+// 宿主が描く前にモジュールの包の Text/zh.json、ja.json（と項目の ProjectSettings/Text）で今の言語へ引く。
+// 表に無い字は英文のまま。名前や数を埋めた文は、FormatText で原文の模板から作るか、Verbatim で「訳さない」と印を付ける
+// （印の付いた字は宿主が印を外して表を引かずに出す）。
+inline constexpr char kEditorTextVerbatim = '\x1F';
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
@@ -218,7 +227,35 @@ public:
     // Copies the clipboard text with its terminator and returns the bytes the text needs including the terminator.
     // When the buffer is too small, it receives an empty string; call again with the returned size.
     virtual size_t GetClipboardText(char* utf8Buffer, size_t bufferCapacity) = 0;
+    // English source text (a fixed sentence or a template with {0}, {1}...) in the current editor language, from the
+    // module's text tables. Valid until the end of the frame. Use FormatText for sentences with names or numbers.
+    virtual std::string_view Translate(std::string_view englishText) = 0;
 };
+
+// Marks text that the host must show as it is (names, values, sentences already translated).
+inline std::string Verbatim(std::string_view text) {
+    std::string marked(1u, kEditorTextVerbatim);
+    marked.append(text);
+    return marked;
+}
+
+// Translates an English template such as "Saved {0}." and fills {0}, {1}... with values (shown as they are).
+inline std::string FormatText(IEditorWorkspaceUi& ui, std::string_view englishTemplate,
+                              std::span<const std::string_view> values) {
+    // 埋める値に印が付いていても、印は先頭の一つだけにする。
+    std::string_view unmarked[10]{};
+    const size_t count = values.size() < std::size(unmarked) ? values.size() : std::size(unmarked);
+    for (size_t index = 0u; index < count; ++index) {
+        const std::string_view value = values[index];
+        unmarked[index] = !value.empty() && value.front() == kEditorTextVerbatim ? value.substr(1u) : value;
+    }
+    return Verbatim(FillText(ui.Translate(englishTemplate), std::span<const std::string_view>(unmarked, count)));
+}
+
+inline std::string FormatText(IEditorWorkspaceUi& ui, std::string_view englishTemplate,
+                              std::initializer_list<std::string_view> values) {
+    return FormatText(ui, englishTemplate, std::span<const std::string_view>(values.begin(), values.size()));
+}
 
 // Results are borrowed for this callback only. Copy strings in the project
 // if they are needed later; the host never transfers allocator ownership.

@@ -205,6 +205,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/Tasks/HIKARI_TaskExecutor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/Text/HIKARI_AsciiCase.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/Text/HIKARI_Localization.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/Core/Text/HIKARI_OwnedText.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Physics/HIKARI_PhysicsBodyValidator.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Physics/HIKARI_PhysicsProjectSettings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Physics/HIKARI_PhysicsRuntimeStatusService.cpp"
