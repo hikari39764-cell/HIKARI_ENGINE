@@ -139,6 +139,7 @@ bool CreateDefaultMaterialAsset(AssetDatabase& assetDatabase, const std::filesys
     return true;
 }
 
+namespace {
 bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& currentDirectory,
                            std::filesystem::path& outRelativePath, std::string& outError) {
     const std::filesystem::path sceneDirectory =
@@ -172,6 +173,27 @@ bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::
     }
     return true;
 }
+} // namespace
+
+AssetGuid CreateSceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& directory,
+                           std::filesystem::path& outRelativePath, std::string& outError) {
+    if (!CreateEmptySceneAsset(assetDatabase, directory, outRelativePath, outError)) {
+        if (outError.empty()) {
+            outError = TEXT::Localize("ui.assetBrowser.sceneCreationFailed");
+        }
+        return {};
+    }
+    if (!assetDatabase.ScanAssets(true)) {
+        outError = TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
+        return {};
+    }
+    const AssetRecord* record = assetDatabase.FindByPath(outRelativePath);
+    if (record == nullptr) {
+        outError = TEXT::Localize("ui.assetBrowser.sceneCreationFailed");
+        return {};
+    }
+    return record->guid;
+}
 
 bool CreateFolderFromBrowser(AssetDatabase& assetDatabase, std::filesystem::path& currentDirectory,
                              std::string& lastOperationMessage) {
@@ -200,19 +222,13 @@ bool CreateFolderFromBrowser(AssetDatabase& assetDatabase, std::filesystem::path
 bool CreateSceneFromBrowser(AssetDatabase& assetDatabase, std::filesystem::path& currentDirectory,
                             EditorSelection& selection, std::string& lastOperationMessage) {
     std::filesystem::path scenePath{};
-    std::string error{};
-    if (!CreateEmptySceneAsset(assetDatabase, currentDirectory, scenePath, error)) {
-        lastOperationMessage = error.empty() ? TEXT::Localize("ui.assetBrowser.sceneCreationFailed") : error;
+    const AssetGuid guid = CreateSceneAsset(assetDatabase, currentDirectory, scenePath, lastOperationMessage);
+    if (!guid.IsValid()) {
         LogSceneAssetWarn("new scene failed: " + lastOperationMessage);
         return false;
     }
-
-    if (!assetDatabase.ScanAssets(true)) {
-        lastOperationMessage = TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
-        return false;
-    }
     currentDirectory = scenePath.parent_path();
-    if (const AssetRecord* sceneRecord = assetDatabase.FindByPath(scenePath)) {
+    if (const AssetRecord* sceneRecord = assetDatabase.FindByGuid(guid)) {
         SelectRecord(*sceneRecord, selection);
     }
     lastOperationMessage = TEXT::Localize("ui.assetBrowser.sceneAssetCreated");

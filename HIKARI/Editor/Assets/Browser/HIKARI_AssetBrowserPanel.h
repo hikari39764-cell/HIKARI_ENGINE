@@ -78,4 +78,11 @@ private:
     mutable std::array<char, 128> renameSceneNameBuffer_{};
 };
 
+namespace EDITOR::ASSET_BROWSER {
+// 新しい場面の資産（既定の中身）を作って資産の一覧に載せ、その GUID を返す。directory が Assets/Scenes の下で
+// なければ Assets/Scenes に作る。失敗した時は無効な GUID を返し、理由を outError に書く。
+AssetGuid CreateSceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& directory,
+                           std::filesystem::path& outRelativePath, std::string& outError);
+} // namespace EDITOR::ASSET_BROWSER
+
 } // namespace HIKARI

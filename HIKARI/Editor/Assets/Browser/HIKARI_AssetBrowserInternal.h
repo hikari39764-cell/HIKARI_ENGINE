@@ -41,9 +41,6 @@ bool IsMaterialsDirectoryPath(const std::filesystem::path& path);
 bool CreateDefaultMaterialAsset(AssetDatabase& assetDatabase, const std::filesystem::path& currentDirectory,
                                 std::filesystem::path& outRelativePath, std::string& outError);
 
-bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& currentDirectory,
-                           std::filesystem::path& outRelativePath, std::string& outError);
-
 bool CreateFolderFromBrowser(AssetDatabase& assetDatabase, std::filesystem::path& currentDirectory,
                              std::string& lastOperationMessage);
 

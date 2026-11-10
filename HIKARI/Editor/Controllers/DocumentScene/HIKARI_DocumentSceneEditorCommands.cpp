@@ -9,12 +9,15 @@
 #include <span>
 #include <utility>
 
+#include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/HIKARI_Logger.h"
+#include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
 #include "Editor/Assets/HIKARI_FarModelBakeOperation.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
+#include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_World.h"
@@ -284,6 +287,26 @@ private:
     std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry_;
 };
 
+// まだ一度も保存していない場面（新しい項目を開いた時の場面など）を、Assets/Scenes の新しい場面の資産として保存する。
+// 項目に開始の場面が無ければこの場面を開始の場面にする：開き直した時にこの場面が開き、Play と書き出しもここから始まる。
+bool SaveSceneAsNewAsset(DocumentSceneBase& scene) {
+    AssetDatabase& database = scene.GetAssetDatabase();
+    std::filesystem::path relativePath{};
+    std::string error{};
+    const AssetGuid guid = EDITOR::ASSET_BROWSER::CreateSceneAsset(database, {}, relativePath, error);
+    if (!guid.IsValid() || !scene.SaveCurrentSceneDocumentAs(guid)) {
+        HIKARI_LOG_WARN("[SceneAsset] could not save the scene as a new asset: " + error);
+        return false;
+    }
+    HIKARI_LOG_INFO("[SceneAsset] saved the scene as a new asset: " + relativePath.generic_string());
+    ProjectSettingsService settings{};
+    if (settings.Load(database.GetProjectRoot()) && !settings.GetSettings().startupSceneGuid.IsValid() &&
+        !(settings.SetStartupSceneGuid(guid) && settings.Save())) {
+        HIKARI_LOG_WARN("[SceneAsset] could not make it the startup scene: " + relativePath.generic_string());
+    }
+    return true;
+}
+
 } // namespace
 
 void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) {
@@ -302,8 +325,10 @@ void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectE
     host->Extensions().SetViewportCameraSetter(
         [this](const GameProjectFloat3& position, const GameProjectFloat3& target) {
             if (aiOperationScene_ != nullptr) {
+                // 視口の相機は毎フレーム操縦の状態から書き直されるので、操縦の状態も同じ姿勢にする。
                 aiOperationScene_->GetCamera().SetLookAt({position.x, position.y, position.z},
                                                          {target.x, target.y, target.z});
+                aiOperationScene_->GetDebugCamera().ResetFromCamera(aiOperationScene_->GetCamera());
             }
         });
     host->Extensions().SetSelectionReader([this]() {
@@ -336,7 +361,8 @@ void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectE
 void DocumentSceneEditorController::DiscardModuleUndoEntries() { documentHistory_ = EDITOR::EditorDocumentHistory{}; }
 
 bool DocumentSceneEditorController::SaveSceneDocument(DocumentSceneBase& scene) {
-    if (scene.SaveCurrentSceneDocument()) {
+    const bool neverSaved = !scene.GetCurrentSceneAssetGuid().IsValid() && scene.GetScenePath().empty();
+    if (neverSaved ? SaveSceneAsNewAsset(scene) : scene.SaveCurrentSceneDocument()) {
         documentHistory_.MarkSaved();
         historyExternalDirty_ = false;
         context_.sceneDirty = false;

@@ -1,3 +1,4 @@
+#include <cstdio>
 #include <filesystem>
 #include <optional>
 #include <string>
@@ -9,10 +10,12 @@
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Core/HIKARI_Logger.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/App/HIKARI_EditorEngineApp.h"
 #include "Editor/App/HIKARI_ProjectLauncherApp.h"
 #include "Editor/Export/HIKARI_GameExportJob.h"
 #include "Editor/Host/HIKARI_EditorUiServices.h"
+#include "Editor/Projects/HIKARI_ProjectCreationService.h"
 #include "Editor/ShaderPlayground/HIKARI_ShaderPlaygroundRunner.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectLaunch.h"
@@ -29,6 +32,28 @@ bool IsSafeAuthoredAssetScope(const std::filesystem::path& scope) {
     }
     const std::string normalized = scope.lexically_normal().generic_string();
     return normalized == "Assets" || normalized.rfind("Assets/", 0u) == 0u;
+}
+
+// --create-project <フォルダ>：Launcher の「新建项目」と同じ手続きで項目を作って終わる。フォルダの名前が項目の名前に
+// なる。成功は終了コード 0 で、標準出力に Project.hikari の場所。失敗は 2 で、標準エラー出力に理由。
+std::optional<int> RunCreateProjectIfRequested() {
+    const std::optional<std::filesystem::path> target = HIKARI::ReadRuntimeCommandLinePath(L"--create-project");
+    if (!target) {
+        return std::nullopt;
+    }
+    std::error_code ec{};
+    const std::filesystem::path absolute = std::filesystem::absolute(*target, ec).lexically_normal();
+    HIKARI::EDITOR::ProjectCreationResult created{};
+    std::string message{};
+    if (ec || !HIKARI::EDITOR::CreateProject({absolute.parent_path(), HIKARI::TEXT::PathToUtf8(absolute.filename())},
+                                             created, message)) {
+        std::fputs((ec ? ec.message() : message).c_str(), stderr);
+        std::fputc('\n', stderr);
+        return 2;
+    }
+    std::fputs(HIKARI::TEXT::PathToUtf8(created.descriptorPath).c_str(), stdout);
+    std::fputc('\n', stdout);
+    return 0;
 }
 
 std::optional<int> RunHeadlessAssetImportIfRequested() {
@@ -218,6 +243,9 @@ int RunEditor() {
 } // namespace
 
 int WINAPI WinMain(HINSTANCE, HINSTANCE, LPSTR, int) {
+    if (const std::optional<int> created = RunCreateProjectIfRequested()) {
+        return *created;
+    }
     if (HIKARI::ReadRuntimeCommandLinePath(L"--import-assets") ||
         HIKARI::ReadRuntimeCommandLinePath(L"--package-game") ||
         HIKARI::ReadRuntimeCommandLinePath(L"--export-request") ||
