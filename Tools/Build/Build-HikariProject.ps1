@@ -524,6 +524,8 @@ function Build-HikariSourceModules {
         if ($null -eq $cmake) {
             $cmake = Resolve-HikariCMake -SdkRoot $SdkRoot
         }
+        # No precompiled headers: CMake writes the header's absolute path into cmake_pch.hxx in the system code
+        # page, and a project folder may contain characters that code page lacks (the build then cannot open it).
         & $cmake `
             -S $moduleRoot `
             -B $buildTree `
@@ -531,7 +533,8 @@ function Build-HikariSourceModules {
             -A x64 `
             "-DCMAKE_CONFIGURATION_TYPES:STRING=$Configuration" `
             "-DHIKARI_DIR:PATH=$(Join-Path $SdkRoot 'lib\cmake\HIKARI')" `
-            "-DHIKARI_MODULE_PACKAGE_ROOT:PATH=$packageRoot"
+            "-DHIKARI_MODULE_PACKAGE_ROOT:PATH=$packageRoot" `
+            '-DCMAKE_DISABLE_PRECOMPILE_HEADERS:BOOL=ON'
         if ($LASTEXITCODE -ne 0) {
             throw "Module $id could not be configured from $moduleRoot."
         }
