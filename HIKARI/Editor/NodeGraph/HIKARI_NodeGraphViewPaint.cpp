@@ -239,11 +239,12 @@ void NodeGraphView::PaintNodeBody(const EditorNodeGraphNode& node, const NodeLay
     });
     for (uint32_t row = 0u; row < node.rowCount; ++row) {
         const EditorNodeGraphRow& item = node.rows[row];
-        const std::string label = FitText(View(item.label), room * 0.5f, kSmallText);
-        DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(150, 164, 180, 255), label);
-        const float labelWidth = MeasureText(label, kSmallText).x + kLabelGap * 0.5f;
+        // 値を先に（半分まで）取り、名前は残りの幅に収める。
         const float pad = item.capsule != 0u ? kCapsulePadX : 0.0f;
-        const std::string value = FitText(View(item.value), room - labelWidth - pad * 2.0f, kSmallText);
+        const std::string value = FitText(View(item.value), room * 0.5f - pad * 2.0f, kSmallText);
+        const std::string label = FitText(
+            View(item.label), room - MeasureText(value, kSmallText).x - pad * 2.0f - kLabelGap * 0.5f, kSmallText);
+        DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(150, 164, 180, 255), label);
         const float valueWidth = MeasureText(value, kSmallText).x * zoom;
         const float valueLeft = maximum.x - kPadX * zoom - valueWidth - pad * zoom;
         if (item.capsule != 0u) {
