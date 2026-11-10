@@ -29,7 +29,12 @@ struct AssetCookResult {
     size_t assetCount = 0u;
     size_t fileCount = 0u;
     size_t missingReferenceCount = 0u;
+    // 焼いた場面の元の路径（項目の根からの相対）。
+    std::vector<std::filesystem::path> scenePaths{};
 };
+
+// 元のファイルをそのまま配る時の、焼いた内容の中の位置（RuntimePayload/<項目の根からの相対>）。
+std::filesystem::path MakeRuntimePayloadPath(const std::filesystem::path& sourcePath);
 
 class AssetCooker {
 public:

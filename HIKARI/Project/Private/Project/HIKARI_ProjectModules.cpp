@@ -9,6 +9,7 @@
 
 #include <json.hpp>
 
+#include "Core/IO/HIKARI_PathNormalization.h"
 #include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 
@@ -124,15 +125,13 @@ bool LoadModuleManifest(const std::filesystem::path& manifestPath, ModuleManifes
     std::string runtimeLibrary{};
     std::string shippingRuntimeLibrary{};
     std::string editorLibrary{};
-    std::string contentDirectory{};
     if (!JSONSTRICT::ReadString(root, "id", {}, manifest.id, error, "root") ||
         !JSONSTRICT::ReadString(root, "name", {}, manifest.name, error, "root") ||
         !JSONSTRICT::ReadString(root, "version", {}, manifest.version, error, "root") ||
         !JSONSTRICT::ReadString(root, "sdkVersion", {}, manifest.sdkVersion, error, "root") ||
         !JSONSTRICT::ReadString(root, "runtimeLibrary", {}, runtimeLibrary, error, "root") ||
         !JSONSTRICT::ReadString(root, "shippingRuntimeLibrary", {}, shippingRuntimeLibrary, error, "root") ||
-        !JSONSTRICT::ReadString(root, "editorLibrary", {}, editorLibrary, error, "root") ||
-        !JSONSTRICT::ReadString(root, "contentDirectory", {}, contentDirectory, error, "root")) {
+        !JSONSTRICT::ReadString(root, "editorLibrary", {}, editorLibrary, error, "root")) {
         SetMessage(outMessage, error);
         return false;
     }
@@ -154,6 +153,21 @@ bool LoadModuleManifest(const std::filesystem::path& manifestPath, ModuleManifes
             manifest.dependencies.push_back(dependency.get<std::string>());
         }
     }
+    if (const auto directories = root.find("runtimeDirectories"); directories != root.end()) {
+        if (!directories->is_array()) {
+            SetMessage(outMessage, "root.runtimeDirectories must be an array");
+            return false;
+        }
+        for (const nlohmann::json& entry : *directories) {
+            std::filesystem::path directory =
+                entry.is_string() ? ReadRelativePath(entry.get<std::string>()) : std::filesystem::path{};
+            if (!PATHS::IsSafeRelativePath(directory)) {
+                SetMessage(outMessage, "root.runtimeDirectories entries must be folders inside the module package");
+                return false;
+            }
+            manifest.runtimeDirectories.push_back(std::move(directory));
+        }
+    }
     if (const auto assetTypes = root.find("assetTypes"); assetTypes != root.end()) {
         if (!assetTypes->is_array()) {
             SetMessage(outMessage, "root.assetTypes must be an array");
@@ -173,7 +187,6 @@ bool LoadModuleManifest(const std::filesystem::path& manifestPath, ModuleManifes
     manifest.runtimeLibrary = ReadRelativePath(runtimeLibrary);
     manifest.shippingRuntimeLibrary = ReadRelativePath(shippingRuntimeLibrary);
     manifest.editorLibrary = ReadRelativePath(editorLibrary);
-    manifest.contentDirectory = ReadRelativePath(contentDirectory);
     std::error_code ec{};
     manifest.directory = std::filesystem::absolute(manifestPath, ec).parent_path().lexically_normal();
     outManifest = std::move(manifest);
@@ -197,7 +210,13 @@ bool SaveModuleManifest(const std::filesystem::path& manifestPath, const ModuleM
     };
     writeOptional("shippingRuntimeLibrary", manifest.shippingRuntimeLibrary);
     writeOptional("editorLibrary", manifest.editorLibrary);
-    writeOptional("contentDirectory", manifest.contentDirectory);
+    if (!manifest.runtimeDirectories.empty()) {
+        nlohmann::json directories = nlohmann::json::array();
+        for (const std::filesystem::path& directory : manifest.runtimeDirectories) {
+            directories.push_back(TEXT::PathToUtf8(directory));
+        }
+        root["runtimeDirectories"] = std::move(directories);
+    }
     if (!manifest.assetTypes.empty()) {
         nlohmann::json assetTypes = nlohmann::json::array();
         for (const ModuleManifestAssetType& type : manifest.assetTypes) {

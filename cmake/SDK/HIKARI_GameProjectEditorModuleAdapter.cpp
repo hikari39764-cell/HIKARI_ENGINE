@@ -160,6 +160,19 @@ bool RegisterEditorOperations(void* instance, IEditorOperationRegistrar* registr
     }
 }
 
+bool CollectGameExportFiles(void* instance, IGameExportFiles* files) noexcept {
+    auto* module = static_cast<GameProjectEditorModuleInstance*>(instance);
+    if (module == nullptr || !module->module || files == nullptr) {
+        return false;
+    }
+    try {
+        module->module->CollectGameExportFiles(*files);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
 const GameProjectEditorModuleApi kModuleApi{
     sizeof(GameProjectEditorModuleApi),
     kGameProjectEditorModuleAbiVersion,
@@ -173,6 +186,7 @@ const GameProjectEditorModuleApi kModuleApi{
     &GetViewportTool,
     &GetPanelCount,
     &GetPanel,
+    &CollectGameExportFiles,
 };
 
 } // namespace

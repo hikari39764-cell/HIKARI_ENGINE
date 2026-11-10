@@ -93,7 +93,7 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Scene,
         AssetType::Scene,
         "SceneAssetImporter",
-        2u,
+        3u,
         ".hscene, .scene.json, or JSON under Assets/Scenes",
     },
     {AssetImporterKind::Prefab, AssetType::Prefab, "PrefabAssetImporter", 1u, ".hprefab"},

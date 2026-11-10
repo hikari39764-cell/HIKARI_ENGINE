@@ -3,6 +3,7 @@
 
 #include <Windows.h>
 
+#include <algorithm>
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
@@ -148,8 +149,10 @@ bool CopyDxcBlobToD3DBlob(IDxcBlob* shaderBlob, ID3DBlob** outBlob) {
 }
 
 // 単体ゲームでは、実行時に原文から作ったシェーダーを利用者フォルダーに残し、次の起動では読み直すだけにする
-// （原文の翻訳と dxcompiler の読み込みを省く）。同梱の原文と翻訳器は実行ファイルと一緒にしか変わらないので、
-// 実行ファイルの大きさと更新時刻を鍵に含める。原文を直す開発中のビルドでは使わない（出荷ビルドだけ）。
+// （原文の翻訳と dxcompiler の読み込みを省く）。引擎に同梱の原文と翻訳器は実行ファイルと一緒にしか変わらないので、
+// 実行ファイルの大きさと更新時刻を鍵に含める。モジュールの着色器は実行ファイルと別に入れ替わるので、
+// 同じフォルダの原文（取り込まれる .hlsli を含む）の大きさと更新時刻も鍵に含める。
+// 原文を直す開発中のビルドでは使わない（出荷ビルドだけ）。
 uint64_t Fnv1a(const void* data, size_t size, uint64_t hash = 1469598103934665603ull) {
     const auto* bytes = static_cast<const uint8_t*>(data);
     for (size_t i = 0; i < size; ++i)
@@ -167,6 +170,27 @@ const std::string& ExecutableStamp() {
         const auto time = std::filesystem::last_write_time(exe, error).time_since_epoch().count();
         return std::to_string(error ? 0 : size) + ":" + std::to_string(time);
     }();
+    return stamp;
+}
+
+// 引擎の着色器フォルダの外にある原文（モジュールの着色器）：そのフォルダの .hlsl / .hlsli 全部の印。
+std::wstring SiblingSourceStamp(const std::filesystem::path& source) {
+    std::vector<std::wstring> entries{};
+    std::error_code error{};
+    for (std::filesystem::recursive_directory_iterator it(source.parent_path(), error), end; !error && it != end;
+         it.increment(error)) {
+        const std::filesystem::path extension = it->path().extension();
+        std::error_code entryError{};
+        if ((extension == L".hlsl" || extension == L".hlsli") && it->is_regular_file(entryError)) {
+            entries.push_back(it->path().generic_wstring() + L":" + std::to_wstring(it->file_size(entryError)) + L":" +
+                              std::to_wstring(it->last_write_time(entryError).time_since_epoch().count()));
+        }
+    }
+    std::sort(entries.begin(), entries.end());
+    std::wstring stamp{};
+    for (const std::wstring& entry : entries) {
+        stamp += entry + L"\n";
+    }
     return stamp;
 }
 
@@ -363,9 +387,14 @@ bool CompileShaderFileSm6(const wchar_t* path, const char* entry, const wchar_t*
     uint64_t cacheKey = 0;
     const bool cacheable = !RuntimeShaderCacheDirectory().empty();
     if (cacheable) {
-        std::ifstream file(ResolveShaderSourcePath(path), std::ios::binary);
-        const std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
+        const std::filesystem::path source = ResolveShaderSourcePath(path);
+        std::ifstream file(source, std::ios::binary);
+        std::string text((std::istreambuf_iterator<char>(file)), std::istreambuf_iterator<char>());
         if (!text.empty()) {
+            if (!IsEngineShaderLogicalPath(std::filesystem::path(path).lexically_normal())) {
+                const std::wstring siblings = SiblingSourceStamp(source);
+                text.append(reinterpret_cast<const char*>(siblings.data()), siblings.size() * sizeof(wchar_t));
+            }
             cacheKey = RuntimeShaderKey(text.data(), text.size(), path, entry, profile);
             if (LoadRuntimeShaderCache(cacheKey, outBlob))
                 return true;

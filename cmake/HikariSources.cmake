@@ -1164,6 +1164,7 @@ set(HIKARI_EDITOR_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphPanel.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Workspaces/AnimationStateMachine/HIKARI_AnimationStateMachineGraphMenu.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExporter.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportModules.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportPublication.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportJob.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Editor/Export/HIKARI_GameExportOperations.cpp"

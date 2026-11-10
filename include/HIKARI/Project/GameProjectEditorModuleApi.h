@@ -10,8 +10,9 @@ class IEditorWorkspace;
 class IEditorOperationRegistrar;
 class IEditorViewportTool;
 class IEditorPanel;
+class IGameExportFiles;
 
-inline constexpr uint32_t kGameProjectEditorModuleAbiVersion = 6u;
+inline constexpr uint32_t kGameProjectEditorModuleAbiVersion = 7u;
 inline constexpr char kGameProjectEditorModuleApiEntryPoint[] = "HIKARI_GetGameProjectEditorModuleApi";
 
 struct GameProjectEditorModuleApi {
@@ -28,13 +29,14 @@ struct GameProjectEditorModuleApi {
     IEditorViewportTool* (*getViewportTool)(void* instance, size_t index) noexcept = nullptr;
     size_t (*getPanelCount)(void* instance) noexcept = nullptr;
     IEditorPanel* (*getPanel)(void* instance, size_t index) noexcept = nullptr;
+    bool (*collectGameExportFiles)(void* instance, IGameExportFiles* files) noexcept = nullptr;
 };
 
 using QueryGameProjectEditorModuleApi = const GameProjectEditorModuleApi* (*)(uint32_t hostAbiVersion) noexcept;
 
 static_assert(std::is_standard_layout_v<GameProjectEditorModuleApi>);
 static_assert(std::is_trivially_copyable_v<GameProjectEditorModuleApi>);
-static_assert(sizeof(GameProjectEditorModuleApi) == 88u);
+static_assert(sizeof(GameProjectEditorModuleApi) == 96u);
 static_assert(offsetof(GameProjectEditorModuleApi, structSize) == 0u);
 static_assert(offsetof(GameProjectEditorModuleApi, abiVersion) == 4u);
 static_assert(offsetof(GameProjectEditorModuleApi, createInstance) == 8u);
@@ -47,5 +49,6 @@ static_assert(offsetof(GameProjectEditorModuleApi, getViewportToolCount) == 56u)
 static_assert(offsetof(GameProjectEditorModuleApi, getViewportTool) == 64u);
 static_assert(offsetof(GameProjectEditorModuleApi, getPanelCount) == 72u);
 static_assert(offsetof(GameProjectEditorModuleApi, getPanel) == 80u);
+static_assert(offsetof(GameProjectEditorModuleApi, collectGameExportFiles) == 88u);
 
 } // namespace HIKARI::EDITOR_PROJECT

@@ -119,7 +119,9 @@ bool ComputeSdkFingerprint(const std::filesystem::path& sdkRoot, std::string& ou
         sdkRoot / "lib" / "HIKARI_Engine.lib",
         sdkRoot / "Tools" / "Build-HikariProject.ps1",
     };
+    // 項目の構築（Build-HikariProject.ps1 の Get-HikariSdkInputFiles）が構築状態へ書く指紋と同じ一覧にする。
     AddFingerprintTree(sdkRoot / "include", false, files);
+    AddFingerprintTree(sdkRoot / "third_party", false, files);
     AddFingerprintTree(sdkRoot / "lib" / "cmake" / "HIKARI", false, files);
     AddFingerprintTree(sdkRoot / "src", false, files);
     return ComputeFileSetFingerprint(sdkRoot, std::move(files), outFingerprint, outMessage);

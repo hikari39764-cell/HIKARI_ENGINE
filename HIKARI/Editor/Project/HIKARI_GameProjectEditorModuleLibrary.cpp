@@ -70,7 +70,7 @@ bool GameProjectEditorModuleLibrary::Load(const std::filesystem::path& modulePat
         api->destroyInstance == nullptr || api->getModuleId == nullptr || api->getWorkspaceCount == nullptr ||
         api->getWorkspace == nullptr || api->registerEditorOperations == nullptr ||
         api->getViewportToolCount == nullptr || api->getViewportTool == nullptr || api->getPanelCount == nullptr ||
-        api->getPanel == nullptr) {
+        api->getPanel == nullptr || api->collectGameExportFiles == nullptr) {
         outMessage = "GameProject Editor companion ABI is incompatible. "
                      "Rebuild the project with this HIKARI Editor SDK.";
         FreeLibrary(library);
@@ -171,6 +171,10 @@ bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationReg
         return false;
     }
     return true;
+}
+
+bool GameProjectEditorModuleLibrary::CollectGameExportFiles(EDITOR_PROJECT::IGameExportFiles& files) const noexcept {
+    return IsLoaded() && api_->collectGameExportFiles(instance_, &files);
 }
 
 const std::filesystem::path& GameProjectEditorModuleLibrary::GetModulePath() const noexcept { return modulePath_; }

@@ -10,10 +10,12 @@ include("${CMAKE_CURRENT_LIST_DIR}/HIKARIModuleTargets.cmake")
 #       <library>Editor.dll     編集器の DLL（SINGLE_LIBRARY なら実行 DLL が兼ねる）
 #       Shipping/<library>.dll  Shipping の実行 DLL（編集器の分を含まない）
 #       Debug/                  Debug の DLL（清単からは指さない）
-#       <内容のフォルダ>        元の清単の contentDirectory と PACKAGE_DIRECTORIES の写し
+#       <内容のフォルダ>        元の清単の runtimeDirectories と editorDirectories の写し
 #
-# MANIFEST は元の清単：id、name、version、dependencies、assetTypes、contentDirectory だけを書く。
-# DLL の路径（runtimeLibrary など）は構築が決めるので、元の清単には書かない。
+# MANIFEST は元の清単：id、name、version、dependencies、assetTypes、runtimeDirectories、editorDirectories
+# だけを書く。DLL の路径（runtimeLibrary など）は構築が決めるので、元の清単には書かない。
+#   runtimeDirectories：実行側の DLL が自分の隣から読むフォルダ（着色器など）。書き出したゲームにも入る。
+#   editorDirectories：編集器だけが使う内容。挿件包には入るが、ゲームには入らない。
 # HIKARI_MODULE_PACKAGE_ROOT の既定は <CMAKE_SOURCE_DIR>/Library/Plugins。
 #
 # SINGLE_LIBRARY：編集器の部分も同じ DLL に入れる（編集器の画面が実行側の状態を直接読むモジュール向け）。
@@ -21,7 +23,7 @@ include("${CMAKE_CURRENT_LIST_DIR}/HIKARIModuleTargets.cmake")
 function(hikari_add_module)
     set(options SINGLE_LIBRARY)
     set(one_value_arguments MANIFEST SOURCE_DIR EDITOR_SOURCE_DIR LIBRARY_NAME)
-    set(multi_value_arguments SOURCES EDITOR_SOURCES PACKAGE_DIRECTORIES)
+    set(multi_value_arguments SOURCES EDITOR_SOURCES)
     cmake_parse_arguments(
         HIKARI_MODULE
         "${options}"
@@ -29,6 +31,9 @@ function(hikari_add_module)
         "${multi_value_arguments}"
         ${ARGN})
 
+    if(HIKARI_MODULE_UNPARSED_ARGUMENTS)
+        message(FATAL_ERROR "hikari_add_module: unknown arguments: ${HIKARI_MODULE_UNPARSED_ARGUMENTS}")
+    endif()
     if(NOT HIKARI_MODULE_MANIFEST)
         message(FATAL_ERROR "hikari_add_module requires MANIFEST.")
     endif()
@@ -148,12 +153,19 @@ function(hikari_add_module)
         file(WRITE "${_packaged_path}" "${_packaged}\n")
     endif()
 
-    # 内容のフォルダは毎回の構築で鏡写しにする（コードが変わらなくても内容の変更が包に入る）。
-    set(_package_directories ${HIKARI_MODULE_PACKAGE_DIRECTORIES})
-    string(JSON _content_directory ERROR_VARIABLE _error GET "${_manifest}" contentDirectory)
-    if(NOT _error AND NOT _content_directory STREQUAL "")
-        list(APPEND _package_directories "${_content_directory}")
-    endif()
+    # 清単が宣言したフォルダは毎回の構築で鏡写しにする（コードが変わらなくても内容の変更が包に入る）。
+    set(_package_directories "")
+    foreach(_key IN ITEMS runtimeDirectories editorDirectories)
+        string(JSON _count ERROR_VARIABLE _error LENGTH "${_manifest}" "${_key}")
+        if(_error OR _count EQUAL 0)
+            continue()
+        endif()
+        math(EXPR _last "${_count} - 1")
+        foreach(_index RANGE ${_last})
+            string(JSON _directory GET "${_manifest}" "${_key}" ${_index})
+            list(APPEND _package_directories "${_directory}")
+        endforeach()
+    endforeach()
     if(_package_directories)
         list(REMOVE_DUPLICATES _package_directories)
         set(_sync_commands "")

@@ -33,7 +33,9 @@ struct ModuleManifest {
     std::filesystem::path runtimeLibrary{};
     std::filesystem::path shippingRuntimeLibrary{};
     std::filesystem::path editorLibrary{};
-    std::filesystem::path contentDirectory{};
+    // 書き出したゲームにも配るフォルダ（実行側の DLL が自分の隣から読む物：着色器など）。
+    // 編集器だけが使う内容は清単の editorDirectories に書く：挿件包には入るがゲームには入らず、引擎は読まない。
+    std::vector<std::filesystem::path> runtimeDirectories{};
     std::vector<std::string> dependencies{};
     // DLL を読まない工程（書き出し、取り込みの命令）も同じ種類を知るよう、清単で宣言する。
     std::vector<ModuleManifestAssetType> assetTypes{};

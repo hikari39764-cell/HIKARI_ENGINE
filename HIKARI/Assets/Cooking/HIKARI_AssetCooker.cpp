@@ -123,11 +123,11 @@ bool RequiresPrimaryArtifact(AssetType type) {
     return type != AssetType::Material && SEMANTICS::FindPrimaryAssetArtifactSemantics(type) != nullptr;
 }
 
+} // namespace
+
 std::filesystem::path MakeRuntimePayloadPath(const std::filesystem::path& sourcePath) {
     return (std::filesystem::path("RuntimePayload") / sourcePath).lexically_normal();
 }
-
-} // namespace
 
 AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
     AssetCookResult result{};
@@ -250,6 +250,9 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
             return result;
         }
 
+        if (sourceRecord->type == AssetType::Scene) {
+            result.scenePaths.push_back(sourceRecord->sourcePath);
+        }
         AssetRecord cookedRecord = *sourceRecord;
         cookedRecord.metaPath.clear();
         cookedRecord.artifactManifestPath.clear();

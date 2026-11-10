@@ -23,12 +23,12 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Export/HIKARI_GamePackageManifest.h"
+#include "Editor/Export/HIKARI_GameExportModules.h"
 #include "Editor/Export/HIKARI_GameExportPublication.h"
 #include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
 #include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/HIKARI_ProjectDescriptor.h"
-#include "Project/HIKARI_ProjectModules.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettings.h"
 #include "Render3D/Settings/HIKARI_RenderQualitySettingsJson.h"
@@ -460,77 +460,6 @@ bool LoadProjectCookManifest(const std::filesystem::path& projectRoot, ProjectCo
     }
 }
 
-// 項目に入れたモジュールを書き出しへ配る。発布版の DLL・内容・清単を Modules/<id>/ へ置き、書き出した項目の
-// Project.hikari は id だけにする（ゲームは実行ファイルの隣の Modules から読む）。
-bool DeployProjectModules(const std::filesystem::path& projectRoot, const std::filesystem::path& engineDirectory,
-                          const std::filesystem::path& stagingDirectory, std::string& outMessage) {
-    ProjectDescriptor descriptor{};
-    if (!LoadProjectDescriptor(projectRoot / kProjectDescriptorFilename, descriptor, &outMessage)) {
-        return false;
-    }
-    if (descriptor.modules.empty()) {
-        return true;
-    }
-    std::vector<ModuleManifest> modules{};
-    if (!ResolveProjectModules(descriptor.modules, projectRoot, engineDirectory / kEngineModulesDirectory, modules,
-                               &outMessage)) {
-        return false;
-    }
-    for (const ModuleManifest& module : modules) {
-        if (!IsModuleSdkCompatible(module, &outMessage)) {
-            return false;
-        }
-        if (module.shippingRuntimeLibrary.empty()) {
-            outMessage = "Module " + module.id + " does not declare a shipping runtime library.";
-            return false;
-        }
-        const std::filesystem::path sourceLibrary = module.directory / module.shippingRuntimeLibrary;
-        const std::filesystem::path targetDirectory =
-            stagingDirectory / kEngineModulesDirectory / TEXT::PathFromUtf8(module.id);
-        std::error_code ec{};
-        std::filesystem::create_directories(targetDirectory, ec);
-        if (ec || !CopyFileChecked(sourceLibrary, targetDirectory / sourceLibrary.filename(), outMessage)) {
-            if (ec) {
-                outMessage = "Could not create " + TEXT::PathToUtf8(targetDirectory);
-            }
-            return false;
-        }
-        ModuleManifest packaged = module;
-        packaged.runtimeLibrary = sourceLibrary.filename();
-        packaged.shippingRuntimeLibrary.clear();
-        packaged.editorLibrary.clear();
-        if (!module.contentDirectory.empty()) {
-            std::filesystem::copy(
-                module.directory / module.contentDirectory, targetDirectory / module.contentDirectory,
-                std::filesystem::copy_options::recursive | std::filesystem::copy_options::overwrite_existing, ec);
-            if (ec) {
-                outMessage = "Could not copy the content of module " + module.id + ": " + ec.message();
-                return false;
-            }
-        }
-        if (!SaveModuleManifest(MakeModuleManifestPath(stagingDirectory / kEngineModulesDirectory, module.id), packaged,
-                                &outMessage)) {
-            return false;
-        }
-    }
-    return true;
-}
-
-bool StripPackagedModuleManifestPaths(const std::filesystem::path& contentDirectory, std::string& outMessage) {
-    const std::filesystem::path descriptorPath = contentDirectory / kProjectDescriptorFilename;
-    ProjectDescriptor descriptor{};
-    if (!LoadProjectDescriptor(descriptorPath, descriptor, &outMessage)) {
-        return false;
-    }
-    if (descriptor.modules.empty()) {
-        return true;
-    }
-    for (ProjectModuleReference& module : descriptor.modules) {
-        module.manifest.clear();
-    }
-    return SaveProjectDescriptor(descriptorPath, descriptor, &outMessage);
-}
-
 std::filesystem::path ResolveInstalledProjectModule(const std::filesystem::path& projectRoot,
                                                     const std::filesystem::path&) {
     // Formal exports consume only the installed project product.
@@ -850,8 +779,7 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
                                                       errorMessage) ||
         !WriteRuntimeConfig(stagingDirectory, effectiveOptions, renderQuality,
                             cookManifest.allowTraditionalGeometryFallback, errorMessage) ||
-        !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, includeTerrainContent, errorMessage) ||
-        !DeployProjectModules(projectRoot, sourceExe.parent_path(), stagingDirectory, errorMessage)) {
+        !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, includeTerrainContent, errorMessage)) {
         result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;
@@ -885,7 +813,9 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;
     }
-    if (!StripPackagedModuleManifestPaths(stagingDirectory / "Content", errorMessage)) {
+    if (!report("Packaging project modules", 0.82f))
+        return result;
+    if (!PackageProjectModules(projectRoot, stagingDirectory, cookResult.scenePaths, errorMessage)) {
         result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;

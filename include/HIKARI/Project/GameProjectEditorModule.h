@@ -4,6 +4,7 @@
 #include <string_view>
 #include <vector>
 
+#include "HIKARI/Project/EditorGameExport.h"
 #include "HIKARI/Project/EditorModuleUi.h"
 #include "HIKARI/Project/EditorOperations.h"
 #include "HIKARI/Project/EditorWorkspace.h"
@@ -22,6 +23,8 @@ public:
     // 場景視口の工具と場景の作業区の窓。id はモジュールの中で一意。
     virtual std::vector<std::unique_ptr<IEditorViewportTool>> CreateViewportTools() const { return {}; }
     virtual std::vector<std::unique_ptr<IEditorPanel>> CreateEditorPanels() const { return {}; }
+    // ゲームの書き出し。編集器の画面も場面も無い工程から呼ばれるので、項目のファイルだけを読んで決める。
+    virtual void CollectGameExportFiles(IGameExportFiles&) {}
 };
 
 // Defined by an optional project Editor companion. The SDK adapter owns

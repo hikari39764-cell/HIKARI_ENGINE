@@ -11,6 +11,7 @@
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Scene/Serialization/HIKARI_WorldInstanceFile.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/Paths/HIKARI_ProjectPath.h"
@@ -83,6 +84,23 @@ AssetImportResult ImportScene(const std::filesystem::path& path, const AssetGuid
         const std::string name = TEXT::PathToUtf8(entry.path().filename());
         if (entry.is_regular_file(cellError) && !name.ends_with(kSceneCellObjectsSuffix)) {
             result.dependencies.push_back({AssetGuid{}, TEXT::PathToUtf8(entry.path()), "SourceCompanion"});
+        }
+    }
+    // 実例集の模型は場面の物体から辿れない。依存に書いておけば、書き出しがここから模型を拾う。
+    std::vector<GameProjectWorldInstanceSetDesc> instanceSets;
+    std::string instanceError;
+    std::unordered_set<std::string> instanceModels;
+    const std::filesystem::path instanceSetsPath =
+        ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(path) / kWorldInstanceSetsFileName;
+    std::error_code instanceSetsError;
+    if (std::filesystem::is_regular_file(instanceSetsPath, instanceSetsError) &&
+        ReadWorldInstanceSetsFile(instanceSetsPath, instanceSets, instanceError)) {
+        for (const GameProjectWorldInstanceSetDesc& set : instanceSets) {
+            for (const char* model : {set.modelAssetGuid, set.farModelAssetGuid}) {
+                if (IsValidAssetGuid(model) && instanceModels.insert(model).second) {
+                    result.dependencies.push_back({AssetGuid{model}, {}, "Scene.WorldInstanceModel"});
+                }
+            }
         }
     }
     result.message = result.success ? "Scene asset validated"

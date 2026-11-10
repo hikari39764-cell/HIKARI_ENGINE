@@ -11,6 +11,7 @@
 namespace HIKARI::EDITOR_PROJECT {
 
 class IEditorDocumentService;
+class IGameExportFiles;
 class IEditorSceneServices;
 class IEditorWorkspace;
 
@@ -48,6 +49,8 @@ public:
                                   EDITOR_PROJECT::IEditorDocumentService* documents,
                                   EDITOR_PROJECT::IEditorSceneServices* sceneServices, std::string& outMessage,
                                   GameProjectEditorWorkspaceRegistry* commands = nullptr) const;
+    // ゲームの書き出し：モジュールが包へ足すファイルを files へ申し出させる。モジュールの中で例外が出たら false。
+    bool CollectGameExportFiles(EDITOR_PROJECT::IGameExportFiles& files) const noexcept;
     const std::filesystem::path& GetModulePath() const noexcept;
 
 private:
