@@ -85,6 +85,11 @@ struct ModuleAssetTypeDesc {
 // 引擎の資産と重なる拡張子や、種類どうしの衝突は登記せず、理由を outErrors に足す。
 void ReplaceModuleAssetTypes(std::vector<ModuleAssetTypeDesc> types, std::vector<std::string>& outErrors);
 const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::path& sourcePath);
+const ModuleAssetTypeDesc* FindModuleAssetType(std::string_view typeId);
+// 資産（種類と元ファイル）が求める種類に合うか。moduleAssetTypeId が空でなければ、モジュールが登記したその種類に限る。
+// 資産の選択・拖放・検証は同じ判定を使う。
+bool MatchesAssetType(AssetType recordType, const std::filesystem::path& sourcePath, AssetType requiredType,
+                      std::string_view moduleAssetTypeId = {});
 
 bool IsAssetCompanionSource(const std::filesystem::path& path);
 bool IsSourceOnlyAssetDependencyRole(std::string_view role) noexcept;

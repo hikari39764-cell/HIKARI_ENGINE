@@ -80,6 +80,17 @@ public:
     virtual void OnViewportCamera(const GameProjectFloat3& /*position*/) {}
 };
 
+// 場景で今選ばれている物体。
+struct EditorSceneSelection {
+    // 場面の文書での ID（主に選ばれている一つ）。何も選ばれていなければ 0。
+    uint64_t sceneObjectId = 0u;
+    // 今の World での同じ物体。Play の開始・終了や場面の読み直しで変わるので、覚えずに毎回聞く。
+    GameProjectObjectHandle object{};
+    // 選ばれている物体の数。
+    uint32_t selectedCount = 0u;
+    uint32_t reserved = 0u;
+};
+
 // モジュールが登録されている間有効。IEditorOperationRegistrar::SceneServices から受け取る。
 class IEditorSceneServices {
 public:
@@ -91,6 +102,9 @@ public:
     virtual bool BakeFarModel(std::string_view modelAssetGuid, char* outFarModelGuid, size_t capacity) = 0;
     // 場景の視口の相機を動かす。
     virtual void SetViewportCamera(const GameProjectFloat3& position, const GameProjectFloat3& target) = 0;
+    virtual EditorSceneSelection GetSelection() const = 0;
+    // 編集器の中で Play が動いているか（一時停止中も真）。
+    virtual bool IsPlayActive() const = 0;
 };
 
 } // namespace HIKARI::EDITOR_PROJECT

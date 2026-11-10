@@ -2,6 +2,7 @@
 
 #include <array>
 #include <string>
+#include <string_view>
 
 #include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 
@@ -16,8 +17,13 @@ struct AssetPickerPopupState {
     std::string selectedFolder{};
 };
 
+// 選ぶ資産の種類の表示名（"Model" など）。モジュールが登記した種類（moduleAssetTypeId）は清単の表示名。
+std::string AssetKindDisplayName(AssetType type, std::string_view moduleAssetTypeId = {});
+
+// moduleAssetTypeId が空でなければ、モジュールが登記したその種類の資産だけを並べる。
 bool DrawAssetPickerPopup(const char* popupId, const AssetDatabase& assetDatabase, AssetType requiredType,
-                          std::string& inOutGuid, AssetPickerPopupState& state);
+                          std::string& inOutGuid, AssetPickerPopupState& state,
+                          std::string_view moduleAssetTypeId = {});
 
 } // namespace EDITOR
 

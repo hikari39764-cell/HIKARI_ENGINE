@@ -37,6 +37,11 @@ const MATH::Vec3& GetFrameCameraPosition() noexcept;
 // 呼び手が root signature を束縛し、描画先と viewport を設定した状態で呼ぶ。
 bool Record(const GFX::Context& graphics, ID3D12RootSignature* rootSignature, const RecordInput& input);
 
+// 世界から外された拡張を、ここが覚えている一覧からも消す。影はその視点の BeginFrame より前に、前のフレームに
+// 受け取った一覧で描かれる。消さないと、世界を作り直した直後（Play の開始・終了、場面の読み直し）のフレームで、
+// 破棄済みの拡張を呼んでしまう。
+void Forget(IRenderSurfaceExtension& extension) noexcept;
+
 void Shutdown(const GFX::Context* graphics) noexcept;
 
 } // namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS

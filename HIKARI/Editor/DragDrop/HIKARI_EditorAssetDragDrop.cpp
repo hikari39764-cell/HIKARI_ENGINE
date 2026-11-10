@@ -3,6 +3,7 @@
 #include <cstring>
 #include <string>
 
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Editor/Style/HIKARI_EditorAssetIcons.h"
 
 #include "imgui.h"
@@ -48,13 +49,14 @@ bool AcceptAssetDrop(const AssetDatabase& assetDatabase, DroppedAssetPayload& ou
     return accepted;
 }
 
-bool AcceptAssetDropOfType(const AssetDatabase& assetDatabase, AssetType requiredType,
-                           DroppedAssetPayload& outPayload) {
+bool AcceptAssetDropOfType(const AssetDatabase& assetDatabase, AssetType requiredType, DroppedAssetPayload& outPayload,
+                           std::string_view moduleAssetTypeId) {
     DroppedAssetPayload payload{};
     if (!AcceptAssetDrop(assetDatabase, payload)) {
         return false;
     }
-    if (!payload.record || payload.record->type != requiredType) {
+    if (!payload.record || !ASSETS::SEMANTICS::MatchesAssetType(payload.record->type, payload.record->sourcePath,
+                                                                requiredType, moduleAssetTypeId)) {
         return false;
     }
     outPayload = payload;

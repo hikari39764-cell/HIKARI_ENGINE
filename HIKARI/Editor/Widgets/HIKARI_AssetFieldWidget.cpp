@@ -22,21 +22,6 @@ namespace HIKARI::EDITOR {
 namespace {
 std::unordered_map<ImGuiID, AssetPickerPopupState> gPickerStates{};
 
-const char* ToAssetTypeText(AssetType type) {
-    switch (type) {
-    case AssetType::Model: return "Model";
-    case AssetType::Scene: return "Scene";
-    case AssetType::Texture: return "Texture";
-    case AssetType::Sky: return "Sky";
-    case AssetType::Material: return "Material";
-    case AssetType::VfxEffect: return "VFX";
-    case AssetType::Sequence: return "Sequence";
-    case AssetType::AnimationStateMachine: return "Animation State Machine";
-    case AssetType::Dialogue: return "Dialogue";
-    default: return "Asset";
-    }
-}
-
 std::string BuildPreviewText(const AssetRecord* record, const std::string& guid) {
     if (guid.empty()) {
         return "<none>";
@@ -50,15 +35,17 @@ std::string BuildPreviewText(const AssetRecord* record, const std::string& guid)
     return record->sourcePath.stem().string();
 }
 
-bool AcceptAssetGuidPayload(const AssetDatabase* assetDatabase, AssetType requiredType, std::string& inOutGuid) {
+bool AcceptAssetGuidPayload(const AssetDatabase* assetDatabase, const AssetFieldOptions& options,
+                            std::string& inOutGuid) {
     if (!assetDatabase) {
         return false;
     }
 
     DroppedAssetPayload payload{};
-    const bool accepted = requiredType == AssetType::Unknown
-                              ? AcceptAssetDrop(*assetDatabase, payload)
-                              : AcceptAssetDropOfType(*assetDatabase, requiredType, payload);
+    const bool accepted =
+        options.requiredType == AssetType::Unknown
+            ? AcceptAssetDrop(*assetDatabase, payload)
+            : AcceptAssetDropOfType(*assetDatabase, options.requiredType, payload, options.moduleAssetTypeId);
     if (!accepted || !payload.record) {
         return false;
     }
@@ -70,8 +57,8 @@ bool AcceptAssetGuidPayload(const AssetDatabase* assetDatabase, AssetType requir
 
 bool DrawAssetField(const AssetDatabase* assetDatabase, const AssetFieldOptions& options, std::string& inOutGuid,
                     EditorSelection* selection) {
-    const std::string labelText(options.label.empty() ? ToAssetTypeText(options.requiredType)
-                                                      : std::string(options.label));
+    const std::string kindName = AssetKindDisplayName(options.requiredType, options.moduleAssetTypeId);
+    const std::string labelText(options.label.empty() ? kindName : std::string(options.label));
     if (!assetDatabase) {
         std::array<char, 256> buffer{};
         strncpy_s(buffer.data(), buffer.size(), inOutGuid.c_str(), buffer.size() - 1);
@@ -101,7 +88,7 @@ bool DrawAssetField(const AssetDatabase* assetDatabase, const AssetFieldOptions&
     if (ImGui::Button(preview.c_str(), ImVec2(buttonWidth, 0.0f))) {
         ImGui::OpenPopup(popupId.c_str());
     }
-    changed = AcceptAssetGuidPayload(assetDatabase, options.requiredType, inOutGuid) || changed;
+    changed = AcceptAssetGuidPayload(assetDatabase, options, inOutGuid) || changed;
     if (ImGui::IsItemHovered() && !inOutGuid.empty()) {
         if (current) {
             ImGui::SetTooltip("%s\n%s\nGUID: %s", current->sourcePath.generic_string().c_str(),
@@ -152,12 +139,13 @@ bool DrawAssetField(const AssetDatabase* assetDatabase, const AssetFieldOptions&
 
     const ImGuiID fieldId = ImGui::GetID("AssetFieldState");
     AssetPickerPopupState& popupState = gPickerStates[fieldId];
-    changed =
-        DrawAssetPickerPopup(popupId.c_str(), *assetDatabase, options.requiredType, inOutGuid, popupState) || changed;
+    changed = DrawAssetPickerPopup(popupId.c_str(), *assetDatabase, options.requiredType, inOutGuid, popupState,
+                                   options.moduleAssetTypeId) ||
+              changed;
 
     if (!inOutGuid.empty() && current == nullptr) {
         ImGui::TextColored(ImVec4(1.0f, 0.45f, 0.35f, 1.0f), TEXT::Localize("editor.ui.missing.s.s.0c381f").c_str(),
-                           ToAssetTypeText(options.requiredType), ShortGuid(inOutGuid).c_str());
+                           kindName.c_str(), ShortGuid(inOutGuid).c_str());
     }
 
     ImGui::PopID();

@@ -379,6 +379,25 @@ const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::pat
     return nullptr;
 }
 
+const ModuleAssetTypeDesc* FindModuleAssetType(std::string_view typeId) {
+    for (const ModuleAssetTypeDesc& type : ModuleAssetTypes()) {
+        if (type.typeId == typeId) {
+            return &type;
+        }
+    }
+    return nullptr;
+}
+
+bool MatchesAssetType(AssetType recordType, const std::filesystem::path& sourcePath, AssetType requiredType,
+                      std::string_view moduleAssetTypeId) {
+    if (moduleAssetTypeId.empty()) {
+        return recordType == requiredType;
+    }
+    const ModuleAssetTypeDesc* type =
+        recordType == AssetType::ModuleAsset ? FindModuleAssetTypeForPath(sourcePath) : nullptr;
+    return type != nullptr && type->typeId == moduleAssetTypeId;
+}
+
 AssetType ClassifyAssetTypeFromPath(const std::filesystem::path& path) {
     if (const AssetImporterSemantics* semantics = ResolveAssetSourceSemantics(path)) {
         return semantics->assetType;

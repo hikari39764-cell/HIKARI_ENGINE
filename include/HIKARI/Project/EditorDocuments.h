@@ -9,7 +9,7 @@
 
 namespace HIKARI::EDITOR_PROJECT {
 
-inline constexpr uint32_t kEditorDocumentsApiVersion = 1u;
+inline constexpr uint32_t kEditorDocumentsApiVersion = 2u;
 inline constexpr size_t kMaximumProjectDocumentCount = 16u;
 inline constexpr size_t kProjectDocumentHistoryBytes = 16u * 1024u * 1024u;
 inline constexpr size_t kProjectDocumentHistorySteps = 128u;
@@ -75,6 +75,10 @@ public:
 // workspace context or operation registrar remains valid while the module is
 // registered. Open documents are owner-scoped and same-path opens share one
 // handle and draft.
+// Asset documents are source files under Assets whose type a module declares
+// in its manifest. They share the same drafts, history and limits; saving one
+// makes the asset database read it again, which changes the revision that
+// ProjectDataView::GetModuleAssetRevision reports to running game code.
 class IEditorDocumentService {
 public:
     virtual ~IEditorDocumentService() = default;
@@ -90,6 +94,14 @@ public:
     virtual EditorDocumentResult Save(EditorDocumentHandle document, uint64_t expectedRevision) = 0;
     // Dirty documents remain open unless discardChanges is explicitly true.
     virtual EditorDocumentResult Close(EditorDocumentHandle document, bool discardChanges) = 0;
+    // NotFound when the GUID is unknown or is not a module-declared asset.
+    virtual EditorDocumentResult OpenAsset(std::string_view assetGuid) = 0;
+    // assetsRelativePath is relative to the project's Assets directory and must end with the extension of a
+    // module-declared asset type. The file and its GUID exist after the first successful Save.
+    virtual EditorDocumentResult CreateAsset(std::string_view assetsRelativePath, std::string_view initialUtf8Text) = 0;
+    // Copies the GUID of an asset document with its terminator and returns its length; zero for Data documents,
+    // for asset documents that have not been saved yet, and when the buffer is too small.
+    virtual size_t GetAssetGuid(EditorDocumentHandle document, char* utf8Buffer, size_t bufferCapacity) const = 0;
 };
 
 static_assert(std::is_standard_layout_v<EditorDocumentResult>);

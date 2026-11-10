@@ -1,5 +1,4 @@
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
-#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 #include "HIKARI/Project/EditorModuleUi.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
@@ -15,8 +14,10 @@
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
+#include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/HIKARI_World.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
@@ -70,8 +71,19 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
                                 projectWorkspaceHost_->Registry().HasActiveWorkspace(),
                                 [this] { (void)projectWorkspaceHost_->Registry().RequestSaveActiveWorkspace(); });
         }
-        // 項目の工作区（レベル編集など）は場面の操作で場面を直接書き換えるので、Ctrl+Z と編集メニューは場面の履歴へ送る。
-        bindSceneHistory();
+        if (projectWorkspaceHost_ == nullptr || projectWorkspaceHost_->ActiveWorkspaceRequestsSceneViewport()) {
+            // 場景の視口を持つ項目の工作区（レベル編集、地形など）は場面を直接書き換えるので、
+            // Ctrl+Z と編集メニューは場面の履歴へ送る。
+            bindSceneHistory();
+            return;
+        }
+        // 自分の文書を編集する項目の工作区（節点図など）には、元に戻す・やり直しをそのまま渡す。
+        // 履歴は工作区の持ち物で、戻せるかどうかはここからは分からないので、工作区が開いていれば有効にする。
+        const bool active = projectWorkspaceHost_->Registry().HasActiveWorkspace();
+        commandRouter_.Bind(EditorCommandId::Undo, TEXT::Localize("menu.edit.undo"), active,
+                            [this] { projectWorkspaceHost_->RequestHistoryStep(false); });
+        commandRouter_.Bind(EditorCommandId::Redo, TEXT::Localize("menu.edit.redo"), active,
+                            [this] { projectWorkspaceHost_->RequestHistoryStep(true); });
         return;
     }
 
@@ -294,6 +306,20 @@ void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectE
                                                          {target.x, target.y, target.z});
             }
         });
+    host->Extensions().SetSelectionReader([this]() {
+        EDITOR_PROJECT::EditorSceneSelection selection{};
+        selection.sceneObjectId = context_.selection.GetActiveObjectId().value;
+        selection.selectedCount = static_cast<uint32_t>(context_.selection.GetSelectedObjectCount());
+        const GameObject* object = context_.selection.selectedObject;
+        const World* world = object != nullptr ? object->GetWorld() : nullptr;
+        if (world != nullptr && object->GetRuntimeHandle().IsValid()) {
+            selection.object = {GameProjectWorldHandle{world->GetRuntimeIdentity()},
+                                object->GetRuntimeHandle().ToValue()};
+        }
+        return selection;
+    });
+    host->Extensions().SetPlayStateReader(
+        [this]() { return aiPlaySession_ != nullptr && aiPlaySession_->IsRunning(); });
     host->Extensions().SetFarModelBaker([this](std::string_view modelAssetGuid) -> std::string {
         if (aiOperationScene_ == nullptr) {
             return {};

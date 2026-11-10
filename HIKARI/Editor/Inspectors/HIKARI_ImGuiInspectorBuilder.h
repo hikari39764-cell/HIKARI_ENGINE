@@ -36,6 +36,8 @@ public:
     bool Choice(const AuthoringFieldDescriptor& field, int& selectedIndex,
                 std::span<const AuthoringChoice> choices) override;
     bool AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType, std::string& value) override;
+    bool ModuleAssetIdPicker(const AuthoringFieldDescriptor& field, std::string_view moduleAssetTypeId,
+                             std::string& value) override;
     bool SceneIdPicker(const AuthoringFieldDescriptor& field, std::string& value) override;
     bool SceneObjectIdPicker(const AuthoringFieldDescriptor& field, SceneObjectId& value) override;
 

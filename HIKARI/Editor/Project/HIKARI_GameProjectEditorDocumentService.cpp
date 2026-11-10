@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <atomic>
 #include <chrono>
+#include <cstring>
 #include <fstream>
 #include <limits>
 #include <memory>
@@ -12,6 +13,8 @@
 
 #include <Windows.h>
 
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Core/IO/HIKARI_FileReplacementTransaction.h"
 #include "Core/IO/HIKARI_NativeFilePath.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -136,6 +139,9 @@ struct GameProjectEditorDocumentService::Document {
     EditorSourceVersion sourceVersion{};
     uint64_t revision = 1u;
     size_t maximumAcceptedBytes = 0u;
+    // 資産の文書（Assets の下）。GUID は資産庫が知っている資産だけが持つ（新しく作ったものは最初の保存の後）。
+    bool asset = false;
+    std::string assetGuid{};
 };
 
 GameProjectEditorDocumentService::GameProjectEditorDocumentService(std::filesystem::path dataRoot) {
@@ -149,9 +155,96 @@ GameProjectEditorDocumentService::GameProjectEditorDocumentService(std::filesyst
 GameProjectEditorDocumentService::~GameProjectEditorDocumentService() = default;
 
 EditorDocumentResult GameProjectEditorDocumentService::Open(std::string_view relativePath) {
+    return OpenAt(relativePath, false);
+}
+
+EditorDocumentResult GameProjectEditorDocumentService::Create(std::string_view relativePath,
+                                                              std::string_view initialUtf8Text) {
+    return CreateAt(relativePath, initialUtf8Text, false);
+}
+
+void GameProjectEditorDocumentService::SetAssetDatabase(AssetDatabase* database) {
+    if (assetDatabase_ == database) {
+        return;
+    }
+    assetDatabase_ = database;
+    assetsRoot_.clear();
+    if (database != nullptr) {
+        std::error_code error{};
+        assetsRoot_ = std::filesystem::absolute(database->GetAssetsRoot(), error).lexically_normal();
+        if (error) {
+            assetsRoot_.clear();
+        }
+    }
+}
+
+EditorDocumentResult GameProjectEditorDocumentService::OpenAsset(std::string_view assetGuid) {
+    if (assetDatabase_ == nullptr || assetsRoot_.empty()) {
+        return EmptyResult(EditorDocumentCode::IoFailure);
+    }
+    const AssetRecord* record = assetDatabase_->FindByGuid(AssetGuid{std::string(assetGuid)});
+    if (record == nullptr || record->type != AssetType::ModuleAsset) {
+        return EmptyResult(EditorDocumentCode::NotFound);
+    }
+    const std::filesystem::path relative = assetDatabase_->ResolveSourcePath(*record).lexically_relative(assetsRoot_);
+    if (relative.empty() || *relative.begin() == "..") {
+        return EmptyResult(EditorDocumentCode::InvalidPath);
+    }
+    const std::string guid = record->guid.value;
+    const EditorDocumentResult result = OpenAt(TEXT::PathToUtf8(relative), true);
+    if (Document* document = Find(result.document)) {
+        document->assetGuid = guid;
+    }
+    return result;
+}
+
+EditorDocumentResult GameProjectEditorDocumentService::CreateAsset(std::string_view assetsRelativePath,
+                                                                   std::string_view initialUtf8Text) {
+    if (assetDatabase_ == nullptr || assetsRoot_.empty()) {
+        return EmptyResult(EditorDocumentCode::IoFailure);
+    }
+    // モジュールが登記した種類の拡張子だけ。引擎の資産はそれぞれの編集器が書く。
+    if (ASSETS::SEMANTICS::FindModuleAssetTypeForPath(TEXT::PathFromUtf8(assetsRelativePath)) == nullptr) {
+        return EmptyResult(EditorDocumentCode::InvalidPath);
+    }
+    return CreateAt(assetsRelativePath, initialUtf8Text, true);
+}
+
+size_t GameProjectEditorDocumentService::GetAssetGuid(EditorDocumentHandle handle, char* utf8Buffer,
+                                                      size_t bufferCapacity) const {
+    const Document* document = Find(handle);
+    if (document == nullptr || document->assetGuid.empty() || utf8Buffer == nullptr ||
+        document->assetGuid.size() >= bufferCapacity) {
+        return 0u;
+    }
+    std::memcpy(utf8Buffer, document->assetGuid.c_str(), document->assetGuid.size() + 1u);
+    return document->assetGuid.size();
+}
+
+void GameProjectEditorDocumentService::PublishSavedAsset(Document& document) {
+    if (assetDatabase_ == nullptr) {
+        return;
+    }
+    if (document.assetGuid.empty()) {
+        if (!assetDatabase_->ScanAssets(true)) {
+            return;
+        }
+        const AssetRecord* record =
+            assetDatabase_->FindByPath(document.path.lexically_relative(assetDatabase_->GetProjectRoot()));
+        if (record == nullptr) {
+            return;
+        }
+        document.assetGuid = record->guid.value;
+    }
+    // 導入し直すと資産庫の内容の版が進み、実行中のゲームも新しい中身を読む。
+    (void)assetDatabase_->ImportAsset(AssetGuid{document.assetGuid});
+}
+
+EditorDocumentResult GameProjectEditorDocumentService::OpenAt(std::string_view relativePath, bool asset) {
+    const std::filesystem::path& root = RootOf(asset);
     std::filesystem::path path{};
     std::string pathMessage{};
-    const auto pathCode = PROJECT_DATA::ResolveProjectDataFile(dataRoot_, relativePath, path, pathMessage);
+    const auto pathCode = PROJECT_DATA::ResolveProjectDataFile(root, relativePath, path, pathMessage);
     if (pathCode != PROJECT_DATA::ProjectDataFileCode::Resolved) {
         return EmptyResult(MapDataFileCode(pathCode));
     }
@@ -190,17 +283,19 @@ EditorDocumentResult GameProjectEditorDocumentService::Open(std::string_view rel
     if (handle == kInvalidEditorDocumentHandle) {
         return EmptyResult(EditorDocumentCode::IoFailure);
     }
-    const std::string normalizedPath = TEXT::PathToUtf8(path.lexically_relative(dataRoot_));
+    const std::string normalizedPath = TEXT::PathToUtf8(path.lexically_relative(root));
     auto document = std::make_unique<Document>(handle, std::move(path), normalizedPath, textSnapshot, true,
                                                std::move(sourceVersion));
+    document->asset = asset;
     document->UpdateHistoryCapacity();
     Document* resultDocument = document.get();
     documents_.push_back(std::move(document));
     return MakeResult(EditorDocumentCode::Ok, resultDocument);
 }
 
-EditorDocumentResult GameProjectEditorDocumentService::Create(std::string_view relativePath,
-                                                              std::string_view initialUtf8Text) {
+EditorDocumentResult GameProjectEditorDocumentService::CreateAt(std::string_view relativePath,
+                                                                std::string_view initialUtf8Text, bool asset) {
+    const std::filesystem::path& root = RootOf(asset);
     if (!PROJECT_DATA::IsValidProjectDataText(initialUtf8Text)) {
         return EmptyResult(initialUtf8Text.size() > kMaximumProjectDataTextBytes ? EditorDocumentCode::TooLarge
                                                                                  : EditorDocumentCode::InvalidUtf8);
@@ -208,7 +303,7 @@ EditorDocumentResult GameProjectEditorDocumentService::Create(std::string_view r
 
     std::filesystem::path path{};
     std::string pathMessage{};
-    const auto pathCode = PROJECT_DATA::ResolveProjectDataFile(dataRoot_, relativePath, path, pathMessage);
+    const auto pathCode = PROJECT_DATA::ResolveProjectDataFile(root, relativePath, path, pathMessage);
     if (pathCode != PROJECT_DATA::ProjectDataFileCode::Resolved) {
         return EmptyResult(MapDataFileCode(pathCode));
     }
@@ -250,10 +345,11 @@ EditorDocumentResult GameProjectEditorDocumentService::Create(std::string_view r
     if (handle == kInvalidEditorDocumentHandle) {
         return EmptyResult(EditorDocumentCode::IoFailure);
     }
-    const std::string normalizedPath = TEXT::PathToUtf8(path.lexically_relative(dataRoot_));
+    const std::string normalizedPath = TEXT::PathToUtf8(path.lexically_relative(root));
     const auto textSnapshot = std::make_shared<const std::string>(initialUtf8Text);
     auto document = std::make_unique<Document>(handle, std::move(path), normalizedPath, textSnapshot, false,
                                                std::move(sourceVersion));
+    document->asset = asset;
     document->UpdateHistoryCapacity();
     Document* resultDocument = document.get();
     documents_.push_back(std::move(document));
@@ -375,10 +471,10 @@ EditorDocumentResult GameProjectEditorDocumentService::Save(EditorDocumentHandle
         return MakeResult(EditorDocumentCode::ExternalConflict, document);
     }
 
+    const std::filesystem::path& root = RootOf(document->asset);
     std::filesystem::path finalPath{};
     std::string pathMessage{};
-    const auto pathCode =
-        PROJECT_DATA::ResolveProjectDataFile(dataRoot_, document->relativePath, finalPath, pathMessage);
+    const auto pathCode = PROJECT_DATA::ResolveProjectDataFile(root, document->relativePath, finalPath, pathMessage);
     if (pathCode != PROJECT_DATA::ProjectDataFileCode::Resolved) {
         return MakeResult(MapDataFileCode(pathCode), document);
     }
@@ -391,8 +487,7 @@ EditorDocumentResult GameProjectEditorDocumentService::Save(EditorDocumentHandle
     if (error) {
         return MakeResult(EditorDocumentCode::IoFailure, document);
     }
-    const auto revalidated =
-        PROJECT_DATA::ResolveProjectDataFile(dataRoot_, document->relativePath, finalPath, pathMessage);
+    const auto revalidated = PROJECT_DATA::ResolveProjectDataFile(root, document->relativePath, finalPath, pathMessage);
     if (revalidated != PROJECT_DATA::ProjectDataFileCode::Resolved || !SamePath(finalPath, document->path)) {
         return MakeResult(revalidated == PROJECT_DATA::ProjectDataFileCode::Resolved ? EditorDocumentCode::InvalidPath
                                                                                      : MapDataFileCode(revalidated),
@@ -409,7 +504,7 @@ EditorDocumentResult GameProjectEditorDocumentService::Save(EditorDocumentHandle
         return MakeResult(EditorDocumentCode::ExternalConflict, document);
     }
     const auto finalRevalidation =
-        PROJECT_DATA::ResolveProjectDataFile(dataRoot_, document->relativePath, finalPath, pathMessage);
+        PROJECT_DATA::ResolveProjectDataFile(root, document->relativePath, finalPath, pathMessage);
     if (finalRevalidation != PROJECT_DATA::ProjectDataFileCode::Resolved || !SamePath(finalPath, document->path)) {
         RemoveStagedFile(stagedPath);
         return MakeResult(finalRevalidation == PROJECT_DATA::ProjectDataFileCode::Resolved
@@ -430,6 +525,9 @@ EditorDocumentResult GameProjectEditorDocumentService::Save(EditorDocumentHandle
     document->saved = document->current;
     document->history.MarkSaved();
     document->UpdateHistoryCapacity();
+    if (document->asset) {
+        PublishSavedAsset(*document);
+    }
     return MakeResult(EditorDocumentCode::Ok, document);
 }
 

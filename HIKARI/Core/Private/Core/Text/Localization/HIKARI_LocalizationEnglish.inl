@@ -385,6 +385,8 @@
     {"ui.assetInspector.tabPbrMaterial", "PBR Material"}, {"ui.assetInspector.tabPreview", "Preview"},
     {"ui.assetInspector.tabSummary", "Summary"}, {"ui.assetInspector.typeFormat", "Type: %s"},
     {"ui.assetInspector.unlit", "Unlit"}, {"ui.assetInspector.unsavedEdits", "Unsaved material edits"},
+    {"ui.nodeGraph.addNode", "Add Node"}, {"ui.nodeGraph.copy", "Copy"}, {"ui.nodeGraph.cut", "Cut"},
+    {"ui.nodeGraph.paste", "Paste"}, {"ui.nodeGraph.duplicate", "Duplicate"}, {"ui.nodeGraph.frameAll", "Frame All"},
     {"ui.common.apply", "Apply"}, {"ui.common.cancel", "Cancel"}, {"ui.common.delete", "Delete"},
     {"ui.common.no", "No"}, {"ui.common.none", "<none>"}, {"ui.common.reset", "Reset"}, {"ui.common.save", "Save"},
     {"ui.common.transient", "<transient>"}, {"ui.common.untitled", "Untitled"}, {"ui.common.yes", "Yes"},

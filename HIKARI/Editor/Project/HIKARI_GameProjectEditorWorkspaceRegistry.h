@@ -56,6 +56,10 @@ public:
     bool ActiveWorkspaceRequestsSceneViewport() const noexcept;
     bool HasUnsavedWorkspaceChanges() const noexcept;
     bool IsActiveWorkspaceDirty() noexcept;
+    // モジュールが登記した資産の種類を編集する工作区の ID（無ければ空）。
+    std::string_view FindWorkspaceForAssetType(std::string_view moduleAssetTypeId) const noexcept;
+    // その工作区が次に描かれる前に、資産を開かせる（IEditorWorkspace::OpenAsset）。工作区の切り替えは呼び手が頼む。
+    void SetPendingAsset(std::string_view workspaceId, std::string_view assetGuid);
 
     void BeginFrame(EDITOR_PROJECT::IEditorWorkspaceUi& ui, float unscaledDeltaSeconds) noexcept;
     void ProcessPending() noexcept;
@@ -89,6 +93,8 @@ private:
         std::string failureMessage{};
         bool requestsSceneViewport = false;
         bool disabled = false;
+        // この工作区が編集する、モジュールの資産の種類（無ければ空）。
+        std::string assetTypeId{};
     };
 
     struct NavigationRequest {
@@ -110,6 +116,9 @@ private:
     std::string projectRootUtf8_{};
     EDITOR_PROJECT::IEditorDocumentService* documents_ = nullptr;
     std::optional<size_t> active_{};
+    // 資産浏览器から開くよう頼まれた資産と、その行き先の工作区。
+    std::optional<size_t> pendingAssetWorkspace_{};
+    std::string pendingAssetGuid_{};
     NavigationRequest navigation_{};
     std::optional<NavigationRequest> awaitingClose_{};
     bool saveRequested_ = false;

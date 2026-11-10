@@ -77,8 +77,10 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
         }
 
         EDITOR_PROJECT::EditorWorkspaceDescriptor descriptor{};
+        std::string assetTypeId{};
         try {
             descriptor = workspace->GetDescriptor();
+            assetTypeId = workspace->GetAssetTypeId();
         } catch (const std::exception& exception) {
             outMessage = "GameProject Editor workspace descriptor threw: " + ExceptionDetail(exception);
             return false;
@@ -138,6 +140,7 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
             {},
             (descriptor.options & kKnownOptions) != 0u,
             false,
+            std::move(assetTypeId),
         });
     }
 
@@ -223,6 +226,16 @@ void GameProjectEditorWorkspaceRegistry::DrawActive() noexcept {
     }
     EDITOR_PROJECT::EditorWorkspaceHostContext context = MakeContext(entry);
     try {
+        if (pendingAssetWorkspace_ && !navigation_.pending) {
+            // 切り替えが済んでいれば開かせる。切り替えを取り消された時は、頼みごと捨てる。
+            const std::string assetGuid = std::move(pendingAssetGuid_);
+            const bool arrived = *pendingAssetWorkspace_ == index;
+            pendingAssetWorkspace_.reset();
+            pendingAssetGuid_.clear();
+            if (arrived) {
+                entry.workspace->OpenAsset(context, assetGuid);
+            }
+        }
         entry.workspace->Draw(context);
     } catch (const std::exception& exception) {
         Disable(index, "Draw", ExceptionDetail(exception));
@@ -327,6 +340,24 @@ void GameProjectEditorWorkspaceRegistry::Shutdown(EDITOR_PROJECT::IEditorWorkspa
     entries_.clear();
     projectRootUtf8_.clear();
     EndFrame();
+}
+
+std::string_view GameProjectEditorWorkspaceRegistry::FindWorkspaceForAssetType(
+    std::string_view moduleAssetTypeId) const noexcept {
+    if (moduleAssetTypeId.empty()) {
+        return {};
+    }
+    for (const Entry& entry : entries_) {
+        if (!entry.disabled && entry.assetTypeId == moduleAssetTypeId) {
+            return entry.workspaceId;
+        }
+    }
+    return {};
+}
+
+void GameProjectEditorWorkspaceRegistry::SetPendingAsset(std::string_view workspaceId, std::string_view assetGuid) {
+    pendingAssetWorkspace_ = Find(workspaceId);
+    pendingAssetGuid_.assign(pendingAssetWorkspace_ ? assetGuid : std::string_view{});
 }
 
 bool GameProjectEditorWorkspaceRegistry::RequestActivateWorkspace(std::string_view workspaceId) {

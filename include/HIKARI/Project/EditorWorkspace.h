@@ -2,14 +2,22 @@
 
 #include <cstddef>
 #include <cstdint>
+#include "HIKARI/Project/AssetKind.h"
 #include "HIKARI/Project/UiTypes.h"
 #include <span>
 #include <string_view>
 #include <type_traits>
 
+namespace HIKARI {
+class IPropertyFieldDeclaration;
+}
+
 namespace HIKARI::EDITOR_PROJECT {
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 6u;
+struct EditorNodeGraphDesc;
+struct EditorNodeGraphResult;
+
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 7u;
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
@@ -22,6 +30,9 @@ enum class EditorWorkspaceDockRegion : uint32_t {
 
 struct EditorWorkspaceInteraction {
     uint32_t editing = 0u;
+    // The author asked to undo / redo (Ctrl+Z, Ctrl+Y, the Edit menu or the toolbar) while this workspace is active.
+    // Reported only to workspaces that edit their own documents. A workspace that shows the Scene viewport
+    // (RequestSceneViewport) shares the Scene history instead: record entries with IEditorSceneServices::RecordUndo.
     uint32_t undoPressed = 0u;
     uint32_t redoPressed = 0u;
     uint32_t deletePressed = 0u;
@@ -153,8 +164,10 @@ public:
     virtual void CanvasCircle(EditorWorkspacePoint center, float radius, EditorWorkspaceColor color,
                               float thickness = 1.0f) = 0;
     virtual void CanvasText(EditorWorkspacePoint position, EditorWorkspaceColor color, std::string_view utf8Text) = 0;
-    virtual bool TextureField(std::string_view stableControlId, std::string_view label, char* assetGuidUtf8,
-                              size_t bufferCapacity) = 0;
+    // Asset picker for one engine asset kind. assetGuidUtf8 holds the GUID (empty = none). Also accepts an asset of
+    // that kind dragged from the asset browser.
+    virtual bool AssetField(std::string_view stableControlId, std::string_view label, GameProjectAssetKind kind,
+                            char* assetGuidUtf8, size_t bufferCapacity) = 0;
     virtual bool CanvasImage(std::string_view textureAssetGuid, EditorWorkspacePoint minimum,
                              EditorWorkspacePoint maximum, EditorWorkspaceColor tint = {}) = 0;
     virtual void CanvasFill(EditorWorkspacePoint minimum, EditorWorkspacePoint maximum, EditorWorkspaceColor color) = 0;
@@ -177,14 +190,24 @@ public:
     // Drop-down list; *selected is the index into items.
     virtual bool Combo(std::string_view stableControlId, std::string_view label,
                        std::span<const std::string_view> items, int32_t* selected) = 0;
-    // Model asset picker. Also accepts a model dragged from the asset browser.
-    virtual bool ModelField(std::string_view stableControlId, std::string_view label, char* assetGuidUtf8,
-                            size_t bufferCapacity) = 0;
+    // Asset picker for an asset type that a module declares in its manifest (assetTypes[].typeId).
+    virtual bool ModuleAssetField(std::string_view stableControlId, std::string_view label,
+                                  std::string_view moduleAssetTypeId, char* assetGuidUtf8, size_t bufferCapacity) = 0;
     // List row with a picture. rgba8Pixels is sRGB, width * height * 4 bytes. The host keeps its own copy per control
     // and reads the pixels again only when revision changes. Null pixels draw a row without a picture.
     virtual bool ImageSelectable(std::string_view stableControlId, std::string_view label, const uint8_t* rgba8Pixels,
                                  uint32_t width, uint32_t height, uint64_t revision, bool selected,
                                  float rowHeight) = 0;
+    // Draws the controls of a PropertyFields declaration (the same Describe that loads and saves the data, see
+    // LoadPropertyFields / SavePropertyFields). Each field call inside Describe returns true when its value changed.
+    virtual void Fields(std::string_view stableControlId, IPropertyFieldDeclaration& declaration) = 0;
+    // Node graph control; types are in HIKARI/Project/EditorNodeGraph.h.
+    virtual void NodeGraph(std::string_view stableGraphId, const EditorNodeGraphDesc& desc,
+                           EditorNodeGraphResult& outResult) = 0;
+    virtual void SetClipboardText(std::string_view utf8Text) = 0;
+    // Copies the clipboard text with its terminator and returns the bytes the text needs including the terminator.
+    // When the buffer is too small, it receives an empty string; call again with the returned size.
+    virtual size_t GetClipboardText(char* utf8Buffer, size_t bufferCapacity) = 0;
 };
 
 // Results are borrowed for this callback only. Copy strings in the project
@@ -250,6 +273,11 @@ public:
     // Called exactly once when the author explicitly discards a draft.
     virtual void DiscardChanges(EditorWorkspaceHostContext&) {}
     virtual EditorWorkspaceCloseDisposition QueryClose(EditorWorkspaceCloseReason reason) const = 0;
+    // The module-declared asset type (assetTypes[].typeId in the manifest) that this workspace edits, or empty.
+    // When the author opens such an asset in the asset browser, the host activates this workspace and then calls
+    // OpenAsset once, before the next Draw. The string must stay valid for the lifetime of this object.
+    virtual std::string_view GetAssetTypeId() const { return {}; }
+    virtual void OpenAsset(EditorWorkspaceHostContext&, std::string_view /*assetGuid*/) {}
 };
 
 static_assert(std::is_standard_layout_v<EditorWorkspaceDescriptor>);

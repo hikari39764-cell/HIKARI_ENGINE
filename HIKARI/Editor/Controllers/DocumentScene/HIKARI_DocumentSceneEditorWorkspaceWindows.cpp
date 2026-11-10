@@ -1,4 +1,5 @@
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
@@ -384,7 +385,16 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
     if (!context_.windows.resources.showAssetBrowser) {
         return;
     }
-    if (const auto activation = resourceWorkspacePanel_.ConsumeActivatedAsset()) {
+    if (const auto activation = resourceWorkspacePanel_.ConsumeActivatedAsset();
+        activation && activation->type == AssetType::ModuleAsset) {
+        // モジュールが登記した種類の資産は、その種類を編集する項目の工作区へ渡す。
+        const AssetRecord* record = scene.GetAssetDatabase().FindByGuid(activation->guid);
+        const ASSETS::SEMANTICS::ModuleAssetTypeDesc* type =
+            record != nullptr ? ASSETS::SEMANTICS::FindModuleAssetTypeForPath(record->sourcePath) : nullptr;
+        if (type != nullptr && projectWorkspaceHost_ != nullptr) {
+            (void)projectWorkspaceHost_->RequestOpenAsset(type->typeId, activation->guid.value);
+        }
+    } else if (activation) {
         EDITOR::AssetWorkspaceActivationRoute route = EDITOR::RouteAssetWorkspaceActivation(*activation);
         if (route.workspaceRequest.has_value()) {
             (void)workspaceHost_.RequestOpen(std::move(*route.workspaceRequest));

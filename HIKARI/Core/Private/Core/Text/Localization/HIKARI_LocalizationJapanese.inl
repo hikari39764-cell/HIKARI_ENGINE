@@ -403,6 +403,8 @@
     {"ui.assetInspector.tabPbrMaterial", "PBRマテリアル"}, {"ui.assetInspector.tabPreview", "プレビュー"},
     {"ui.assetInspector.tabSummary", "概要"}, {"ui.assetInspector.typeFormat", "タイプ: %s"},
     {"ui.assetInspector.unlit", "無光"}, {"ui.assetInspector.unsavedEdits", "未保存のマテリアル編集"},
+    {"ui.nodeGraph.addNode", "ノードを追加"}, {"ui.nodeGraph.copy", "コピー"}, {"ui.nodeGraph.cut", "切り取り"},
+    {"ui.nodeGraph.paste", "貼り付け"}, {"ui.nodeGraph.duplicate", "複製"}, {"ui.nodeGraph.frameAll", "全体を表示"},
     {"ui.common.apply", "適用"}, {"ui.common.cancel", "キャンセル"}, {"ui.common.delete", "削除"},
     {"ui.common.no", "いいえ"}, {"ui.common.none", "<なし>"}, {"ui.common.reset", "リセット"},
     {"ui.common.save", "保存"}, {"ui.common.transient", "<一時的>"}, {"ui.common.untitled", "無題"},

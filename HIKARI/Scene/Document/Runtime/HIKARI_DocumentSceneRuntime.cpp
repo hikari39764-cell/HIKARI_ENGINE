@@ -509,6 +509,8 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->assets.GameplayCameras()) && success;
     state_->assets.TextAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.TextAssets()) && success;
+    state_->assets.ModuleAssets().Configure(&state_->assets.Database());
+    success = services.Register(state_->assets.ModuleAssets()) && success;
     state_->assets.SpriteAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.SpriteAssets()) && success;
     state_->assets.SpriteMaterials().Configure(&state_->assets.Database(), &state_->assets.Registry());

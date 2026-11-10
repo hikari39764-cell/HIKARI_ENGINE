@@ -1000,6 +1000,8 @@ bool Record(const GFX::Context& graphics, ID3D12RootSignature* rootSignature, co
     return true;
 }
 
+void Forget(IRenderSurfaceExtension& extension) noexcept { std::erase(State().extensions, &extension); }
+
 void Shutdown(const GFX::Context* graphics) noexcept {
     RuntimeState& state = State();
     ReleaseAll(state, graphics);

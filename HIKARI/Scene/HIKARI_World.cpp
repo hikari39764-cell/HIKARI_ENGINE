@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_World.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 
 #include <algorithm>
 #include <exception>
@@ -555,6 +556,8 @@ void World::RemoveGroundSource(IGroundSource& source) noexcept { std::erase(grou
 
 void World::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept {
     std::erase(renderSurfaceExtensions_, &extension);
+    // 描画側も前のフレームの一覧を持っているので、そこからも外す（外した直後に持ち主が破棄される）。
+    RENDER3D::SURFACE_EXTENSIONS::Forget(extension);
 }
 
 void World::BeginFrame(uint64_t frameIndex) noexcept {

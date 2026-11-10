@@ -32,6 +32,10 @@ public:
                         EditorOperationRegistry& operationRegistry, std::string& outMessage);
     void ReportModuleFailure(std::string message);
     void RequestWorkspace(std::string workspaceId) { requestedWorkspace_ = std::move(workspaceId); }
+    // モジュールが登記した種類の資産を、その種類を編集する工作区で開く。編集する工作区が無ければ false。
+    bool RequestOpenAsset(std::string_view moduleAssetTypeId, std::string_view assetGuid);
+    // 編集器の「元に戻す・やり直し」を、次に描く作業区へ渡す（自分の文書を編集する作業区用）。
+    void RequestHistoryStep(bool redo) noexcept { (redo ? redoRequested_ : undoRequested_) = true; }
     void UpdateNavigation(EditorWorkspaceHost& host, float unscaledDeltaSeconds);
     void DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter);
     void Draw(EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase&, AssetRegistry&);
@@ -64,6 +68,8 @@ private:
     std::string requestedWorkspace_{};
     std::optional<EditorWorkspaceOpenRequest> guardedNavigation_{};
     bool resetLayout_ = false;
+    bool undoRequested_ = false;
+    bool redoRequested_ = false;
 };
 
 } // namespace HIKARI::EDITOR

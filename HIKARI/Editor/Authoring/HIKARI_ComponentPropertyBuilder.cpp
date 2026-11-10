@@ -341,6 +341,31 @@ public:
                            {{"assetType", std::string(ASSETS::SEMANTICS::ToString(assetType))}}, validator);
     }
 
+    bool ModuleAssetIdPicker(const AuthoringFieldDescriptor& field, std::string_view moduleAssetTypeId,
+                             std::string& value) override {
+        const std::string typeId(moduleAssetTypeId);
+        const auto validator = [this, typeId](const std::string& next) {
+            if (next.empty() || context_.assetDatabase == nullptr) {
+                return true;
+            }
+            const AssetRecord* record = context_.assetDatabase->FindByGuid(AssetGuid{next});
+            if (record == nullptr) {
+                SetError("ASSET_NOT_FOUND", "Asset GUID was not found: " + next);
+                return false;
+            }
+            if (!ASSETS::SEMANTICS::MatchesAssetType(record->type, record->sourcePath, AssetType::ModuleAsset,
+                                                     typeId)) {
+                SetError("ASSET_TYPE_MISMATCH", "Asset must be a " + typeId + " asset: " + next);
+                return false;
+            }
+            return true;
+        };
+        return VisitString(field, AuthoringFieldValueType::AssetId, value,
+                           {{"assetType", std::string(ASSETS::SEMANTICS::ToString(AssetType::ModuleAsset))},
+                            {"moduleAssetTypeId", typeId}},
+                           validator);
+    }
+
     bool SceneIdPicker(const AuthoringFieldDescriptor& field, std::string& value) override {
         return VisitString(field, AuthoringFieldValueType::SceneId, value, nlohmann::json::object(), nullptr);
     }
