@@ -10,7 +10,8 @@ namespace HIKARI {
 // モジュールが自分の幾何を場面の深度・面・前向き不透明と太陽の影へ描くための接口。
 // 頂点は持たず、頂点番号と実例データから頂点着色器で位置を作る（地形の瓦片のような格子向け）。
 // 一つずつ形を作る物（草）は mesh shader でも描ける（RenderSurfaceDraw の indexBuffer を 0 にする）。
-// 資源の実体、PSO、root の束縛は引擎が持ち、モジュールは番号と内容だけを渡す。
+// 資源の実体、PSO、root の束縛は引擎が持ち、モジュールは番号と内容だけを渡す。着色器はモジュールが HLSL の
+// ファイルで持ち、引擎が実行時に編訳する（引擎の着色器フォルダの共用ヘッダーを include できる）。
 
 using RenderSurfaceResourceId = uint32_t;
 inline constexpr uint32_t kRenderSurfaceTextureSlotCount = 8u;
@@ -90,6 +91,11 @@ public:
     virtual RenderSurfaceResourceId CreateRayTracingProxy(const RenderSurfaceRayProxy& proxy) = 0;
     // compute。hlslSource は HLSL の本文（#include は使えない）、entry は入口の名前。失敗は 0。
     virtual RenderSurfaceResourceId CreateComputeProgram(std::string_view hlslSource, std::string_view entry) = 0;
+    // 面の着色器。hlslPathUtf8 はモジュールの包の中にある HLSL ファイルの絶対路径。#include はそのファイルの
+    // フォルダと引擎の着色器フォルダ（"Include/..."）から探す。入口（RenderSurfaceDraw を参照）は、使う pass で
+    // 初めて描く時に原文から編訳する。編訳できなかった入口を使う Draw は false を返し、理由はログに出る。
+    // ファイルが無ければ 0。
+    virtual RenderSurfaceResourceId CreateSurfaceProgram(std::string_view hlslPathUtf8) = 0;
     // GPU だけが持つ緩衝。initialData が無ければ中身は不定。
     virtual RenderSurfaceResourceId CreateBuffer(uint64_t bytes, const void* initialData) = 0;
     virtual bool Dispatch(const RenderSurfaceDispatch& dispatch) = 0;
@@ -118,12 +124,12 @@ struct RenderSurfaceView {
     float cameraPosition[3]{};
 };
 
-// instances と constants は Draw の中で写される。programId は引擎の内蔵着色器の番号で、
+// instances と constants は Draw の中で写される。program は CreateSurfaceProgram の番号で、その着色器は
 // 使う pass に応じて入口 SurfaceVS / SurfaceGeometryPS / SurfaceGeometryFeaturePS / SurfaceForwardPS /
 // SurfaceDepthAwarePS を持つこと。indexBuffer が 0 なら SurfaceVS の代わりに SurfaceMS で描く：indexCount は実例一つ
 // あたりの組の数で、SV_GroupID.x が「実例の番号 × 組の数 + 組の番号」になる。
 struct RenderSurfaceDraw {
-    const char* programId = nullptr;
+    RenderSurfaceResourceId program = 0u;
     RenderSurfaceResourceId textures[kRenderSurfaceTextureSlotCount]{};
     RenderSurfaceResourceId indexBuffer = 0u;
     uint32_t indexCount = 0u;

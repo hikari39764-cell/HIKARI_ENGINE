@@ -5,6 +5,7 @@
 #include <cmath>
 #include <cstring>
 #include <exception>
+#include <filesystem>
 #include <map>
 #include <memory>
 #include <string>
@@ -16,18 +17,15 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GpuDeferredReleaseQueue.h"
 #include "Gfx/D3D12/HIKARI_D3D12RootSignature.h"
 #include "Gfx/HIKARI_ShaderCompiler.h"
-#include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Gfx/HIKARI_VideoMemory.h"
 #include "Gfx/RayTracing/HIKARI_DxrAccelerationStructure.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
-#include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
-#include "RenderContracts/Shader/HIKARI_RenderGeometryShaderContract.h"
-#include "RenderContracts/Shader/HIKARI_ShaderCookedArtifact.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 
@@ -35,7 +33,6 @@ namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS {
 namespace {
 
 using Microsoft::WRL::ComPtr;
-namespace SHADER = ASSETS::SHADER;
 
 constexpr size_t kUploadPageBytes = 4u * 1024u * 1024u;
 constexpr uint32_t kRayProxyBuildsPerFrame = 8u;
@@ -110,6 +107,12 @@ uint32_t BytesPerBlock(RenderSurfaceTextureFormat format) noexcept {
     }
 }
 
+// モジュールの面の着色器（HLSL ファイル）。入口は使う pass が来た時に編訳して、ここに持つ。
+struct SurfaceProgram {
+    std::filesystem::path source{};
+    std::map<std::string, ComPtr<ID3DBlob>> entries{};
+};
+
 struct RuntimeState {
     GFX::Context graphics{};
     uint64_t deviceGeneration = 0u;
@@ -123,6 +126,7 @@ struct RuntimeState {
     std::map<std::string, ComPtr<ID3D12PipelineState>> pipelines{};
     std::map<RenderSurfaceResourceId, ComPtr<ID3D12PipelineState>> computePrograms{};
     ComPtr<ID3D12RootSignature> computeRoot{};
+    std::map<RenderSurfaceResourceId, SurfaceProgram> surfacePrograms{};
     std::map<std::string, bool> failedPrograms{};
     std::map<std::array<RenderSurfaceResourceId, kRenderSurfaceTextureSlotCount>, DescriptorTable> tables{};
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads{};
@@ -130,6 +134,9 @@ struct RuntimeState {
     uint32_t slot = 0u;
     MATH::Vec3 cameraPosition{};
 };
+
+// PSO の表の鍵の、着色器ごとの前置き（後ろに pass と特徴マスクの有無が付く）。
+std::string SurfacePipelineKeyPrefix(RenderSurfaceResourceId program) { return std::to_string(program) + "#"; }
 
 RuntimeState& State() noexcept {
     static RuntimeState state{};
@@ -158,6 +165,7 @@ void ReleaseAll(RuntimeState& state, const GFX::Context* graphics) noexcept {
         state.resources.clear();
         state.computePrograms.clear();
         state.computeRoot.Reset();
+        state.surfacePrograms.clear();
         for (auto& [id, proxy] : state.rayProxies) {
             if (proxy.bottomLevel) {
                 proxy.bottomLevel->Reset(graphics);
@@ -361,6 +369,18 @@ public:
         return id;
     }
 
+    RenderSurfaceResourceId CreateSurfaceProgram(std::string_view hlslPathUtf8) override {
+        std::filesystem::path path = TEXT::PathFromUtf8(std::string(hlslPathUtf8));
+        std::error_code ec{};
+        if (!path.is_absolute() || !std::filesystem::is_regular_file(path, ec)) {
+            HIKARI_LOG_ERROR("[RenderSurface] Module surface shader was not found: " + std::string(hlslPathUtf8));
+            return 0u;
+        }
+        const RenderSurfaceResourceId id = state_.nextResource++;
+        state_.surfacePrograms[id].source = std::move(path);
+        return id;
+    }
+
     RenderSurfaceResourceId CreateBuffer(uint64_t bytes, const void* initialData) override {
         if (bytes == 0u) {
             return 0u;
@@ -470,6 +490,12 @@ public:
 
     void Release(RenderSurfaceResourceId id) override {
         if (state_.computePrograms.erase(id) != 0u) {
+            return;
+        }
+        if (state_.surfacePrograms.erase(id) != 0u) {
+            const std::string prefix = SurfacePipelineKeyPrefix(id);
+            std::erase_if(state_.pipelines, [&](const auto& entry) { return entry.first.starts_with(prefix); });
+            std::erase_if(state_.failedPrograms, [&](const auto& entry) { return entry.first.starts_with(prefix); });
             return;
         }
         if (const auto proxy = state_.rayProxies.find(id); proxy != state_.rayProxies.end()) {
@@ -645,20 +671,20 @@ void PublishRayProxies(RuntimeState& state) {
     ++state.rayProxyVersion;
 }
 
-// RenderGeometryShaderContract の合同で内蔵着色器を解決する。
-bool ResolveEntry(RuntimeState& state, const char* programId, const char* entry, SHADER::ShaderStage stage,
-                  const char* profile, SHADER::ShaderAssetEntryLease& outLease) {
-    const GFX::ShaderDeviceCapabilities capabilities = GFX::QueryShaderDeviceCapabilities(state.graphics.device);
-    const auto contract = SHADER::MakeRenderGeometryShaderContract(
-        SHADER::RenderGeometryRootLayout::ModuleSurfaceDraw,
-        {capabilities.shaderModel, capabilities.rootSignatureVersion, capabilities.featureMask});
-    auto resolved = SHADER::ResolveBuiltinShaderEntry(programId, {entry, stage, profile}, contract);
-    if (!resolved || resolved.lease.GetDxil().empty()) {
-        HIKARI_LOG_ERROR(std::string("[RenderSurface] ") + programId + " " + entry + ": " + resolved.diagnostic);
-        return false;
+// モジュールの着色器の入口を原文から編訳する（#include はそのファイルのフォルダと引擎の着色器フォルダ）。
+// 同じ入口は一度だけ編訳する（頂点側の入口は深度・面・前向きの PSO が共有する）。失敗は nullptr。
+// 束縛が面の root signature に収まるかは、PSO を作る時に D3D12 が確かめる。
+ID3DBlob* CompileEntry(SurfaceProgram& program, const char* entry, const wchar_t* profile) {
+    if (const auto found = program.entries.find(entry); found != program.entries.end()) {
+        return found->second.Get();
     }
-    outLease = std::move(resolved.lease);
-    return true;
+    ComPtr<ID3DBlob> shader{};
+    if (!GFX::CompileShaderFileSm6(program.source.c_str(), entry, profile, shader.GetAddressOf())) {
+        HIKARI_LOG_ERROR("[RenderSurface] Module surface shader did not compile: " + TEXT::PathToUtf8(program.source) +
+                         " " + entry);
+        return nullptr;
+    }
+    return program.entries.emplace(entry, std::move(shader)).first->second.Get();
 }
 
 struct MeshSurfacePipelineStream {
@@ -702,10 +728,15 @@ HRESULT CreateMeshSurfacePipeline(ID3D12Device* device, const D3D12_GRAPHICS_PIP
     return device2->CreatePipelineState(&streamDescription, IID_PPV_ARGS(outPipeline.GetAddressOf()));
 }
 
-ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* rootSignature, const char* programId,
-                                     RenderSurfacePass pass, bool featureMask, bool meshDraw) {
-    const std::string program(programId);
-    const std::string key = program + "#" + std::to_string(static_cast<uint32_t>(pass)) + (featureMask ? "f" : "");
+ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* rootSignature,
+                                     RenderSurfaceResourceId program, RenderSurfacePass pass, bool featureMask,
+                                     bool meshDraw) {
+    const auto source = state.surfacePrograms.find(program);
+    if (source == state.surfacePrograms.end()) {
+        return nullptr;
+    }
+    const std::string key =
+        SurfacePipelineKeyPrefix(program) + std::to_string(static_cast<uint32_t>(pass)) + (featureMask ? "f" : "");
     if (const auto found = state.pipelines.find(key); found != state.pipelines.end()) {
         return found->second.Get();
     }
@@ -714,12 +745,9 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
     }
     state.failedPrograms.emplace(key, true);
 
-    SHADER::ShaderAssetEntryLease geometry{};
-    SHADER::ShaderAssetEntryLease pixel{};
-    const bool geometryResolved =
-        meshDraw ? ResolveEntry(state, programId, "SurfaceMS", SHADER::ShaderStage::Mesh, "ms_6_5", geometry)
-                 : ResolveEntry(state, programId, "SurfaceVS", SHADER::ShaderStage::Vertex, "vs_6_0", geometry);
-    if (!geometryResolved) {
+    ID3DBlob* const geometry = meshDraw ? CompileEntry(source->second, "SurfaceMS", L"ms_6_5")
+                                        : CompileEntry(source->second, "SurfaceVS", L"vs_6_0");
+    if (geometry == nullptr) {
         return nullptr;
     }
     const char* pixelEntry = pass == RenderSurfacePass::Forward           ? "SurfaceForwardPS"
@@ -727,20 +755,19 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
                              : pass != RenderSurfacePass::GeometrySurface ? nullptr
                              : featureMask                                ? "SurfaceGeometryFeaturePS"
                                                                           : "SurfaceGeometryPS";
-    if (pixelEntry != nullptr &&
-        !ResolveEntry(state, programId, pixelEntry, SHADER::ShaderStage::Pixel, "ps_6_0", pixel)) {
+    ID3DBlob* const pixel = pixelEntry != nullptr ? CompileEntry(source->second, pixelEntry, L"ps_6_0") : nullptr;
+    if (pixelEntry != nullptr && pixel == nullptr) {
         return nullptr;
     }
 
     D3D12_GRAPHICS_PIPELINE_STATE_DESC description{};
     description.pRootSignature = rootSignature;
-    const auto geometryDxil = geometry.GetDxil();
+    const D3D12_SHADER_BYTECODE geometryCode{geometry->GetBufferPointer(), geometry->GetBufferSize()};
     if (!meshDraw) {
-        description.VS = {geometryDxil.data(), geometryDxil.size()};
+        description.VS = geometryCode;
     }
     if (pixelEntry != nullptr) {
-        const auto pixelDxil = pixel.GetDxil();
-        description.PS = {pixelDxil.data(), pixelDxil.size()};
+        description.PS = {pixel->GetBufferPointer(), pixel->GetBufferSize()};
     }
     description.BlendState = CD3DX12_BLEND_DESC(D3D12_DEFAULT);
     description.SampleMask = UINT_MAX;
@@ -778,8 +805,7 @@ ID3D12PipelineState* ResolvePipeline(RuntimeState& state, ID3D12RootSignature* r
     ComPtr<ID3D12PipelineState> pipeline{};
     const HRESULT created =
         meshDraw
-            ? CreateMeshSurfacePipeline(state.graphics.device, description, {geometryDxil.data(), geometryDxil.size()},
-                                        pipeline)
+            ? CreateMeshSurfacePipeline(state.graphics.device, description, geometryCode, pipeline)
             : state.graphics.device->CreateGraphicsPipelineState(&description, IID_PPV_ARGS(pipeline.GetAddressOf()));
     if (!HIKARI_DX_CHECK(created, "RenderSurface::CreatePipeline")) {
         return nullptr;
@@ -825,9 +851,8 @@ public:
         : state_(state), graphics_(graphics), rootSignature_(rootSignature), input_(input) {}
 
     bool Draw(const RenderSurfaceDraw& draw) override {
-        if (draw.programId == nullptr || draw.instanceCount == 0u || draw.indexCount == 0u ||
-            draw.instanceStride == 0u || draw.instances == nullptr ||
-            draw.constantBytes > kRenderSurfaceMaximumConstantBytes ||
+        if (draw.program == 0u || draw.instanceCount == 0u || draw.indexCount == 0u || draw.instanceStride == 0u ||
+            draw.instances == nullptr || draw.constantBytes > kRenderSurfaceMaximumConstantBytes ||
             (draw.constantBytes != 0u && draw.constants == nullptr)) {
             return false;
         }
@@ -837,7 +862,7 @@ public:
             return false;
         }
         ID3D12PipelineState* pipeline =
-            ResolvePipeline(state_, rootSignature_, draw.programId, input_.pass, input_.geometryFeatureMask, meshDraw);
+            ResolvePipeline(state_, rootSignature_, draw.program, input_.pass, input_.geometryFeatureMask, meshDraw);
         const D3D12_GPU_DESCRIPTOR_HANDLE table = ResolveTable(state_, draw);
         if (pipeline == nullptr || table.ptr == 0u) {
             return false;
