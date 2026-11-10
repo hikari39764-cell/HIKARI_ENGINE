@@ -12,12 +12,14 @@ include("${CMAKE_CURRENT_LIST_DIR}/HIKARIModuleTargets.cmake")
 #       Debug/                  Debug の DLL（清単からは指さない）
 #       <library>.interface.json  DLL ごとに隣に置く記録：編訳の時に読んだ SDK のファイルとその指紋。引擎は DLL を
 #                                 読む前に自分の表と比べ、合う間は引擎が新しくなっても同じ DLL を読む
-#       <内容のフォルダ>        元の清単の runtimeDirectories と editorDirectories の写し
+#       <内容のフォルダ>        元の清単の runtimeDirectories、editorDirectories、publicIncludeDirectories の写し
 #
-# MANIFEST は元の清単：id、name、version、dependencies、assetTypes、runtimeDirectories、editorDirectories
-# だけを書く。DLL の路径（runtimeLibrary など）は構築が決めるので、元の清単には書かない。
+# MANIFEST は元の清単：id、name、version、dependencies、assetTypes、runtimeDirectories、editorDirectories、
+# publicIncludeDirectories だけを書く。DLL の路径（runtimeLibrary など）は構築が決めるので、元の清単には書かない。
 #   runtimeDirectories：実行側の DLL が自分の隣から読むフォルダ（着色器など）。書き出したゲームにも入る。
 #   editorDirectories：編集器だけが使う内容。挿件包には入るが、ゲームには入らない。
+#   publicIncludeDirectories：このモジュールを使う項目のコードが #include するヘッダーのフォルダ。モジュールを
+#       有効にした項目の構築が、編訳の include 路径へ自動で足す（HIKARIGameProject.cmake）。
 # HIKARI_MODULE_PACKAGE_ROOT の既定は <CMAKE_SOURCE_DIR>/Library/Plugins。
 #
 # SINGLE_LIBRARY：編集器の部分も同じ DLL に入れる（編集器の画面が実行側の状態を直接読むモジュール向け）。
@@ -176,7 +178,7 @@ function(hikari_add_module)
 
     # 清単が宣言したフォルダは毎回の構築で鏡写しにする（コードが変わらなくても内容の変更が包に入る）。
     set(_package_directories "")
-    foreach(_key IN ITEMS runtimeDirectories editorDirectories)
+    foreach(_key IN ITEMS runtimeDirectories editorDirectories publicIncludeDirectories)
         string(JSON _count ERROR_VARIABLE _error LENGTH "${_manifest}" "${_key}")
         if(_error OR _count EQUAL 0)
             continue()

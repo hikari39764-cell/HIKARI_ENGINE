@@ -136,7 +136,10 @@ function Test-HikariLastGoodModule {
         [string]$ProjectFingerprint,
 
         [Parameter(Mandatory)]
-        [string]$SdkFingerprint
+        [string]$SdkFingerprint,
+
+        # Public headers of the project's modules (empty when it uses none).
+        [string]$ModuleHeadersFingerprint = ''
     )
 
     if (-not (Test-Path -LiteralPath $BuildStatePath -PathType Leaf) -or
@@ -154,7 +157,9 @@ function Test-HikariLastGoodModule {
             [string]$state.projectFingerprint -cne
                 $ProjectFingerprint -or
             [string]$state.sdkFingerprint -cne
-                $SdkFingerprint) {
+                $SdkFingerprint -or
+            [string]$state.moduleHeadersFingerprint -cne
+                $ModuleHeadersFingerprint) {
             return $false
         }
         $moduleHash =
@@ -214,7 +219,9 @@ function Write-HikariBuildState {
         [string]$ProjectFingerprint,
 
         [Parameter(Mandatory)]
-        [string]$SdkFingerprint
+        [string]$SdkFingerprint,
+
+        [string]$ModuleHeadersFingerprint = ''
     )
 
     $moduleHash =
@@ -237,6 +244,7 @@ function Write-HikariBuildState {
         configuration = $Configuration
         projectFingerprint = $ProjectFingerprint
         sdkFingerprint = $SdkFingerprint
+        moduleHeadersFingerprint = $ModuleHeadersFingerprint
         moduleSha256 = $moduleHash
         editorModulePresent = $editorModulePresent
         editorModuleSha256 = $editorModuleHash

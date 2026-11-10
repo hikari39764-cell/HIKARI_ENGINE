@@ -19,6 +19,10 @@ param(
     # loads nothing from it.
     [switch]$SkipSourceModules,
 
+    # Folder of the engine-bundled modules (the Editor's Runtime/Modules). Found next to the SDK when omitted;
+    # pass it when the SDK is not inside an Editor distribution (a Shipping build tree).
+    [string]$EngineModulesRoot,
+
     [string]$InstallDirectory
 )
 
@@ -226,7 +230,9 @@ function Write-HikariIdePresets {
         [string]$SdkRoot,
 
         [Parameter(Mandatory)]
-        [string]$PackageDirectory
+        [string]$PackageDirectory,
+
+        [string[]]$ModuleIncludeDirectories
     )
 
     # Machine-local IDE preset for this SDK. It uses its own build tree and output so an IDE configure or
@@ -249,6 +255,7 @@ function Write-HikariIdePresets {
     $buildDirectory = & $toPresetPath (Join-Path $ProjectRoot 'Library\Build\CMake\ide')
     $outputDirectory = & $toPresetPath (Join-Path $ProjectRoot 'Library\Build\ide')
     $hikariDirectory = & $toPresetPath $PackageDirectory
+    $moduleIncludes = (@($ModuleIncludeDirectories | Where-Object { $_ }) | ForEach-Object { & $toPresetPath $_ }) -join ';'
     $presetsText = @"
 {
   "version": 6,
@@ -269,7 +276,8 @@ function Write-HikariIdePresets {
       "cacheVariables": {
         "CMAKE_CONFIGURATION_TYPES": "EditorRelease",
         "HIKARI_DIR": "$hikariDirectory",
-        "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "$outputDirectory"
+        "HIKARI_GAME_PROJECT_OUTPUT_ROOT": "$outputDirectory",
+        "HIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES": "$moduleIncludes"
       }
     }
   ],
@@ -342,6 +350,108 @@ function Resolve-HikariCMake {
     throw (
         'CMake 3.28 or newer is unavailable. The HIKARI Editor SDK ' +
         "bundle and PATH were checked.$failureText")
+}
+
+# Public headers of the project's modules. A module's manifest lists the folders project code may include
+# ("publicIncludeDirectories"). The project build adds them to the include path for every enabled module and the
+# modules those depend on, wherever the module is: Plugins/<id> (source or built package) or the engine's
+# Modules folder. Project code then includes the same header in every case, and no machine path is written
+# into the project's CMakeLists.txt.
+function Get-HikariModuleIncludeDirectories {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ProjectRoot,
+
+        [Parameter(Mandatory)]
+        $Descriptor,
+
+        [string]$EngineModulesRoot
+    )
+
+    $directories = [Collections.Generic.List[string]]::new()
+    $moduleList = $Descriptor.PSObject.Properties['modules']
+    if ($null -eq $moduleList) {
+        return , $directories.ToArray()
+    }
+    $visited = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $visit = $null
+    $visit = {
+        param([string]$id, [string]$manifestPath)
+        if ([string]::IsNullOrWhiteSpace($id) -or -not $visited.Add($id)) {
+            return
+        }
+        # Same order as the engine: the path Project.hikari names, the project's Plugins, the engine's modules.
+        $candidates = @($manifestPath, (Join-Path $ProjectRoot "Plugins\$id\$id.hmodule"))
+        if (-not [string]::IsNullOrWhiteSpace($EngineModulesRoot)) {
+            $candidates += Join-Path $EngineModulesRoot "$id\$id.hmodule"
+        }
+        $found = @($candidates | Where-Object {
+                -not [string]::IsNullOrWhiteSpace($_) -and (Test-Path -LiteralPath $_ -PathType Leaf)
+            }) | Select-Object -First 1
+        if ($null -eq $found) {
+            return
+        }
+        $moduleRoot = [IO.Path]::GetFullPath((Split-Path -Parent $found))
+        $manifest = Get-Content -LiteralPath $found -Encoding UTF8 -Raw | ConvertFrom-Json
+        $public = $manifest.PSObject.Properties['publicIncludeDirectories']
+        foreach ($entry in @(if ($null -ne $public) { $public.Value })) {
+            $path = [IO.Path]::GetFullPath((Join-Path $moduleRoot ([string]$entry)))
+            if (-not $path.StartsWith($moduleRoot + [IO.Path]::DirectorySeparatorChar, [StringComparison]::OrdinalIgnoreCase)) {
+                throw "Module ${id}: publicIncludeDirectories must name folders inside the module ($entry)."
+            }
+            if (Test-Path -LiteralPath $path -PathType Container) {
+                $directories.Add($path)
+            }
+        }
+        $dependencies = $manifest.PSObject.Properties['dependencies']
+        foreach ($dependency in @(if ($null -ne $dependencies) { $dependencies.Value })) {
+            & $visit ([string]$dependency) ''
+        }
+    }
+    foreach ($module in @($moduleList.Value)) {
+        $manifestProperty = $module.PSObject.Properties['manifest']
+        $manifestPath = ''
+        if ($null -ne $manifestProperty -and -not [string]::IsNullOrWhiteSpace([string]$manifestProperty.Value)) {
+            $manifestPath = if ([IO.Path]::IsPathRooted([string]$manifestProperty.Value)) {
+                [string]$manifestProperty.Value
+            } else {
+                [IO.Path]::GetFullPath((Join-Path $ProjectRoot ([string]$manifestProperty.Value)))
+            }
+        }
+        & $visit ([string]$module.id) $manifestPath
+    }
+    return , $directories.ToArray()
+}
+
+# Changes when a public header of the project's modules changes, so that project code is rebuilt against it.
+# Empty when the project uses no module with public headers.
+function Get-HikariModuleHeadersFingerprint {
+    param(
+        [string[]]$Directories
+    )
+
+    $lines = [Collections.Generic.List[string]]::new()
+    $index = 0
+    foreach ($directory in @($Directories | Where-Object { $_ })) {
+        foreach ($file in @(Get-ChildItem -LiteralPath $directory -Recurse -File)) {
+            $relative = $file.FullName.Substring($directory.Length).Replace('\', '/')
+            $hash = (Get-FileHash -LiteralPath $file.FullName -Algorithm SHA256).Hash
+            $lines.Add("$index$relative|$hash")
+        }
+        ++$index
+    }
+    if ($lines.Count -eq 0) {
+        return ''
+    }
+    $lines.Sort([StringComparer]::Ordinal)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes(($lines -join "`n"))
+        return -join ($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') })
+    }
+    finally {
+        $sha256.Dispose()
+    }
 }
 
 # Source modules: a folder Plugins/<id> that holds a module's source (CMakeLists.txt and <id>.hmodule) instead of
@@ -698,12 +808,29 @@ $packageConfig = Join-Path $packageDirectory 'HIKARIConfig.cmake'
 if (-not (Test-Path -LiteralPath $packageConfig -PathType Leaf)) {
     throw "HIKARI SDK package is incomplete: $packageConfig"
 }
+# Engine-bundled modules sit next to the Editor host (Runtime/Modules); the Shipping kit is one level below it.
+$engineModulesPath = ''
+foreach ($candidate in @(
+        $EngineModulesRoot,
+        (Join-Path $sdkRootPath '..\Modules'),
+        (Join-Path $sdkRootPath '..\..\Modules'))) {
+    if (-not [string]::IsNullOrWhiteSpace($candidate) -and
+        (Test-Path -LiteralPath $candidate -PathType Container)) {
+        $engineModulesPath = (Resolve-Path -LiteralPath $candidate).Path
+        break
+    }
+}
+$moduleIncludeDirectories = @(Get-HikariModuleIncludeDirectories `
+        -ProjectRoot $projectRoot `
+        -Descriptor $descriptor `
+        -EngineModulesRoot $engineModulesPath)
 if ($Preset -ne 'game-shipping') {
     Write-HikariIdePresets `
         -ManifestRoot $manifestRoot `
         -ProjectRoot $projectRoot `
         -SdkRoot $sdkRootPath `
-        -PackageDirectory $packageDirectory
+        -PackageDirectory $packageDirectory `
+        -ModuleIncludeDirectories $moduleIncludeDirectories
 }
 
 Write-Host "HIKARI_STAGE checking"
@@ -728,6 +855,7 @@ $projectFingerprint = Get-HikariFileSetFingerprint `
 $sdkFingerprint = Get-HikariFileSetFingerprint `
     -BasePath $sdkRootPath `
     -Files $sdkInputs
+$moduleHeadersFingerprint = Get-HikariModuleHeadersFingerprint -Directories $moduleIncludeDirectories
 
 if (-not $ForceBuild -and
     -not $ConfigureOnly -and
@@ -739,7 +867,8 @@ if (-not $ForceBuild -and
         -Preset $Preset `
         -Configuration $configuration `
         -ProjectFingerprint $projectFingerprint `
-        -SdkFingerprint $sdkFingerprint)) {
+        -SdkFingerprint $sdkFingerprint `
+        -ModuleHeadersFingerprint $moduleHeadersFingerprint)) {
     Write-Host (
         'HIKARI GameProject last-good module is current: ' +
         $projectModule)
@@ -756,7 +885,8 @@ $cmake = Resolve-HikariCMake -SdkRoot $sdkRootPath
     -A x64 `
     "-DCMAKE_CONFIGURATION_TYPES:STRING=$configuration" `
     "-DHIKARI_DIR:PATH=$packageDirectory" `
-    "-DHIKARI_GAME_PROJECT_OUTPUT_ROOT:PATH=$candidateDirectory"
+    "-DHIKARI_GAME_PROJECT_OUTPUT_ROOT:PATH=$candidateDirectory" `
+    "-DHIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES:STRING=$(($moduleIncludeDirectories | ForEach-Object { $_.Replace('\', '/') }) -join ';')"
 if ($LASTEXITCODE -ne 0) {
     throw "GameProject configure failed for preset '$Preset'."
 }
@@ -823,8 +953,10 @@ if (-not $ConfigureOnly) {
         -BasePath $sdkRootPath `
         -Files (Get-HikariSdkInputFiles `
             -SdkRoot $sdkRootPath)
-    if ($finalProjectFingerprint -cne $projectFingerprint -or $finalSdkFingerprint -cne $sdkFingerprint) {
-        throw 'Project source or SDK changed during the build. Rebuild after saving; all previous modules and build state were preserved.'
+    $finalModuleHeadersFingerprint = Get-HikariModuleHeadersFingerprint -Directories $moduleIncludeDirectories
+    if ($finalProjectFingerprint -cne $projectFingerprint -or $finalSdkFingerprint -cne $sdkFingerprint -or
+        $finalModuleHeadersFingerprint -cne $moduleHeadersFingerprint) {
+        throw 'Project source, a module header or the SDK changed during the build. Rebuild after saving; all previous modules and build state were preserved.'
     }
     Write-HikariBuildState `
         -BuildStatePath $candidateState `
@@ -833,7 +965,8 @@ if (-not $ConfigureOnly) {
         -Preset $Preset `
         -Configuration $configuration `
         -ProjectFingerprint $projectFingerprint `
-        -SdkFingerprint $sdkFingerprint
+        -SdkFingerprint $sdkFingerprint `
+        -ModuleHeadersFingerprint $moduleHeadersFingerprint
     Publish-HikariProjectModules $projectOutputDirectory $candidateDirectory $editorCompanionEnabled
 }
 

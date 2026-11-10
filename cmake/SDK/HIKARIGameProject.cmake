@@ -53,6 +53,14 @@ function(hikari_add_game_project)
                 "${HIKARI_PROJECT_RUNTIME_ROOT}")
     endif()
     hikari_configure_module_target(HIKARI_GameProjectModule)
+    # 項目が使うモジュールの公開ヘッダー。項目の構築（Build-HikariProject.ps1）が、項目で有効なモジュールとその
+    # 依存の清単（publicIncludeDirectories）から決めて渡す。モジュールが項目の Plugins にあっても（ソースでも
+    # 挿件包でも）、引擎に同梱でも、項目のコードは同じ #include で読める。
+    set(HIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES "" CACHE STRING
+        "Public include directories of the modules this project uses")
+    if(HIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES)
+        target_include_directories(HIKARI_GameProjectModule PRIVATE ${HIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES})
+    endif()
     _hikari_set_module_output(
         HIKARI_GameProjectModule "HIKARI_GameProject" "${_hikari_archive_directory}"
         "${_hikari_binary_directory}" "${_hikari_binary_directory}" "${_hikari_binary_directory}")
@@ -87,6 +95,10 @@ function(hikari_add_game_project)
                     "${HIKARI_PROJECT_EDITOR_ROOT}")
         endif()
         hikari_configure_module_target(HIKARI_GameProjectEditorModule)
+        if(HIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES)
+            target_include_directories(
+                HIKARI_GameProjectEditorModule PRIVATE ${HIKARI_PROJECT_MODULE_INCLUDE_DIRECTORIES})
+        endif()
         _hikari_set_module_output(
             HIKARI_GameProjectEditorModule "HIKARI_GameProjectEditor" "${_hikari_archive_directory}"
             "${_hikari_binary_directory}" "${_hikari_binary_directory}" "${_hikari_binary_directory}")
