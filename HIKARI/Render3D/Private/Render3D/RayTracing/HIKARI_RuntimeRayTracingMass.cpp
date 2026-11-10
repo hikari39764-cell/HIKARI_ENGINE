@@ -88,6 +88,7 @@ bool RuntimeRayTracingMass::Append(const GPUDRIVEN::MassGpuSceneSource& mass, st
         return false;
     }
     firstInstance_ = static_cast<uint32_t>(instances.size());
+    instances.reserve(static_cast<size_t>(total));
     // 個体は種類ごとに続いて並ぶ（MassGpuSceneRegistry の並び）。
     for (size_t index = 0; index < mass.instances.size(); ++index) {
         const auto& record = mass.instances[index];

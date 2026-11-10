@@ -47,6 +47,63 @@ GameProjectWorldMassRenderProxyDesc MakeRenderProxy(ComponentTypeId id,
     return proxy;
 }
 
+// 区画の余り：個体が少し増えても引っ越さずに済むだけ取る。溢れたことのある格子（growing）は足し続けている所
+// なので多めに取る（溢れるたびに引っ越すと、末尾の余りがすぐ尽きて並べ直しが続く）。
+uint32_t RenderBlockCapacity(size_t count, bool growing) noexcept {
+    const size_t wanted = count + (growing ? (std::max)(count / 2u, size_t{64u}) : (std::max)(count / 8u, size_t{16u}));
+    return static_cast<uint32_t>((wanted + 15u) & ~size_t{15u});
+}
+
+// 配列の末尾の余り：新しい格子と引っ越した区画が入る。一番大きい区画が一度は引っ越せるだけ取る。
+size_t RenderArrayCapacity(size_t used, size_t largestBlock) noexcept {
+    const size_t wanted = used + (std::max)({used / 8u, size_t{1024u}, largestBlock + largestBlock / 2u});
+    return (wanted + 1023u) & ~size_t{1023u};
+}
+
+// 隠した個体（拡縮が全部 0）。描画側はどの pass にも入れない（MassGpuSceneRegistry の BuildMassRecord）。
+WorldMassRenderInstance HiddenRenderInstance() noexcept {
+    WorldMassRenderInstance hidden{};
+    hidden.scale = {0.0f, 0.0f, 0.0f};
+    return hidden;
+}
+
+WorldMassRenderInstance MakeRenderInstance(const GameProjectWorldInstance& instance, uint32_t identity) noexcept {
+    return WorldMassRenderInstance{
+        {instance.position.x, instance.position.y, instance.position.z},
+        instance.seed,
+        {WORLDINSTANCE::DecodeSnorm16(instance.rotation[0]), WORLDINSTANCE::DecodeSnorm16(instance.rotation[1]),
+         WORLDINSTANCE::DecodeSnorm16(instance.rotation[2]), WORLDINSTANCE::DecodeSnorm16(instance.rotation[3])},
+        {WORLDINSTANCE::DecodeHalf(instance.scale[0]), WORLDINSTANCE::DecodeHalf(instance.scale[1]),
+         WORLDINSTANCE::DecodeHalf(instance.scale[2])},
+        identity};
+}
+
+uint32_t RenderIdentity(const GameProjectWorldInstanceSetDesc& desc) noexcept {
+    return kInstanceIdentityBit | (EncodeUnit8(desc.minScreenHeight / 0.0255f) << 16u) |
+           (EncodeUnit8(desc.tintVariation) << 8u) | EncodeUnit8(desc.windStrength);
+}
+
+// 区画 [first, first + used) へ個体を書き、前と違う枠だけを ranges に足す。used より後ろで前に使っていた枠は隠す。
+void WriteRenderBlock(std::vector<WorldMassRenderInstance>& array, uint32_t first, uint32_t previousCount,
+                      std::span<const GameProjectWorldInstance> instances, uint32_t identity,
+                      std::vector<WorldMassRenderDirtyRange>& ranges) {
+    const uint32_t count = static_cast<uint32_t>(instances.size());
+    const WorldMassRenderInstance hidden = HiddenRenderInstance();
+    for (uint32_t index = 0u; index < (std::max)(count, previousCount); ++index) {
+        const WorldMassRenderInstance next = index < count ? MakeRenderInstance(instances[index], identity) : hidden;
+        WorldMassRenderInstance& slot = array[first + index];
+        if (std::memcmp(&slot, &next, sizeof(next)) == 0) {
+            continue;
+        }
+        slot = next;
+        if (!ranges.empty() && ranges.back().firstInstance + ranges.back().instanceCount == first + index) {
+            ++ranges.back().instanceCount;
+        } else {
+            ranges.push_back({first + index, 1u});
+        }
+    }
+}
+
 GameProjectWorldMassRenderProxyDesc MakeFarRenderProxy(ComponentTypeId id,
                                                        const GameProjectWorldInstanceSetDesc& desc) noexcept {
     GameProjectWorldMassRenderProxyDesc proxy = MakeRenderProxy(id, desc);
@@ -95,7 +152,7 @@ bool WorldInstanceStore::AddSet(const GameProjectWorldInstanceSetDesc& desc, Com
     set.desc = desc;
     set.proxy = MakeRenderProxy(id, desc);
     set.farProxy = MakeFarRenderProxy(id, desc);
-    set.renderDirty = true;
+    set.renderRebuild = true; // 個体に持たせる定義の値（色の揺らぎ、風、消える大きさ）が変わる
     setsDirty_ = true;
     ++revision_;
     if (outId != nullptr) {
@@ -156,7 +213,7 @@ bool WorldInstanceStore::ReplaceCell(ComponentTypeId id, WorldCellCoord cell,
         set.cells[cell].assign(instances.begin(), instances.end());
     }
     set.count = set.count - previous + instances.size();
-    set.renderDirty = true;
+    set.renderPending.insert(cell);
     dirtyCells_.insert(cell);
     ++revision_;
     return true;
@@ -299,43 +356,104 @@ bool WorldInstanceStore::Save(const std::filesystem::path& cellDirectory, SaveRe
     return true;
 }
 
+void WorldInstanceStore::RebuildRenderArray(Set& set) {
+    set.renderBlocks.clear();
+    uint32_t used = 0u;
+    uint32_t largest = 0u;
+    for (const auto& [cell, instances] : set.cells) {
+        const RenderBlock block{used, RenderBlockCapacity(instances.size(), set.renderGrowing.contains(cell)),
+                                static_cast<uint32_t>(instances.size())};
+        set.renderBlocks.emplace(cell, block);
+        used += block.capacity;
+        largest = (std::max)(largest, block.capacity);
+    }
+    set.renderInstances.assign(RenderArrayCapacity(used, largest), HiddenRenderInstance());
+    const uint32_t identity = RenderIdentity(set.desc);
+    std::vector<WorldMassRenderDirtyRange> written{};
+    for (const auto& [cell, instances] : set.cells) {
+        WriteRenderBlock(set.renderInstances, set.renderBlocks.at(cell).first, 0u, instances, identity, written);
+    }
+    set.renderUsed = used;
+    set.renderAbandoned = 0u;
+    set.renderPending.clear();
+    set.renderDirtyRanges.clear();
+    set.renderBase = 0u;
+    ++set.renderLayout;
+    ++set.renderVersion;
+    set.renderRebuild = false;
+}
+
+void WorldInstanceStore::PatchRenderArray(Set& set) {
+    const uint32_t identity = RenderIdentity(set.desc);
+    std::vector<WorldMassRenderDirtyRange> ranges{};
+    for (const WorldCellCoord cell : set.renderPending) {
+        const auto source = set.cells.find(cell);
+        const std::span<const GameProjectWorldInstance> instances =
+            source != set.cells.end() ? std::span<const GameProjectWorldInstance>(source->second)
+                                      : std::span<const GameProjectWorldInstance>{};
+        auto block = set.renderBlocks.find(cell);
+        if (block != set.renderBlocks.end() && instances.size() > block->second.capacity) {
+            // 区画に収まらない：前の区画を隠して捨て、末尾の余りへ引っ越す。
+            set.renderGrowing.insert(cell);
+            WriteRenderBlock(set.renderInstances, block->second.first, block->second.count, {}, identity, ranges);
+            set.renderAbandoned += block->second.capacity;
+            set.renderBlocks.erase(block);
+            block = set.renderBlocks.end();
+        }
+        if (block == set.renderBlocks.end()) {
+            if (instances.empty()) {
+                continue;
+            }
+            const uint32_t capacity = RenderBlockCapacity(instances.size(), set.renderGrowing.contains(cell));
+            if (capacity > set.renderInstances.size() - set.renderUsed) {
+                set.renderRebuild = true; // 末尾の余りが尽きた
+                return;
+            }
+            block = set.renderBlocks.emplace(cell, RenderBlock{set.renderUsed, capacity, 0u}).first;
+            set.renderUsed += capacity;
+        }
+        WriteRenderBlock(set.renderInstances, block->second.first, block->second.count, instances, identity, ranges);
+        block->second.count = static_cast<uint32_t>(instances.size());
+        if (instances.empty()) {
+            set.renderAbandoned += block->second.capacity;
+            set.renderBlocks.erase(block);
+        }
+    }
+    set.renderPending.clear();
+    // 捨てた区画が半分を超えたら詰め直す（描画側は隠した枠も数えるので、溜めたままにしない）。
+    if (set.renderAbandoned > (std::max)(set.renderUsed / 2u, 4096u)) {
+        set.renderRebuild = true;
+        return;
+    }
+    if (ranges.empty()) {
+        return;
+    }
+    std::sort(ranges.begin(), ranges.end(),
+              [](const auto& lhs, const auto& rhs) { return lhs.firstInstance < rhs.firstInstance; });
+    set.renderDirtyRanges = std::move(ranges);
+    set.renderBase = set.renderVersion;
+    ++set.renderVersion;
+}
+
 void WorldInstanceStore::CollectRenderViews(std::vector<WorldMassRenderStoreView>& outViews) {
     outViews.clear();
     for (const uint64_t value : order_) {
         Set& set = sets_.at(value);
         if (set.count == 0u) {
+            // 個体が無い実例集は発布しない。次に個体が入ったら区画を一から並べる。
+            set.renderRebuild = true;
+            set.renderPending.clear();
             continue;
         }
-        if (set.renderDirty) {
-            const uint32_t identity = kInstanceIdentityBit | (EncodeUnit8(set.desc.minScreenHeight / 0.0255f) << 16u) |
-                                      (EncodeUnit8(set.desc.tintVariation) << 8u) | EncodeUnit8(set.desc.windStrength);
-            set.renderInstances.clear();
-            set.renderInstances.reserve(set.count);
-            for (const auto& [cell, instances] : set.cells) {
-                for (const GameProjectWorldInstance& instance : instances) {
-                    set.renderInstances.push_back(WorldMassRenderInstance{
-                        {instance.position.x, instance.position.y, instance.position.z},
-                        instance.seed,
-                        {WORLDINSTANCE::DecodeSnorm16(instance.rotation[0]),
-                         WORLDINSTANCE::DecodeSnorm16(instance.rotation[1]),
-                         WORLDINSTANCE::DecodeSnorm16(instance.rotation[2]),
-                         WORLDINSTANCE::DecodeSnorm16(instance.rotation[3])},
-                        {WORLDINSTANCE::DecodeHalf(instance.scale[0]), WORLDINSTANCE::DecodeHalf(instance.scale[1]),
-                         WORLDINSTANCE::DecodeHalf(instance.scale[2])},
-                        identity});
-                }
-            }
-            ++set.renderVersion;
-            set.renderDirty = false;
+        if (!set.renderRebuild && !set.renderPending.empty()) {
+            PatchRenderArray(set);
+        }
+        if (set.renderRebuild) {
+            RebuildRenderArray(set);
         }
         outViews.push_back(WorldMassRenderStoreView{
-            set.proxy.typeId,
-            &set.proxy,
-            set.renderInstances,
-            {},
-            set.renderVersion,
-            set.renderVersion,
-            set.renderVersion,
+            set.proxy.typeId, &set.proxy, set.renderInstances, set.renderDirtyRanges, set.renderLayout,
+            set.renderVersion, set.renderBase,
             set.desc.farModelAssetGuid[0] != '\0' && set.desc.farDistance > 0.0f ? &set.farProxy : nullptr,
             set.desc.farDistance});
     }

@@ -172,6 +172,14 @@ RUNTIME::MassRenderProxyGpuRecord BuildMassRecord(const RUNTIME::MassRenderTrans
     record.clusterSelectedLodIndex = proxy.clusterSelectedLodIndex;
     record.clusterLodFlags = proxy.clusterLodFlags;
     record.reserved = std::bit_cast<uint32_t>(screenSwitch); // HikariClusterCullInstanceHidden が読む
+    // 拡縮が全部 0 の個体は空き（実例集が個体の増減に備えて取ってある枠）。pass の旗と資源の旗を落としてどの描画にも
+    // 入れず、位置を非数にして光線追跡の instance 記述でも隠す（記述を書く側は有限でない個体の mask を 0 にする）。
+    if (transform.scale.x == 0.0f && transform.scale.y == 0.0f && transform.scale.z == 0.0f) {
+        const float hidden = std::numeric_limits<float>::quiet_NaN();
+        record.position = {hidden, hidden, hidden};
+        record.flags = 0u;
+        record.resourceFlags = 0u;
+    }
     return record;
 }
 

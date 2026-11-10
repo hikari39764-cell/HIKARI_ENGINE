@@ -48,20 +48,41 @@ public:
     bool Save(const std::filesystem::path& cellDirectory, SaveReport& outReport, std::string& outError);
     void Clear() noexcept;
 
-    // 変わった実例集の描画用の配列を作り直して、発布用の見え方を返す。変わっていなければ配列には触らない。
+    // 変わった格子を実例集の描画用の配列へ映して、発布用の見え方を返す。変わっていなければ配列には触らない。
+    // 配列は格子ごとの区画に余りを持たせてあり、個体の増減は変わった範囲（dirtyRanges）だけで伝わる。配列の大きさが
+    // 変わるのは余りを使い切った時と空きを詰め直す時だけ（その時だけ layoutVersion が進む）。
     void CollectRenderViews(std::vector<WorldMassRenderStoreView>& outViews);
 
 private:
+    // 描画用の配列の中の一格の区画。個体は first から count 個で、capacity までは隠した空き。
+    struct RenderBlock {
+        uint32_t first = 0u;
+        uint32_t capacity = 0u;
+        uint32_t count = 0u;
+    };
     struct Set {
         GameProjectWorldInstanceSetDesc desc{};
         GameProjectWorldMassRenderProxyDesc proxy{};
         GameProjectWorldMassRenderProxyDesc farProxy{};
         std::map<WorldCellCoord, std::vector<GameProjectWorldInstance>> cells{};
         std::vector<WorldMassRenderInstance> renderInstances{};
+        std::map<WorldCellCoord, RenderBlock> renderBlocks{};
+        std::set<WorldCellCoord> renderPending{}; // 描画用の配列へまだ映していない格子
+        // 区画から溢れたことのある格子（筆で個体を足し続けている所）。並べ直す時に余りを多めに取る。
+        std::set<WorldCellCoord> renderGrowing{};
+        // renderBase の版から renderVersion の版までに変わった範囲。
+        std::vector<WorldMassRenderDirtyRange> renderDirtyRanges{};
+        uint32_t renderUsed = 0u;      // 区画に割り当てた長さ（配列の先頭から）
+        uint32_t renderAbandoned = 0u; // 引っ越しや削除で捨てた区画の長さ
         uint64_t count = 0u;
-        uint64_t renderVersion = 1u;
-        bool renderDirty = true;
+        uint64_t renderLayout = 0u;  // 配列の大きさか区画の並びが変わるたびに進む
+        uint64_t renderVersion = 0u; // 配列の中身が変わるたびに進む
+        uint64_t renderBase = 0u;
+        bool renderRebuild = true; // 区画を一から並べ直す（定義が変わった、余りが尽きた、空きが増えすぎた）
     };
+
+    static void RebuildRenderArray(Set& set);
+    static void PatchRenderArray(Set& set);
 
     std::unordered_map<uint64_t, Set> sets_{};
     std::vector<uint64_t> order_{}; // 追加した順（描画の並びが毎回同じになるように）
