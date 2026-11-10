@@ -60,6 +60,9 @@ public:
     std::string_view FindWorkspaceForAssetType(std::string_view moduleAssetTypeId) const noexcept;
     // その工作区が次に描かれる前に、資産を開かせる（IEditorWorkspace::OpenAsset）。工作区の切り替えは呼び手が頼む。
     void SetPendingAsset(std::string_view workspaceId, std::string_view assetGuid);
+    // まだ処理していない切り替えの頼み（RequestActivateWorkspace）を取り下げ、行き先の工作区の ID を返す。無ければ空。
+    // 項目の工作区の画面が前に出ていない間は、host がこれで預かり、画面を前へ出してから頼み直す。
+    std::string TakePendingActivation();
 
     void BeginFrame(EDITOR_PROJECT::IEditorWorkspaceUi& ui, float unscaledDeltaSeconds) noexcept;
     void ProcessPending() noexcept;

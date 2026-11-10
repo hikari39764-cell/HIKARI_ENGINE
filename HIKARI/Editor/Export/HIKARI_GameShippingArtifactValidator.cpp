@@ -24,13 +24,28 @@
 namespace HIKARI::EDITOR {
 namespace {
 
-bool IsProjectFingerprintSource(const std::filesystem::path& path) {
-    const std::string extension = TEXT::ToLowerAsciiCopy(path.extension().string());
-    return extension == ".c" || extension == ".cc" || extension == ".cpp" || extension == ".cxx" || extension == ".h" ||
-           extension == ".hh" || extension == ".hpp" || extension == ".hxx" || extension == ".inl";
+// 指紋に入れるファイルの選び方。Tools/Build/Build-HikariProject.ps1 の Get-HikariProjectInputFiles と同じ集合にする
+// （編訳した時の指紋と、書き出す前にここで計算する指紋が合わなければ「作り直しが要る」と判断する）。
+using FingerprintFilter = bool (*)(const std::filesystem::path&);
+
+bool IsHeaderExtension(const std::string& extension) {
+    return extension == ".h" || extension == ".hh" || extension == ".hpp" || extension == ".hxx" || extension == ".inl";
 }
 
-void AddFingerprintTree(const std::filesystem::path& root, bool sourceExtensionsOnly,
+bool IsProjectFingerprintSource(const std::filesystem::path& path) {
+    const std::string extension = TEXT::ToLowerAsciiCopy(path.extension().string());
+    return extension == ".c" || extension == ".cc" || extension == ".cpp" || extension == ".cxx" ||
+           IsHeaderExtension(extension);
+}
+
+// 挿件包（Plugins/<id>/）の清単と、項目のコードが読む公開ヘッダー。包を入れ替えたら項目のモジュールも作り直しになる。
+bool IsPluginFingerprintSource(const std::filesystem::path& path) {
+    const std::string extension = TEXT::ToLowerAsciiCopy(path.extension().string());
+    return extension == ".hmodule" || IsHeaderExtension(extension);
+}
+
+// filter が無ければ全部のファイル。
+void AddFingerprintTree(const std::filesystem::path& root, FingerprintFilter filter,
                         std::vector<std::filesystem::path>& files) {
     std::error_code ec{};
     if (!std::filesystem::is_directory(root, ec) || ec) {
@@ -44,7 +59,7 @@ void AddFingerprintTree(const std::filesystem::path& root, bool sourceExtensions
             ec.clear();
             continue;
         }
-        if (!sourceExtensionsOnly || IsProjectFingerprintSource(iterator->path())) {
+        if (filter == nullptr || filter(iterator->path())) {
             files.push_back(iterator->path());
         }
     }
@@ -109,8 +124,9 @@ bool ComputeProjectFingerprint(const std::filesystem::path& projectRoot, std::st
         projectRoot / kProjectDescriptorFilename,
         manifest,
     };
-    AddFingerprintTree(manifestRoot / "Source", true, files);
-    AddFingerprintTree(manifestRoot / "cmake", false, files);
+    AddFingerprintTree(manifestRoot / "Source", &IsProjectFingerprintSource, files);
+    AddFingerprintTree(manifestRoot / "cmake", nullptr, files);
+    AddFingerprintTree(projectRoot / "Plugins", &IsPluginFingerprintSource, files);
     return ComputeFileSetFingerprint(projectRoot, std::move(files), outFingerprint, outMessage);
 }
 
@@ -120,10 +136,10 @@ bool ComputeSdkFingerprint(const std::filesystem::path& sdkRoot, std::string& ou
         sdkRoot / "Tools" / "Build-HikariProject.ps1",
     };
     // 項目の構築（Build-HikariProject.ps1 の Get-HikariSdkInputFiles）が構築状態へ書く指紋と同じ一覧にする。
-    AddFingerprintTree(sdkRoot / "include", false, files);
-    AddFingerprintTree(sdkRoot / "third_party", false, files);
-    AddFingerprintTree(sdkRoot / "lib" / "cmake" / "HIKARI", false, files);
-    AddFingerprintTree(sdkRoot / "src", false, files);
+    AddFingerprintTree(sdkRoot / "include", nullptr, files);
+    AddFingerprintTree(sdkRoot / "third_party", nullptr, files);
+    AddFingerprintTree(sdkRoot / "lib" / "cmake" / "HIKARI", nullptr, files);
+    AddFingerprintTree(sdkRoot / "src", nullptr, files);
     return ComputeFileSetFingerprint(sdkRoot, std::move(files), outFingerprint, outMessage);
 }
 

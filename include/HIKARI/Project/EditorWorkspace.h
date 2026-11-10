@@ -223,7 +223,9 @@ public:
     virtual ~IEditorWorkspaceCommands() = default;
 
     // Navigation requests are queued and applied outside the current
-    // workspace callback, so activation never re-enters Draw().
+    // workspace callback, so activation never re-enters Draw(). A request made
+    // while another editor workspace (such as Scene) is in front, for example
+    // from an operation handler, also brings the project workspace to the front.
     virtual bool RequestActivateWorkspace(std::string_view workspaceId) = 0;
     virtual bool RequestCloseActiveWorkspace() = 0;
     virtual bool RequestSaveActiveWorkspace() = 0;

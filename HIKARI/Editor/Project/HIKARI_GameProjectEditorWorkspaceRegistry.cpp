@@ -360,6 +360,15 @@ void GameProjectEditorWorkspaceRegistry::SetPendingAsset(std::string_view worksp
     pendingAssetGuid_.assign(pendingAssetWorkspace_ ? assetGuid : std::string_view{});
 }
 
+std::string GameProjectEditorWorkspaceRegistry::TakePendingActivation() {
+    if (!navigation_.pending || !navigation_.target || *navigation_.target >= entries_.size()) {
+        return {};
+    }
+    std::string workspaceId = entries_[*navigation_.target].workspaceId;
+    navigation_ = {};
+    return workspaceId;
+}
+
 bool GameProjectEditorWorkspaceRegistry::RequestActivateWorkspace(std::string_view workspaceId) {
     const std::optional<size_t> target = Find(workspaceId);
     if (!target || entries_[*target].disabled || awaitingClose_) {

@@ -107,6 +107,13 @@ void GameProjectEditorWorkspaceHost::ReportModuleFailure(std::string message) {
 void GameProjectEditorWorkspaceHost::UpdateNavigation(EditorWorkspaceHost& host, float unscaledDeltaSeconds) {
     if (!IsAvailable())
         return;
+    // モジュールが自分の工作区を開くよう頼んだ時（操作の本体からの RequestActivateWorkspace など）、項目の工作区の
+    // 画面が前に出ていなければ、資産を開く時と同じ道で先に画面を前へ出す。
+    if (!host.IsActive(EditorWorkspaceId::Project)) {
+        if (std::string requested = registry_.TakePendingActivation(); !requested.empty()) {
+            requestedWorkspace_ = std::move(requested);
+        }
+    }
     if (!requestedWorkspace_.empty() && !host.IsActive(EditorWorkspaceId::Project))
         (void)host.RequestOpen({EditorWorkspaceId::Project});
     ui_->BeginFrame(registry_.GetActiveWorkspaceId());
