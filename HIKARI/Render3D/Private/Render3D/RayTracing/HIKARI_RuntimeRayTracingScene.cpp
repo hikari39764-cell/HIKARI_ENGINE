@@ -241,12 +241,14 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     std::erase_if(state.retiring, [](const auto& entry) { return entry.fence->GetCompletedValue() >= entry.value; });
     if (!state.supportsQueries)
         return state.Fail(graphics, budget, RuntimeRayTracingStatus::UnsupportedDevice);
+    const bool proxiesChanged = surfaces.proxyVersion != state.proxyVersion;
     if (materialSlots.size() == state.materialSlotCount && materials.size() == state.materialCount &&
-        source.surfaceRecords->size() == state.sourceRecordCount && surfaces.proxyVersion == state.proxyVersion &&
+        source.surfaceRecords->size() == state.sourceRecordCount &&
+        (!proxiesChanged || state.CanRetargetProxies(surfaces.proxies)) &&
         state.SameStructure(source, massMaterialSlots, budget, materialVersion)) {
-        // 配置か材質の値が変わっただけなら、群をまとめ直さず instance の変換と材質の版だけを直す
+        // 配置か材質の値、代理の中身が変わっただけなら、群をまとめ直さず instance の記述と材質の版だけを直す
         // （できなければ下で全体を組み直す）。
-        if (state.sourceVersion != source.sourceVersion || state.materialVersion != materialVersion ||
+        if (proxiesChanged || state.sourceVersion != source.sourceVersion || state.materialVersion != materialVersion ||
             state.mass.Moved(source.mass)) {
             if (auto updated =
                     state.UpdateInPlace(graphics, source, materialSlots, materials, materialVersion, budget, surfaces))
@@ -623,6 +625,8 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
         }
     }
     // モジュールの代理。不透明で裏面を切る（TRIANGLE_CULL_DISABLE を付けない）。
+    const uint32_t proxyFirstInstance = static_cast<uint32_t>(instances.size());
+    const uint32_t proxyFirstHit = static_cast<uint32_t>(hits.size());
     for (const RuntimeRayTracingProxy& proxy : surfaces.proxies) {
         if (instances.size() >= budget.maximumInstances ||
             proxy.surfaces.size() > budget.maximumHitRecords - hits.size())
@@ -764,6 +768,11 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     state.lightmapVersion = LIGHTMAP::GetVersion();
     state.layoutVersion = source.layoutVersion;
     state.proxyVersion = surfaces.proxyVersion;
+    state.proxyFirstInstance = proxyFirstInstance;
+    state.proxyFirstHit = proxyFirstHit;
+    state.proxySurfaceCounts.clear();
+    for (const RuntimeRayTracingProxy& proxy : surfaces.proxies)
+        state.proxySurfaceCounts.push_back(static_cast<uint32_t>(proxy.surfaces.size()));
     state.materialVersion = materialVersion;
     state.sourceSurfaceCount = state.stats.sourceSurfaces;
     state.sourceRecordCount = source.surfaceRecords->size();

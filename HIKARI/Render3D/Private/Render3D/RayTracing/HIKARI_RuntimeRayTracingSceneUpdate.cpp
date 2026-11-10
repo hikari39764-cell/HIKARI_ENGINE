@@ -106,6 +106,29 @@ bool RuntimeRayTracingScene::State::SameStructure(const GPUDRIVEN::GpuDrivenScen
     return lastHits.size() <= budget.maximumHitRecords && lastInstances.size() <= budget.maximumInstances &&
            stats.residentBytes <= budget.maximumBytes; // 解放待ちは数フレームで消えるので数えない
 }
+bool RuntimeRayTracingScene::State::CanRetargetProxies(std::span<const RuntimeRayTracingProxy> proxies) const {
+    if (proxies.size() != proxySurfaceCounts.size() || proxyFirstInstance + proxies.size() > lastInstances.size())
+        return false;
+    size_t hits = proxyFirstHit;
+    for (size_t i = 0; i < proxies.size(); ++i) {
+        if (proxies[i].bottomLevel == 0 || proxies[i].surfaces.size() != proxySurfaceCounts[i])
+            return false;
+        hits += proxies[i].surfaces.size();
+    }
+    return hits <= lastHits.size();
+}
+bool RuntimeRayTracingScene::State::RetargetProxies(std::span<const RuntimeRayTracingProxy> proxies) {
+    bool hitsChanged = false;
+    size_t hit = proxyFirstHit;
+    for (size_t i = 0; i < proxies.size(); ++i) {
+        lastInstances[proxyFirstInstance + i].AccelerationStructure = proxies[i].bottomLevel;
+        for (const uint32_t surface : proxies[i].surfaces) {
+            hitsChanged = hitsChanged || lastHits[hit].reserved != surface;
+            lastHits[hit++].reserved = surface;
+        }
+    }
+    return hitsChanged;
+}
 std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPlace(
     const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
     std::span<const uint32_t> materialSlots, std::span<const MATERIAL::GpuMaterialData> materials,
@@ -172,7 +195,9 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
     // 大量配置の動いた個体：compute が使えれば GPU で記述を書き（CPU は変換を書かない）、使えなければ CPU で書き直す
     // （並びが合わなければ全体を組み直す）。
     const bool massOnGpu = mass.Included() && surfaces.massRecords != 0 && mass.CanDispatch(graphics);
-    if (!massOnGpu && massDescsOnGpu && mass.Moved(source.mass))
+    const bool proxiesChanged = surfaces.proxyVersion != proxyVersion;
+    // lastInstances の大量配置の分が古い時は、CPU の写しから TLAS を組み直せない。
+    if (!massOnGpu && massDescsOnGpu && (moved || proxiesChanged || mass.Moved(source.mass)))
         return std::nullopt;
     const std::optional<bool> massMoved =
         massOnGpu ? std::optional<bool>(mass.Moved(source.mass)) : mass.Update(source.mass, lastInstances);
@@ -183,7 +208,9 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
         deformationBroken = true;
         return Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
     }
-    if (moved || *massMoved) {
+    // 代理の BLAS は同じ番地のまま中身が変わることもあるので、版が進んだら TLAS は必ず組み直す。
+    const bool proxyHitsChanged = proxiesChanged && RetargetProxies(surfaces.proxies);
+    if (moved || *massMoved || proxiesChanged) {
         for (size_t g = 0; g < groupUses.size(); ++g) {
             if (groupStates[g] != 2)
                 continue;
@@ -192,10 +219,13 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
             for (uint32_t k = 0; k < group.instanceCount; ++k)
                 WriteTransform(lastInstances[group.firstInstance + k], group.world);
         }
-        const bool rebuilt = massOnGpu ? RebuildFromGpuInstances(graphics, source, surfaces.massRecords, moved)
-                                       : topLevel->RebuildTopLevelInPlace(graphics, lastInstances);
+        const bool rebuilt =
+            massOnGpu ? RebuildFromGpuInstances(graphics, source, surfaces.massRecords, moved || proxiesChanged)
+                      : topLevel->RebuildTopLevelInPlace(graphics, lastInstances);
         if (!rebuilt) {
             lastInstances.clear(); // 書き換えた記述を、組まれた TLAS と取り違えないようにする
+            if (proxyHitsChanged)
+                lastHits.clear();
             gpuPrefixValid = false;
             return std::nullopt;
         }
@@ -220,13 +250,14 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
                 lastHits[hit++].materialIndex = group.surfaces[range.surfaceIndex].first;
         }
     }
-    if (retinted &&
+    if ((retinted || proxyHitsChanged) &&
         !hitUploads.Write(graphics, lastHits.data(), lastHits.size() * sizeof(lastHits[0]), "RT.Scene.Hits")) {
         lastHits.clear(); // 書き換えた記録を、GPU にある記録と取り違えないようにする
         return std::nullopt;
     }
-    if (moved || *massMoved || retinted)
+    if (moved || *massMoved || retinted || proxiesChanged)
         ++version;
+    proxyVersion = surfaces.proxyVersion;
     sourceVersion = source.sourceVersion;
     materialVersion = currentMaterials;
     stats.reusedTopLevel = true;
