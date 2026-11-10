@@ -92,7 +92,7 @@ void GameProjectEditorWorkspaceUi::NodeGraph(std::string_view stableGraphId,
     std::vector<EDITOR_PROJECT::EditorNodeGraphMenuItem> nodeActions(desc.nodeActions,
                                                                      desc.nodeActions + desc.nodeActionCount);
     std::vector<std::string> texts{};
-    texts.reserve(nodes.size() * 3u + (createItems.size() + nodeActions.size()) * 2u);
+    texts.reserve(nodes.size() * 3u + (createItems.size() + nodeActions.size()) * 2u + 1u);
     const auto shown = [&](const char*& text) {
         if (text != nullptr) {
             text = texts.emplace_back(Shown(text)).c_str();
@@ -110,6 +110,7 @@ void GameProjectEditorWorkspaceUi::NodeGraph(std::string_view stableGraphId,
         }
     }
     EDITOR_PROJECT::EditorNodeGraphDesc translated = desc;
+    shown(translated.dropMessage);
     translated.nodes = nodes.data();
     translated.createItems = createItems.data();
     translated.nodeActions = nodeActions.data();

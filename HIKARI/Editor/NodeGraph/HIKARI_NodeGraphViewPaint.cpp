@@ -1,6 +1,7 @@
 #include "Editor/NodeGraph/HIKARI_NodeGraphView.h"
 
 #include <cmath>
+#include <string>
 
 #include "Editor/NodeGraph/HIKARI_NodeGraphViewInternal.h"
 
@@ -58,8 +59,46 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
     }
     drawList.AddRect(minimum, maximum, layout.selected ? IM_COL32(255, 171, 72, 255) : IM_COL32(69, 82, 96, 255),
                      rounding, 0, layout.selected ? 2.0f : 1.0f);
-    DrawGraphText(drawList, {minimum.x + kPadX * zoom, minimum.y + kHeaderPadY * zoom}, fontSize,
-                  IM_COL32(244, 247, 250, 255), View(node.title));
+    float titleLeft = minimum.x + kPadX * zoom;
+    const bool collapsed = HasFlag(node.flags, EditorNodeGraphNodeFlag::Collapsed);
+    if (HasFlag(node.flags, EditorNodeGraphNodeFlag::Collapsible)) {
+        // 題の左の三角：開いている時は下向き、畳んである時は右向き。
+        const float side = fontSize * 0.62f;
+        const ImVec2 center{titleLeft + fontSize * 0.5f, minimum.y + (kHeaderPadY * zoom) + fontSize * 0.5f};
+        const ImU32 color = IM_COL32(244, 247, 250, 220);
+        if (collapsed) {
+            drawList.AddTriangleFilled({center.x - side * 0.4f, center.y - side * 0.5f},
+                                       {center.x + side * 0.5f, center.y},
+                                       {center.x - side * 0.4f, center.y + side * 0.5f}, color);
+        } else {
+            drawList.AddTriangleFilled({center.x - side * 0.5f, center.y - side * 0.4f},
+                                       {center.x + side * 0.5f, center.y - side * 0.4f},
+                                       {center.x, center.y + side * 0.5f}, color);
+        }
+        titleLeft += fontSize + kCollapseGap * zoom;
+    }
+    DrawGraphText(drawList, {titleLeft, minimum.y + kHeaderPadY * zoom}, fontSize, IM_COL32(244, 247, 250, 255),
+                  View(node.title));
+    if (collapsed && node.hiddenCount != 0u) {
+        // 畳んだ節の下に、隠れている節の数。
+        const std::string hidden = "+" + std::to_string(node.hiddenCount);
+        const float width = MeasureText(hidden, kSmallText).x * zoom;
+        const ImVec2 textMin{(minimum.x + maximum.x - width) * 0.5f, maximum.y + 9.0f * zoom};
+        drawList.AddRectFilled({textMin.x - 5.0f * zoom, textMin.y - 2.0f * zoom},
+                               {textMin.x + width + 5.0f * zoom, textMin.y + smallSize + 2.0f * zoom},
+                               IM_COL32(52, 62, 74, 255), smallSize);
+        DrawGraphText(drawList, textMin, smallSize, IM_COL32(214, 222, 230, 255), hidden);
+    }
+    if (node.order != 0u) {
+        // 兄弟の中の順番は、節の左上の外の丸。
+        const std::string order = std::to_string(node.order);
+        const ImVec2 center{minimum.x - 2.0f * zoom, minimum.y - 2.0f * zoom};
+        drawList.AddCircleFilled(center, kOrderRadius * zoom, IM_COL32(60, 72, 86, 255));
+        drawList.AddCircle(center, kOrderRadius * zoom, IM_COL32(15, 18, 23, 255));
+        const float width = MeasureText(order, kSmallText).x * zoom;
+        DrawGraphText(drawList, {center.x - width * 0.5f, center.y - smallSize * 0.5f}, smallSize,
+                      IM_COL32(232, 238, 244, 255), order);
+    }
     if (!detailed) {
         return;
     }
@@ -91,6 +130,41 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
         } else {
             DrawGraphText(drawList, {center.x + kPadX * zoom, center.y - fontSize * 0.5f}, fontSize, labelColor, label);
         }
+    }
+}
+
+void NodeGraphView::PaintDropHint(const EditorNodeGraphDesc& desc, const Frame& frame) const {
+    ImDrawList& drawList = *ImGui::GetWindowDrawList();
+    const ImU32 color = desc.dropBlocked != 0u ? IM_COL32(232, 96, 88, 255) : IM_COL32(104, 204, 120, 255);
+    const auto toScreen = [&](const EditorWorkspacePoint& point) {
+        return ToIm(NodeGraphCanvas::CanvasToScreen(canvas_, frame.origin, {point.x, point.y}));
+    };
+    for (uint32_t index = 0u; desc.dropTargetNodeId != 0u && index < desc.nodeCount; ++index) {
+        if (desc.nodes[index].id == desc.dropTargetNodeId) {
+            const NodeLayout& node = nodes_[index];
+            const ImVec2 minimum = ToIm(NodeGraphCanvas::CanvasToScreen(canvas_, frame.origin, node.position));
+            const ImVec2 maximum = ToIm(NodeGraphCanvas::CanvasToScreen(
+                canvas_, frame.origin, {node.position.x + node.size.x, node.position.y + node.size.y}));
+            drawList.AddRect({minimum.x - 4.0f, minimum.y - 4.0f}, {maximum.x + 4.0f, maximum.y + 4.0f}, color,
+                             kRounding * canvas_.zoom + 4.0f, 0, 3.0f);
+        }
+    }
+    if (desc.dropLineFrom.x != desc.dropLineTo.x || desc.dropLineFrom.y != desc.dropLineTo.y) {
+        const ImVec2 from = toScreen(desc.dropLineFrom);
+        const ImVec2 to = toScreen(desc.dropLineTo);
+        drawList.AddLine(from, to, color, 4.0f);
+        drawList.AddCircleFilled(from, 5.0f, color);
+        drawList.AddCircleFilled(to, 5.0f, color);
+    }
+    if (const std::string_view message = View(desc.dropMessage); !message.empty()) {
+        const ImVec2 pointer = ImGui::GetIO().MousePos;
+        const MATH::Vec2 size = MeasureText(message);
+        const ImVec2 textMin{pointer.x + 18.0f, pointer.y + 18.0f};
+        drawList.AddRectFilled({textMin.x - 6.0f, textMin.y - 4.0f},
+                               {textMin.x + size.x + 6.0f, textMin.y + size.y + 4.0f}, IM_COL32(24, 28, 34, 240), 4.0f);
+        drawList.AddRect({textMin.x - 6.0f, textMin.y - 4.0f}, {textMin.x + size.x + 6.0f, textMin.y + size.y + 4.0f},
+                         color, 4.0f);
+        DrawGraphText(drawList, textMin, ImGui::GetFontSize(), IM_COL32(236, 240, 244, 255), message);
     }
 }
 
@@ -131,14 +205,28 @@ void NodeGraphView::Paint(const EditorNodeGraphDesc& desc, const Frame& frame) c
                             : highlight != 0u                       ? highlight
                             : static_cast<int>(index) == frame.link ? IM_COL32(225, 235, 242, 255)
                                                                     : ToColor(link.color);
-        drawCurve(LinkCurve(desc.flow, output->position, input->position), color,
-                  (selected || highlight != 0u ? 3.0f : 2.0f) * strokeScale);
+        const float thickness = (selected || highlight != 0u ? 3.0f : 2.0f) * strokeScale;
+        if (desc.linkStyle == EditorNodeGraphLinkStyle::Elbow) {
+            const std::array<MATH::Vec2, 4> elbow = LinkElbow(output->position, input->position);
+            const std::array<ImVec2, 4> points{toScreen(elbow[0]), toScreen(elbow[1]), toScreen(elbow[2]),
+                                               toScreen(elbow[3])};
+            if (std::fabs(points[0].x - points[3].x) < 0.5f) {
+                // 真下の子：折れ点が一直線に重なると線の継ぎ目が崩れるので、一本で引く。
+                drawList.AddLine(points[0], points[3], color, thickness);
+            } else {
+                drawList.AddPolyline(points.data(), static_cast<int>(points.size()), color, ImDrawFlags_None,
+                                     thickness);
+            }
+        } else {
+            drawCurve(LinkCurve(desc.flow, output->position, input->position), color, thickness);
+        }
     }
 
-    // 選んだ節を上に描く。引脚は節の縁に載るので、節の後で描く。
-    for (const bool selected : {false, true}) {
+    // 選んだ節、拖動中の節の順に上に描く。引脚は節の縁に載るので、節の後で描く。
+    for (const int pass : {0, 1, 2}) {
         for (uint32_t index = 0u; index < desc.nodeCount; ++index) {
-            if (nodes_[index].selected == selected) {
+            const NodeLayout& node = nodes_[index];
+            if ((node.dragged ? 2 : node.selected ? 1 : 0) == pass) {
                 PaintNode(desc, frame, index);
             }
         }
@@ -157,6 +245,8 @@ void NodeGraphView::Paint(const EditorNodeGraphDesc& desc, const Frame& frame) c
                                    : LinkCurve(desc.flow, frame.pointer, from->position),
                       IM_COL32(255, 190, 78, 255), 2.0f);
         }
+    } else if (action_ == Action::MoveNodes && desc.dragDescendants != 0u) {
+        PaintDropHint(desc, frame);
     } else if (action_ == Action::BoxSelect) {
         const ImVec2 start = toScreen(boxStart_);
         const ImVec2 end = toScreen(frame.pointer);

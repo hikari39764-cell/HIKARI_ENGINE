@@ -29,6 +29,23 @@ enum class EditorNodeGraphHighlight : uint32_t {
     Warning,
 };
 
+// 線の形。
+enum class EditorNodeGraphLinkStyle : uint32_t {
+    // 滑らかな曲線（データの流れ向き）。
+    Curve = 0u,
+    // 直角に折れる線（樹）：出力から下へ、横へ、入力へ。
+    Elbow = 1u,
+};
+
+// 節の飾り（EditorNodeGraphNode::flags）。
+enum class EditorNodeGraphNodeFlag : uint32_t {
+    None = 0u,
+    // 下に畳む三角を出す（押すと EditorNodeGraphResult::toggledNodeId）。
+    Collapsible = 1u << 0u,
+    // 畳んである（三角の向きと、hiddenCount の数を出す）。
+    Collapsed = 1u << 1u,
+};
+
 struct EditorNodeGraphPin {
     // 図の中で一意（節の id とは別の番号空間）。0 は無効。
     uint64_t id = 0u;
@@ -57,6 +74,12 @@ struct EditorNodeGraphNode {
     uint32_t inputCount = 0u;
     uint32_t outputCount = 0u;
     EditorNodeGraphHighlight highlight = EditorNodeGraphHighlight::None;
+    // 節の左上の外に出す順番（兄弟の中の実行順など）。0 は出さない。
+    uint32_t order = 0u;
+    // EditorNodeGraphNodeFlag の組み合わせ。
+    uint32_t flags = 0u;
+    // 畳んだ節の下に隠れている節の数（Collapsed の時に出す）。
+    uint32_t hiddenCount = 0u;
     uint32_t reserved = 0u;
 };
 
@@ -101,7 +124,20 @@ struct EditorNodeGraphDesc {
     uint32_t frameAll = 0u;
     // 控件の高さ。0 以下は窓の残り全部。
     float height = 0.0f;
+    EditorNodeGraphLinkStyle linkStyle = EditorNodeGraphLinkStyle::Curve;
+    // 0 以外：節を拖動すると、線で繋がった下流の節（樹なら子孫）も一緒に動く。
+    uint32_t dragDescendants = 0u;
+    // 拖動中の落とし先の提示（呼び手が前のフレームの EditorNodeGraphResult から決める）。dropTargetNodeId の節を囲み、
+    // dropLineFrom → dropLineTo（図の座標、同じ点なら無し）に挿入線を引き、dropMessage をポインタの横に出す。
+    // dropBlocked が 0 以外なら禁止の色。
+    uint64_t dropTargetNodeId = 0u;
+    EditorWorkspacePoint dropLineFrom{};
+    EditorWorkspacePoint dropLineTo{};
+    const char* dropMessage = nullptr;
+    uint32_t dropBlocked = 0u;
     uint32_t reserved = 0u;
+    // 0 以外：この節が画面の外にあれば、見える所まで視点を動かす（走っている節を追う時など）。
+    uint64_t followNodeId = 0u;
 };
 
 struct EditorNodeGraphMovedNode {
@@ -148,22 +184,28 @@ struct EditorNodeGraphResult {
     uint64_t hoveredNodeId = 0u;
     // 献立で選ばれたモジュールの操作（desc.nodeActions の番号）。選ばれていなければ負。
     int32_t nodeActionIndex = -1;
-    uint32_t reserved = 0u;
+    // 拖動で離された（dragDescendants の時）。拖動を Esc で取り消した時は 0 のまま拖動が終わる。
+    uint32_t dropped = 0u;
+    // 拖動中（と離したフレーム）に掴んでいる節と、ポインタの位置（図の座標）。拖動していなければ 0。
+    uint64_t draggingNodeId = 0u;
+    EditorWorkspacePoint dragPointer{};
+    // 畳む三角が押された節（無ければ 0）。
+    uint64_t toggledNodeId = 0u;
 };
 
 static_assert(std::is_standard_layout_v<EditorNodeGraphPin> && std::is_trivially_copyable_v<EditorNodeGraphPin>);
 static_assert(sizeof(EditorNodeGraphPin) == 40u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphNode> && std::is_trivially_copyable_v<EditorNodeGraphNode>);
-static_assert(sizeof(EditorNodeGraphNode) == 88u);
+static_assert(sizeof(EditorNodeGraphNode) == 104u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphLink> && std::is_trivially_copyable_v<EditorNodeGraphLink>);
 static_assert(sizeof(EditorNodeGraphLink) == 48u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphMenuItem>);
 static_assert(sizeof(EditorNodeGraphMenuItem) == 16u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphDesc> && std::is_trivially_copyable_v<EditorNodeGraphDesc>);
-static_assert(sizeof(EditorNodeGraphDesc) == 88u);
+static_assert(sizeof(EditorNodeGraphDesc) == 144u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphMovedNode>);
 static_assert(sizeof(EditorNodeGraphMovedNode) == 16u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphResult> && std::is_trivially_copyable_v<EditorNodeGraphResult>);
-static_assert(sizeof(EditorNodeGraphResult) == 144u);
+static_assert(sizeof(EditorNodeGraphResult) == 168u);
 
 } // namespace HIKARI::EDITOR_PROJECT

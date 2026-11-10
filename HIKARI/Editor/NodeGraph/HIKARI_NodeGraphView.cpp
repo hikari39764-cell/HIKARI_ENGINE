@@ -76,12 +76,18 @@ void NodeGraphView::BeginAction(const EditorNodeGraphDesc& desc, const Frame& fr
             dragPinId_ = pins_[frame.pin].pin->id;
         } else if (frame.node >= 0) {
             const uint64_t nodeId = desc.nodes[frame.node].id;
+            if (HitCollapse(desc.nodes[frame.node], nodes_[frame.node], frame.pointer)) {
+                outResult.toggledNodeId = nodeId;
+                return;
+            }
             SelectNode(nodeId, io.KeyCtrl, io.KeyShift);
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
                 outResult.activatedNodeId = nodeId;
-            } else if (frame.editable && Contains(selectedNodes_, nodeId)) {
+            } else if (frame.editable && (desc.dragDescendants != 0u || Contains(selectedNodes_, nodeId))) {
                 action_ = Action::MoveNodes;
                 moveOffset_ = {};
+                grabbedNodeId_ = nodeId;
+                CollectDragSet(desc, nodeId);
             }
         } else if (frame.link >= 0) {
             const uint64_t linkId = desc.links[frame.link].id;
@@ -137,6 +143,29 @@ bool NodeGraphView::ContinueAction(const EditorNodeGraphDesc& desc, const Frame&
         }
         break;
     case Action::MoveNodes:
+        if (desc.dragDescendants != 0u) {
+            // 樹の拖動：位置は返さず、掴んだ節とポインタを毎フレーム返す。落とし先を決めるのは呼び手。
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                action_ = Action::None;
+                moveOffset_ = {};
+                break;
+            }
+            const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+            if (down) {
+                moveOffset_.x += io.MouseDelta.x / canvas_.zoom;
+                moveOffset_.y += io.MouseDelta.y / canvas_.zoom;
+            }
+            if ((std::fabs(moveOffset_.x) + std::fabs(moveOffset_.y)) * canvas_.zoom >= kClickSlop) {
+                outResult.draggingNodeId = grabbedNodeId_;
+                outResult.dragPointer = {frame.pointer.x, frame.pointer.y};
+                outResult.dropped = down ? 0u : 1u;
+            }
+            if (!down) {
+                action_ = Action::None;
+                moveOffset_ = {};
+            }
+            break;
+        }
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             moveOffset_.x += io.MouseDelta.x / canvas_.zoom;
             moveOffset_.y += io.MouseDelta.y / canvas_.zoom;
@@ -207,6 +236,9 @@ void NodeGraphView::HandleKeys(const EditorNodeGraphDesc& desc, const Frame& fra
         if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
             // 選んだ節があればそこへ、無ければ全体へ視点を合わせる。
             FrameNodes(frame.size, hasNodes);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+            FrameNodes(frame.size, false);
         }
         return;
     }
@@ -315,7 +347,7 @@ void NodeGraphView::DrawContextMenu(const EditorNodeGraphDesc& desc, EditorNodeG
                 outResult.pasteRequested = 1u;
                 outResult.pastePosition = {menuPosition_.x, menuPosition_.y};
             }
-            if (item("ui.nodeGraph.frameAll", "F") != 0u) {
+            if (item("ui.nodeGraph.frameAll", "A") != 0u) {
                 framed_ = false;
             }
         }
@@ -364,7 +396,7 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
     frame.editable = desc.readOnly == 0u;
     const ImGuiIO& io = ImGui::GetIO();
     if (frame.hovered && io.MouseWheel != 0.0f) {
-        NodeGraphCanvas::ZoomAt(canvas_, {io.MousePos.x, io.MousePos.y}, frame.origin, io.MouseWheel);
+        NodeGraphCanvas::ZoomAt(canvas_, {io.MousePos.x, io.MousePos.y}, frame.origin, io.MouseWheel, kMinZoom);
     }
 
     BuildLayout(desc);
@@ -374,10 +406,12 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
         framed_ = frame.size.x == framedSize_.x && frame.size.y == framedSize_.y;
         framedSize_ = frame.size;
     }
+    FollowNode(desc, frame);
 
     frame.pointer = NodeGraphCanvas::ScreenToCanvas(canvas_, frame.origin, {io.MousePos.x, io.MousePos.y});
     if (frame.hovered) {
-        frame.pin = HitPin(frame.pointer, kPinHitRadius / canvas_.zoom);
+        // 節を拖動している間は、落とし先の節を当てる（引脚は見ない）。
+        frame.pin = action_ == Action::MoveNodes ? -1 : HitPin(frame.pointer, kPinHitRadius / canvas_.zoom);
         frame.node = frame.pin < 0 ? HitNode(frame.pointer) : -1;
         frame.link = frame.pin < 0 && frame.node < 0 ? HitLink(desc, frame.pointer, 6.0f / canvas_.zoom) : -1;
     }

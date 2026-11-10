@@ -42,6 +42,8 @@ private:
         float outputLabelTop = 0.0f;
         uint32_t firstPin = 0u;
         bool selected = false;
+        // 拖動で一緒に動いている（当たり判定から外し、上に描く）。
+        bool dragged = false;
     };
     struct PinLayout {
         const EDITOR_PROJECT::EditorNodeGraphPin* pin = nullptr;
@@ -70,6 +72,15 @@ private:
     int HitPin(const MATH::Vec2& pointer, float radius) const;
     int HitNode(const MATH::Vec2& pointer) const;
     int HitLink(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const MATH::Vec2& pointer, float tolerance) const;
+    // 畳む三角の当たり（図の座標）。
+    bool HitCollapse(const EDITOR_PROJECT::EditorNodeGraphNode& node, const NodeLayout& layout,
+                     const MATH::Vec2& pointer) const;
+    // 直角の線の折れ点（出力 → 下 → 横 → 入力）。
+    std::array<MATH::Vec2, 4> LinkElbow(const MATH::Vec2& start, const MATH::Vec2& end) const;
+    // 掴んだ節と、線で繋がった下流の節を dragSet_ に集める。
+    void CollectDragSet(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, uint64_t nodeId);
+    // followNodeId の節が画面の外にあれば、真ん中へ視点を動かす。
+    void FollowNode(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame);
     std::array<MATH::Vec2, 4> LinkCurve(EDITOR_PROJECT::EditorNodeGraphFlow flow, const MATH::Vec2& start,
                                         const MATH::Vec2& end) const;
 
@@ -90,6 +101,7 @@ private:
     // ---- 描画（HIKARI_NodeGraphViewPaint.cpp） ----
     void Paint(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame) const;
     void PaintNode(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame, uint32_t index) const;
+    void PaintDropHint(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame) const;
 
     NodeGraphCanvasState canvas_{};
     bool framed_ = false;
@@ -100,6 +112,9 @@ private:
     float panDistance_ = 0.0f;
     // 拖動中の節のずれ（図の座標）。離した時に一度だけ呼び手へ返す。
     MATH::Vec2 moveOffset_{};
+    // dragDescendants の拖動で掴んだ節と、一緒に動く節。
+    uint64_t grabbedNodeId_ = 0u;
+    std::vector<uint64_t> dragSet_{};
     uint64_t dragPinId_ = 0u;
     MATH::Vec2 boxStart_{};
     bool boxAdditive_ = false;

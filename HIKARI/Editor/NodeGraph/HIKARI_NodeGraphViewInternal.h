@@ -24,10 +24,22 @@ inline constexpr float kMinNodeWidth = 120.0f;
 inline constexpr float kRounding = 6.0f;
 inline constexpr float kSmallText = 0.88f;
 inline constexpr float kLabelGap = 16.0f;
+// 縮められる下限（大きい樹の全体が収まるまで）。
+inline constexpr float kMinZoom = 0.2f;
 // これより縮めたら、節は題だけを描く。
 inline constexpr float kDetailZoom = 0.55f;
 // これより動かさずに離したら、拖動ではなくクリック（画面の画素）。
 inline constexpr float kClickSlop = 4.0f;
+// 題の左の畳む三角の幅（字の高さに対する比）と、題との間。
+inline constexpr float kCollapseGap = 4.0f;
+// 節の左上の外に出す順番の丸の半径。
+inline constexpr float kOrderRadius = 9.0f;
+// 直角の線が出力から下りてから横へ折れるまでの長さの下限。
+inline constexpr float kElbowDrop = 14.0f;
+
+inline bool HasFlag(uint32_t flags, EDITOR_PROJECT::EditorNodeGraphNodeFlag flag) noexcept {
+    return (flags & static_cast<uint32_t>(flag)) != 0u;
+}
 
 inline ImVec2 ToIm(const MATH::Vec2& value) noexcept { return {value.x, value.y}; }
 
