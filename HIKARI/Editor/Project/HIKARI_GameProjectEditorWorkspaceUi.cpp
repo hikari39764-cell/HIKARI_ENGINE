@@ -463,6 +463,103 @@ bool GameProjectEditorWorkspaceUi::BeginTable(std::string_view stableTableId, ui
     return true;
 }
 
+bool GameProjectEditorWorkspaceUi::BeginTableHeaders(std::string_view stableTableId,
+                                                     std::span<const std::string_view> headers) {
+    if (headers.empty() || !BeginTable(stableTableId, static_cast<uint32_t>(headers.size()))) {
+        return false;
+    }
+    for (const std::string_view header : headers) {
+        ImGui::TableSetupColumn(std::string(Shown(header)).c_str());
+    }
+    ImGui::TableHeadersRow();
+    return true;
+}
+
+bool GameProjectEditorWorkspaceUi::BeginTabBar(std::string_view stableTabBarId) {
+    if (panelDepth_ == 0u || canvasActive_) {
+        return false;
+    }
+    const std::string stableLabel = MakeWorkspaceControlLabel("Tabs", workspaceId_, stableTabBarId);
+    if (!ImGui::BeginTabBar(stableLabel.c_str(), ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_FittingPolicyScroll)) {
+        return false;
+    }
+    ++tabBarDepth_;
+    return true;
+}
+
+bool GameProjectEditorWorkspaceUi::TabItem(std::string_view stableTabId, std::string_view label, bool dirty,
+                                           bool select, bool* closeRequested) {
+    if (tabBarDepth_ == 0u) {
+        return false;
+    }
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableTabId);
+    bool open = true;
+    ImGuiTabItemFlags flags = dirty ? ImGuiTabItemFlags_UnsavedDocument : ImGuiTabItemFlags_None;
+    flags |= select ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+    const bool shown = ImGui::BeginTabItem(stableLabel.c_str(), closeRequested != nullptr ? &open : nullptr, flags);
+    if (shown) {
+        ImGui::EndTabItem();
+    }
+    if (closeRequested != nullptr) {
+        *closeRequested = !open;
+    }
+    return shown;
+}
+
+bool GameProjectEditorWorkspaceUi::TabButton(std::string_view stableButtonId, std::string_view label) {
+    if (tabBarDepth_ == 0u) {
+        return false;
+    }
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableButtonId);
+    return ImGui::TabItemButton(stableLabel.c_str(), ImGuiTabItemFlags_Trailing);
+}
+
+void GameProjectEditorWorkspaceUi::EndTabBar() {
+    if (tabBarDepth_ == 0u) {
+        return;
+    }
+    ImGui::EndTabBar();
+    --tabBarDepth_;
+}
+
+void GameProjectEditorWorkspaceUi::OpenPopup(std::string_view stablePopupId) {
+    // 窓の識別は ### から後ろだけで決まるので、題を付けた対話窓と同じ識別になる。
+    ImGui::OpenPopup(("###" + MakeWorkspaceControlLabel("Popup", workspaceId_, stablePopupId)).c_str());
+}
+
+bool GameProjectEditorWorkspaceUi::BeginPopup(std::string_view stablePopupId, std::string_view title, bool modal) {
+    if (panelDepth_ == 0u || canvasActive_) {
+        return false;
+    }
+    const std::string id = "###" + MakeWorkspaceControlLabel("Popup", workspaceId_, stablePopupId);
+    bool opened = false;
+    if (modal) {
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        opened = ImGui::BeginPopupModal((std::string(Shown(title)) + id).c_str(), nullptr,
+                                        ImGuiWindowFlags_AlwaysAutoResize);
+    } else {
+        opened = ImGui::BeginPopup(id.c_str());
+    }
+    if (opened) {
+        ++popupDepth_;
+    }
+    return opened;
+}
+
+void GameProjectEditorWorkspaceUi::CloseCurrentPopup() {
+    if (popupDepth_ != 0u) {
+        ImGui::CloseCurrentPopup();
+    }
+}
+
+void GameProjectEditorWorkspaceUi::EndPopup() {
+    if (popupDepth_ == 0u) {
+        return;
+    }
+    ImGui::EndPopup();
+    --popupDepth_;
+}
+
 void GameProjectEditorWorkspaceUi::TableNextRow() {
     if (tableDepth_ != 0u) {
         ImGui::TableNextRow();

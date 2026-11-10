@@ -113,6 +113,16 @@ public:
     bool Section(std::string_view stableControlId, std::string_view label, bool defaultOpen) override;
     void Tooltip(std::string_view utf8Text) override;
     void DragSource(std::string_view payloadType, std::string_view payload, std::string_view label) override;
+    bool BeginTableHeaders(std::string_view stableTableId, std::span<const std::string_view> headers) override;
+    bool BeginTabBar(std::string_view stableTabBarId) override;
+    bool TabItem(std::string_view stableTabId, std::string_view label, bool dirty, bool select,
+                 bool* closeRequested) override;
+    bool TabButton(std::string_view stableButtonId, std::string_view label) override;
+    void EndTabBar() override;
+    void OpenPopup(std::string_view stablePopupId) override;
+    bool BeginPopup(std::string_view stablePopupId, std::string_view title, bool modal) override;
+    void CloseCurrentPopup() override;
+    void EndPopup() override;
     bool Combo(std::string_view stableControlId, std::string_view label, std::span<const std::string_view> items,
                int32_t* selected) override;
     bool ModuleAssetField(std::string_view stableControlId, std::string_view label, std::string_view moduleAssetTypeId,
@@ -163,6 +173,8 @@ private:
     AssetRegistry* assets_{};
     size_t panelDepth_ = 0u;
     size_t tableDepth_ = 0u;
+    size_t tabBarDepth_ = 0u;
+    size_t popupDepth_ = 0u;
     bool canvasActive_ = false;
     std::array<ImGuiID, 5> dockRegions_{};
     // 場景の視口を入れるドック（区画そのもの、または左右の列の上半分）。

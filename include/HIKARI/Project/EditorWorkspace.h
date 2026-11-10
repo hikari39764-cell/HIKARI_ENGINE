@@ -20,7 +20,7 @@ namespace HIKARI::EDITOR_PROJECT {
 struct EditorNodeGraphDesc;
 struct EditorNodeGraphResult;
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 10u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 11u;
 
 // 界面の文字の言語：モジュールが IEditorWorkspaceUi に渡す固定の英文（ボタン、見出し、Tooltip、ui.Text、節点図の題など）は、
 // 宿主が描く前にモジュールの包の Text/zh.json、ja.json（と項目の ProjectSettings/Text）で今の言語へ引く。
@@ -234,6 +234,27 @@ public:
     // bytes) under payloadType (at most 31 bytes); label is shown next to the pointer. A NodeGraph whose
     // desc.dropPayloadType is the same type receives it (EditorNodeGraphResult::droppedPayload).
     virtual void DragSource(std::string_view payloadType, std::string_view payload, std::string_view label) = 0;
+    // Table whose first row names the columns (one column per header; headers are translated like labels).
+    // EndTable is required only when it returns true.
+    virtual bool BeginTableHeaders(std::string_view stableTableId, std::span<const std::string_view> headers) = 0;
+    // Tabs: TabItem / TabButton calls between BeginTabBar and EndTabBar (EndTabBar only when BeginTabBar returned
+    // true). Draw the contents of the shown tab after EndTabBar.
+    virtual bool BeginTabBar(std::string_view stableTabBarId) = 0;
+    // Returns true for the tab that is shown. dirty draws the unsaved mark; select makes it the shown tab this frame.
+    // closeRequested (may be null for a tab that cannot be closed) is set when its close button is pressed; the tab
+    // stays until the module stops drawing it.
+    virtual bool TabItem(std::string_view stableTabId, std::string_view label, bool dirty, bool select,
+                         bool* closeRequested) = 0;
+    // Button after the last tab (for example "+").
+    virtual bool TabButton(std::string_view stableButtonId, std::string_view label) = 0;
+    virtual void EndTabBar() = 0;
+    // Small window next to the control drawn last (OpenPopup), closed by clicking outside, or a dialog (modal) with a
+    // title that blocks the rest of the editor. Call OpenPopup and BeginPopup with the same id from the same place;
+    // EndPopup only when BeginPopup returned true.
+    virtual void OpenPopup(std::string_view stablePopupId) = 0;
+    virtual bool BeginPopup(std::string_view stablePopupId, std::string_view title, bool modal) = 0;
+    virtual void CloseCurrentPopup() = 0;
+    virtual void EndPopup() = 0;
 };
 
 // Marks text that the host must show as it is (names, values, sentences already translated).
