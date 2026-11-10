@@ -93,7 +93,7 @@ function(hikari_add_module)
     if(HIKARI_MODULE_RUNTIME_ROOT)
         target_include_directories("${_library}" PRIVATE "${HIKARI_MODULE_RUNTIME_ROOT}")
     endif()
-    _hikari_configure_module_target("${_library}")
+    hikari_configure_module_target("${_library}")
     _hikari_set_module_output(
         "${_library}" "${_library}" "${_archive_directory}" "${_package}/Debug" "${_package}" "${_package}/Shipping")
     source_group(TREE "${CMAKE_CURRENT_SOURCE_DIR}" FILES ${HIKARI_MODULE_RUNTIME_SOURCES})
@@ -115,7 +115,7 @@ function(hikari_add_module)
         _hikari_sdk_adapter(_editor_adapter "HIKARI_GameProjectEditorModuleAdapter.cpp")
         if(NOT HIKARI_MODULE_SINGLE_LIBRARY)
             add_library("${_editor_target}" MODULE)
-            _hikari_configure_module_target("${_editor_target}")
+            hikari_configure_module_target("${_editor_target}")
             _hikari_set_module_output(
                 "${_editor_target}" "${_editor_target}" "${_archive_directory}" "${_package}/Debug" "${_package}"
                 "${_package}/Shipping")

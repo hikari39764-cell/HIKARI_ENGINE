@@ -52,7 +52,7 @@ function(hikari_add_game_project)
             PRIVATE
                 "${HIKARI_PROJECT_RUNTIME_ROOT}")
     endif()
-    _hikari_configure_module_target(HIKARI_GameProjectModule)
+    hikari_configure_module_target(HIKARI_GameProjectModule)
     _hikari_set_module_output(
         HIKARI_GameProjectModule "HIKARI_GameProject" "${_hikari_archive_directory}"
         "${_hikari_binary_directory}" "${_hikari_binary_directory}" "${_hikari_binary_directory}")
@@ -86,7 +86,7 @@ function(hikari_add_game_project)
                 PRIVATE
                     "${HIKARI_PROJECT_EDITOR_ROOT}")
         endif()
-        _hikari_configure_module_target(HIKARI_GameProjectEditorModule)
+        hikari_configure_module_target(HIKARI_GameProjectEditorModule)
         _hikari_set_module_output(
             HIKARI_GameProjectEditorModule "HIKARI_GameProjectEditor" "${_hikari_archive_directory}"
             "${_hikari_binary_directory}" "${_hikari_binary_directory}" "${_hikari_binary_directory}")

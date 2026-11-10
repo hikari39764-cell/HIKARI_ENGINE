@@ -443,8 +443,3 @@ add_custom_target(
 
 # Local behavior tests are registered only when present; product targets never depend on them.
 include(cmake/HikariTests.cmake OPTIONAL)
-
-# 地形と布景モジュール（外部モジュールの規則で書く。製品の目標はまだリンクしない）。
-if(EXISTS "${HIKARI_SOURCE_ROOT}/Modules/TerrainKit/CMakeLists.txt")
-    add_subdirectory(Modules/TerrainKit)
-endif()

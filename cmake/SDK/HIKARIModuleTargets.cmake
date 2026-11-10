@@ -128,8 +128,9 @@ function(_hikari_link_runtime_sdk target)
     endif()
 endfunction()
 
-# モジュール DLL の共通の編訳設定（言語規格、定義、CRT、警告）。
-function(_hikari_configure_module_target target)
+# モジュール DLL の共通の編訳設定（言語規格、定義、CRT、警告）。公開の入口：モジュールが自分で作る静的ライブラリや
+# テストにも掛けて、DLL と同じ CRT・同じ設定で組む。
+function(hikari_configure_module_target target)
     target_compile_features("${target}" PRIVATE cxx_std_20)
     target_compile_definitions(
         "${target}"
@@ -150,6 +151,7 @@ function(_hikari_configure_module_target target)
         target_compile_options(
             "${target}"
             PRIVATE
+                /utf-8
                 /permissive-
                 /sdl
                 /MP

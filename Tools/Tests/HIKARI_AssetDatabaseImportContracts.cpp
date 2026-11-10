@@ -1,12 +1,15 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
 #include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -35,6 +38,7 @@
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Scene/Serialization/HIKARI_WorldInstanceFile.h"
 #include <json.hpp>
 #include <DirectXTex.h>
 #include "Internal/HIKARI_ContractAssert.h"
@@ -1218,6 +1222,58 @@ void CheckPartitionedScene(const fs::path& root) {
         world.objects.size(), firstSaveMs, openMs, oneObjectSaveMs);
 }
 
+// 実例集のセルファイル（.instances）と実例集の一覧：詰めた値の往復、ファイル名、複数の集の読み書き、
+// セルの食い違いと壊れた末尾を断ること。
+void CheckWorldInstanceFile(const fs::path& root) {
+    using namespace HIKARI;
+    const GameProjectWorldInstance instance =
+        WORLDINSTANCE::Encode({12.5f, 3.0f, -7.25f}, {0.0f, 0.70710678f, 0.0f, 0.70710678f}, {1.5f, 0.75f, 2.0f}, 77u,
+                              GameProjectWorldInstanceFlags::HandPlaced);
+    assert(std::abs(WORLDINSTANCE::DecodeSnorm16(instance.rotation[1]) - 0.70710678f) < 1.0e-4f);
+    assert(WORLDINSTANCE::DecodeHalf(instance.scale[0]) == 1.5f &&
+           WORLDINSTANCE::DecodeHalf(instance.scale[1]) == 0.75f);
+    assert(WORLDINSTANCE::DecodeHalf(WORLDINSTANCE::EncodeHalf(0.0f)) == 0.0f);
+    assert(WORLDINSTANCE::DecodeHalf(WORLDINSTANCE::EncodeHalf(1.0e9f)) > 60000.0f);
+    assert(instance.seed == 77u);
+
+    const fs::path directory = root / "WorldInstances";
+    fs::create_directories(directory);
+    const WorldCellCoord cell{-3, 5};
+    const fs::path path = MakeWorldInstanceCellPath(directory, cell);
+    WorldCellCoord parsed{};
+    assert(ParseWorldInstanceCellFileName(path.filename().string(), parsed) && parsed == cell);
+    assert(!ParseWorldInstanceCellFileName("x+000_z+000.objects.json", parsed));
+    const std::vector<GameProjectWorldInstance> first(2000u, instance);
+    const std::vector<GameProjectWorldInstance> second(3u, instance);
+    const std::array<WorldInstanceCellPart, 2> parts{WorldInstanceCellPart{11u, first},
+                                                     WorldInstanceCellPart{22u, second}};
+    std::string error{};
+    assert(WriteWorldInstanceCellFile(path, cell, parts, error));
+    std::vector<WorldInstanceCellRead> read{};
+    assert(ReadWorldInstanceCellFile(path, cell, read, error));
+    assert(read.size() == 2u && read[0].setId == 11u && read[0].instances.size() == 2000u && read[1].setId == 22u &&
+           read[1].instances.size() == 3u);
+    assert(std::memcmp(read[1].instances.data(), second.data(), sizeof(GameProjectWorldInstance) * 3u) == 0);
+    assert(!ReadWorldInstanceCellFile(path, WorldCellCoord{0, 0}, read, error));
+    {
+        std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(-1, std::ios::end);
+        const char broken = 0x7F;
+        file.write(&broken, 1);
+    }
+    assert(!ReadWorldInstanceCellFile(path, cell, read, error));
+
+    GameProjectWorldInstanceSetDesc set{};
+    std::strcpy(set.name, "Pines");
+    std::strcpy(set.modelAssetGuid, "abc");
+    set.tintVariation = 0.25f;
+    const fs::path setsPath = directory / kWorldInstanceSetsFileName;
+    assert(WriteWorldInstanceSetsFile(setsPath, std::span(&set, 1u), error));
+    std::vector<GameProjectWorldInstanceSetDesc> sets{};
+    assert(ReadWorldInstanceSetsFile(setsPath, sets, error));
+    assert(sets.size() == 1u && std::strcmp(sets[0].name, "Pines") == 0 && sets[0].tintVariation == 0.25f);
+}
+
 // モジュールが登記した資産の種類：走査で資産になり、取り込みが値の中の GUID を依存にし、書き出しに含まれる。
 void CheckModuleAssetTypes(const fs::path& root) {
     using namespace HIKARI;
@@ -1459,6 +1515,7 @@ int main(int argc, char** argv) {
     CheckProjectPostContracts(root);
     CheckPainterlyEngineDependencies(root);
     CheckPartitionedScene(root);
+    CheckWorldInstanceFile(root);
     CheckModuleAssetTypes(root);
     for (int index = 1; index < argc; ++index) {
         CheckSpriteAssetIntegration(fs::absolute(TEXT::PathFromUtf8(argv[index])),
