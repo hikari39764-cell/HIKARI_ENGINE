@@ -11,7 +11,12 @@
 #include "Include/Vfx/HIKARI_FluidGrid.hlsli"
 #include "Include/Vfx/HIKARI_FluidMedium.hlsli"
 
-#define HIKARI_FLUID_MAX_DOMAINS 4
+#define HIKARI_FLUID_MAX_DOMAINS 8
+// 域がこの数以下の時の步进（MarchPS）は枠 0〜3 だけを読む。步进の関数は枠の数 slots を定数で受け、使わない枠は消える
+// （8 枠の步进は視線の区間を 8 枠分持ち、4 域以下の場面でも遅くなるため、普段は 4 枠で解く）。
+#define HIKARI_FLUID_COMPACT_DOMAINS 4
+// 枠ごとに別の登録子を読む呼び出しを、枠の数だけ並べる（X(番号)）。
+#define HIKARI_FLUID_FOR_EACH_SLOT(X) X(0) X(1) X(2) X(3) X(4) X(5) X(6) X(7)
 
 cbuffer FluidRenderCB : register(b0)
 {
@@ -37,29 +42,46 @@ cbuffer FluidPassCB : register(b1)
     uint4 gPass;             // x 域の番号（LightCS）、yzw 未使用
 };
 
+// 域の枠ごとの体積：密度 t0〜t7、速度 t8〜t15、光照 t16〜t23（HIKARI_FluidRender.h の根の並びと同じ）。
 Texture3D<float4> gDensity0 : register(t0);
 Texture3D<float4> gDensity1 : register(t1);
 Texture3D<float4> gDensity2 : register(t2);
 Texture3D<float4> gDensity3 : register(t3);
-Texture3D<float4> gVelocity0 : register(t4);
-Texture3D<float4> gVelocity1 : register(t5);
-Texture3D<float4> gVelocity2 : register(t6);
-Texture3D<float4> gVelocity3 : register(t7);
-Texture3D<float4> gLight0 : register(t8);
-Texture3D<float4> gLight1 : register(t9);
-Texture3D<float4> gLight2 : register(t10);
-Texture3D<float4> gLight3 : register(t11);
-Texture2D<float> gSceneDepth : register(t12);
-Texture2D<float4> gInputColor : register(t13);
-Texture2D<float2> gInputDepth : register(t14);
-Texture3D<float> gNoise : register(t15);
-Texture2D<float> gShadowMap : register(t16);
+Texture3D<float4> gDensity4 : register(t4);
+Texture3D<float4> gDensity5 : register(t5);
+Texture3D<float4> gDensity6 : register(t6);
+Texture3D<float4> gDensity7 : register(t7);
+Texture3D<float4> gVelocity0 : register(t8);
+Texture3D<float4> gVelocity1 : register(t9);
+Texture3D<float4> gVelocity2 : register(t10);
+Texture3D<float4> gVelocity3 : register(t11);
+Texture3D<float4> gVelocity4 : register(t12);
+Texture3D<float4> gVelocity5 : register(t13);
+Texture3D<float4> gVelocity6 : register(t14);
+Texture3D<float4> gVelocity7 : register(t15);
+Texture3D<float4> gLight0 : register(t16);
+Texture3D<float4> gLight1 : register(t17);
+Texture3D<float4> gLight2 : register(t18);
+Texture3D<float4> gLight3 : register(t19);
+Texture3D<float4> gLight4 : register(t20);
+Texture3D<float4> gLight5 : register(t21);
+Texture3D<float4> gLight6 : register(t22);
+Texture3D<float4> gLight7 : register(t23);
+Texture2D<float> gSceneDepth : register(t24);
+Texture2D<float4> gInputColor : register(t25);
+Texture2D<float2> gInputDepth : register(t26);
+Texture3D<float> gNoise : register(t27);
+Texture2D<float> gShadowMap : register(t28);
 // 域ごとの解算の統計の緩衝：砖块（8³ 格）の数 × 12 byte の位置から砖块ごとの活動状態（u32、1 で動いている。烟のある砖块
 // とその 26 近傍、注入の届く砖块。HIKARI_FluidSolver.h の FluidDomainResources::ActivityOffset）。
-ByteAddressBuffer gActivity0 : register(t17);
-ByteAddressBuffer gActivity1 : register(t18);
-ByteAddressBuffer gActivity2 : register(t19);
-ByteAddressBuffer gActivity3 : register(t20);
+ByteAddressBuffer gActivity0 : register(t29);
+ByteAddressBuffer gActivity1 : register(t30);
+ByteAddressBuffer gActivity2 : register(t31);
+ByteAddressBuffer gActivity3 : register(t32);
+ByteAddressBuffer gActivity4 : register(t33);
+ByteAddressBuffer gActivity5 : register(t34);
+ByteAddressBuffer gActivity6 : register(t35);
+ByteAddressBuffer gActivity7 : register(t36);
 RWTexture3D<float4> gOutput : register(u0);
 RWTexture2D<float4> gSolarAtlas : register(u1);
 SamplerState gLinearClamp : register(s0);
@@ -232,40 +254,40 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
     emitted += tint * (extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature));
 }
 
-void Medium(float3 world, float3 viewDirection, float pixelSize, out float sigma, out float3 emitted)
+void Medium(float3 world, float3 viewDirection, float pixelSize, uint slots, out float sigma, out float3 emitted)
 {
     sigma = 0.0f;
     emitted = 0.0f.xxx;
     const uint count = DomainCount();
-    if (count > 0u)
-        AccumulateDomain(gDomains[0], gDensity0, gVelocity0, gLight0, world, viewDirection, pixelSize, sigma, emitted);
-    if (count > 1u)
-        AccumulateDomain(gDomains[1], gDensity1, gVelocity1, gLight1, world, viewDirection, pixelSize, sigma, emitted);
-    if (count > 2u)
-        AccumulateDomain(gDomains[2], gDensity2, gVelocity2, gLight2, world, viewDirection, pixelSize, sigma, emitted);
-    if (count > 3u)
-        AccumulateDomain(gDomains[3], gDensity3, gVelocity3, gLight3, world, viewDirection, pixelSize, sigma, emitted);
+#define HIKARI_FLUID_ACCUMULATE(i) \
+    if (i##u < slots && count > i##u) \
+        AccumulateDomain(gDomains[i], gDensity##i, gVelocity##i, gLight##i, world, viewDirection, pixelSize, sigma, emitted);
+    HIKARI_FLUID_FOR_EACH_SLOT(HIKARI_FLUID_ACCUMULATE)
+#undef HIKARI_FLUID_ACCUMULATE
 }
 
 // 視線が各域の箱を通る区間（距離、相機の後ろは 0 から）と、その域だけを描く時の歩の長さ（箱の区間 / 步数）。
-// 成分が域の番号。通らない域と空いた枠は enter = 1e30、leave = -1e30。
+// 添字が域の番号。通らない域と空いた枠は enter = 1e30、leave = -1e30。
 struct DomainSpans
 {
-    float4 enter;
-    float4 leave;
-    float4 step;
+    float enter[HIKARI_FLUID_MAX_DOMAINS];
+    float leave[HIKARI_FLUID_MAX_DOMAINS];
+    float step[HIKARI_FLUID_MAX_DOMAINS];
 };
 
-DomainSpans TraceDomains(float3 origin, float3 direction, float2 footprint)
+DomainSpans TraceDomains(float3 origin, float3 direction, float2 footprint, uint slots)
 {
     DomainSpans spans;
-    spans.enter = 1.0e30f.xxxx;
-    spans.leave = -1.0e30f.xxxx;
-    spans.step = 1.0e30f.xxxx;
+    [unroll] for (uint slot = 0u; slot < HIKARI_FLUID_MAX_DOMAINS; ++slot)
+    {
+        spans.enter[slot] = 1.0e30f;
+        spans.leave[slot] = -1.0e30f;
+        spans.step[slot] = 1.0e30f;
+    }
     const float steps = max(gForward.w, 1.0f);
     [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
     {
-        if (index >= DomainCount())
+        if (index >= slots || index >= DomainCount())
             break;
         const HikariFluidDomain domain = gDomains[index];
         const float3 o = HikariFluidToGrid(domain, origin);
@@ -290,10 +312,12 @@ DomainSpans TraceDomains(float3 origin, float3 direction, float2 footprint)
 }
 
 // どれかの域を通る最初と最後の距離（どれも通らなければ x > y）。
-float2 SpansBounds(DomainSpans spans)
+float2 SpansBounds(DomainSpans spans, uint slots)
 {
-    return float2(min(min(spans.enter.x, spans.enter.y), min(spans.enter.z, spans.enter.w)),
-                  max(max(spans.leave.x, spans.leave.y), max(spans.leave.z, spans.leave.w)));
+    float2 bounds = float2(1.0e30f, -1.0e30f);
+    [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS && index < slots; ++index)
+        bounds = float2(min(bounds.x, spans.enter[index]), max(bounds.y, spans.leave[index]));
+    return bounds;
 }
 
 // 步进の累積：散乱（前露光済み）と透過率、烟の距離を失った光の割合で重み付けした和と重み（体積霧の合成で烟の位置に使う）。
@@ -318,21 +342,22 @@ MarchState BeginMarch()
 bool BrickActive(uint domainIndex, uint3 brick, uint3 bricks)
 {
     const uint address = (bricks.x * bricks.y * bricks.z * 3u + brick.x + bricks.x * (brick.y + bricks.y * brick.z)) * 4u;
+#define HIKARI_FLUID_ACTIVITY(i) \
+    case i##u: return (gActivity##i.Load(address) & 1u) != 0u;
     [branch] switch (domainIndex)
     {
-    case 0u: return (gActivity0.Load(address) & 1u) != 0u;
-    case 1u: return (gActivity1.Load(address) & 1u) != 0u;
-    case 2u: return (gActivity2.Load(address) & 1u) != 0u;
-    default: return (gActivity3.Load(address) & 1u) != 0u;
+    HIKARI_FLUID_FOR_EACH_SLOT(HIKARI_FLUID_ACTIVITY)
     }
+#undef HIKARI_FLUID_ACTIVITY
+    return false;
 }
 
 // 距離 t の点が、入っているどの域でも動いていない砖块の中なら、その砖块を全ての域で出る距離（end まで）を返す。どれかの域の
 // 動いている砖块の中なら t（そこは步进する）。动いていない砖块は烟も届く注入も無いので、标本を取らず飛ばしてよい。
-float SkipInactive(float3 origin, float3 direction, DomainSpans spans, float t, float end)
+float SkipInactive(float3 origin, float3 direction, DomainSpans spans, float t, float end, uint slots)
 {
     float exit = end;
-    [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
+    [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS && index < slots; ++index)
     {
         if (index >= DomainCount() || t < spans.enter[index] || t >= spans.leave[index])
             continue;
@@ -356,13 +381,13 @@ float SkipInactive(float3 origin, float3 direction, DomainSpans spans, float t, 
 // [start, end] を stepLength [m] ごとに解析的に積分して march へ続ける（最後の歩は end で切る）。どの域でも動いていない
 // 砖块は飛ばす。footprint は距離 t の画素の大きさ x + y t（x < 0 で細部なし）。歩と飛ばしを合わせて 512 回まで。
 void Integrate(float3 origin, float3 direction, DomainSpans spans, float start, float end, float stepLength,
-    float jitter, float2 footprint, inout MarchState march)
+    float jitter, float2 footprint, uint slots, inout MarchState march)
 {
     stepLength = max(stepLength, 1.0e-4f);
     float stepStart = start;
     [loop] for (uint iteration = 0u; iteration < 512u && stepStart < end; ++iteration)
     {
-        const float skipped = SkipInactive(origin, direction, spans, stepStart, end);
+        const float skipped = SkipInactive(origin, direction, spans, stepStart, end, slots);
         if (skipped > stepStart)
         {
             stepStart = skipped;
@@ -373,8 +398,8 @@ void Integrate(float3 origin, float3 direction, DomainSpans spans, float start, 
         const float t = stepStart - span + jitter * span;
         float sigma;
         float3 emitted;
-        Medium(origin + direction * t, direction, footprint.x < 0.0f ? -1.0f : footprint.x + footprint.y * t, sigma,
-            emitted);
+        Medium(origin + direction * t, direction, footprint.x < 0.0f ? -1.0f : footprint.x + footprint.y * t, slots,
+            sigma, emitted);
         if (sigma <= 0.0f)
             continue;
         const float segment = exp(-sigma * span);
@@ -399,16 +424,16 @@ void Integrate(float3 origin, float3 direction, DomainSpans spans, float start, 
 // （どの域も無い間は飛ばす）。小さな域は大きな域と同じ視線に乗っても自分だけの時と同じ歩で標本を取り、大きな域の歩に
 // 引き伸ばされない。区切りの歩数はそこを通る域の歩数の和を超えないので、1 本の標本は域の数 × 步数まで。境目は域の数 × 2 まで。
 void MarchDomains(float3 origin, float3 direction, DomainSpans spans, float start, float end, float minimumStep,
-    float jitter, float2 footprint, inout MarchState march)
+    float jitter, float2 footprint, uint slots, inout MarchState march)
 {
     float t = start;
-    [loop] for (uint piece = 0u; piece < 2u * HIKARI_FLUID_MAX_DOMAINS; ++piece)
+    [loop] for (uint piece = 0u; piece < 2u * slots; ++piece)
     {
         if (t >= end || march.transmittance <= 0.0f)
             break;
         float next = 1.0e30f;
         float stepLength = 1.0e30f;
-        [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS; ++index)
+        [unroll] for (uint index = 0u; index < HIKARI_FLUID_MAX_DOMAINS && index < slots; ++index)
         {
             if (spans.enter[index] > t)
                 next = min(next, spans.enter[index]);
@@ -422,7 +447,7 @@ void MarchDomains(float3 origin, float3 direction, DomainSpans spans, float star
             break;
         if (stepLength < 1.0e30f)
             Integrate(origin, direction, spans, t, min(next, end), max(stepLength, minimumStep), jitter, footprint,
-                march);
+                slots, march);
         t = next;
     }
 }
@@ -536,8 +561,8 @@ void CameraVolumeCS(uint3 id : SV_DispatchThreadID)
     const float2 uv = (float2(id.xy) + 0.5f) / float2(width, height);
     float3 origin, direction;
     ViewRay(uv, origin, direction);
-    const DomainSpans spans = TraceDomains(origin, direction, float2(-1.0f, 0.0f));
-    const float2 bounds = SpansBounds(spans);
+    const DomainSpans spans = TraceDomains(origin, direction, float2(-1.0f, 0.0f), HIKARI_FLUID_MAX_DOMAINS);
+    const float2 bounds = SpansBounds(spans, HIKARI_FLUID_MAX_DOMAINS);
     MarchState march = BeginMarch();
     float previous = gCameraVolume.x;
     const float samples = max(gCameraVolume.w, 1.0f);
@@ -547,7 +572,7 @@ void CameraVolumeCS(uint3 id : SV_DispatchThreadID)
         const float covered = min(distance, bounds.y) - max(previous, bounds.x);
         if (covered > 0.0f)
             MarchDomains(origin, direction, spans, previous, distance, covered / samples, 0.5f, float2(-1.0f, 0.0f),
-                march);
+                HIKARI_FLUID_MAX_DOMAINS, march);
         gOutput[uint3(id.xy, slice)] = float4(march.scattered, march.transmittance);
         previous = distance;
     }
@@ -574,8 +599,8 @@ struct MarchOutput
     float2 depth : SV_TARGET1;  // x 止めた不透明面の距離（合成で全解像度の深度と比べる）、y 烟の平均距離（烟が無ければ x）
 };
 
-// 半分辨率の画素ごとに、全解像度の 2x2 の最も近い不透明面まで步进する。
-MarchOutput MarchPS(FullscreenOutput input)
+// 半分辨率の画素ごとに、全解像度の 2x2 の最も近い不透明面まで步进する（枠 0〜slots-1 の域）。
+MarchOutput MarchSlots(FullscreenOutput input, uint slots)
 {
     MarchOutput output;
     const uint2 halfPixel = uint2(input.position.xy);
@@ -590,8 +615,8 @@ MarchOutput MarchPS(FullscreenOutput input)
     float3 nextOrigin, nextDirection;
     ViewRay(uv + float2(0.0f, 1.0f / gSize.y), nextOrigin, nextDirection);
     const float2 footprint = float2(length(nextOrigin - origin), length(nextDirection - direction));
-    const DomainSpans spans = TraceDomains(origin, direction, footprint);
-    const float2 bounds = SpansBounds(spans);
+    const DomainSpans spans = TraceDomains(origin, direction, footprint, slots);
+    const float2 bounds = SpansBounds(spans, slots);
     output.depth = opaque.xx;
     output.color = float4(0.0f, 0.0f, 0.0f, 1.0f);
     if (min(bounds.y, opaque) <= bounds.x)
@@ -602,10 +627,22 @@ MarchOutput MarchPS(FullscreenOutput input)
     MarchState march = BeginMarch();
     // 抖动は画素に固定する（フレームごとに回すと粒が毎フレーム入れ替わり、烟全体がざらついて揺れた。時間方向の履歴で
     // 均すと、相機が動く間に輪郭へ残像が出て烟全体が跳ねた。步数が十分なので固定の交错勾配ノイズの模様は目立たない）。
-    MarchDomains(origin, direction, spans, bounds.x, opaque, 0.0f, noise, footprint, march);
+    MarchDomains(origin, direction, spans, bounds.x, opaque, 0.0f, noise, footprint, slots, march);
     output.color = float4(march.scattered, march.transmittance);
     output.depth.y = march.smokeWeight > 1.0e-4f ? march.smokeDistance / march.smokeWeight : opaque;
     return output;
+}
+
+// 域が HIKARI_FLUID_COMPACT_DOMAINS 個以下の時の步进。
+MarchOutput MarchPS(FullscreenOutput input)
+{
+    return MarchSlots(input, HIKARI_FLUID_COMPACT_DOMAINS);
+}
+
+// それより多い時の步进（8 枠すべて）。
+MarchOutput MarchWidePS(FullscreenOutput input)
+{
+    return MarchSlots(input, HIKARI_FLUID_MAX_DOMAINS);
 }
 
 // 深度を見て半分辨率の步进を全解像度の画素 position へ広げる（rgb 散乱、a 透過率）。smoke は烟の平均距離 [m]：隣の不透明度で

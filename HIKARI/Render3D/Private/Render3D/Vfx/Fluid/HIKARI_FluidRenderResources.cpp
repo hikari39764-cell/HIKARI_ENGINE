@@ -26,6 +26,7 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         cameraVolume_.Reset();
         solar_.Reset();
         march_.Reset();
+        marchWide_.Reset();
         composite_.Reset();
         coverage_.Reset();
         compositeFormat_ = DXGI_FORMAT_UNKNOWN;
@@ -97,11 +98,13 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
         failed_ = false;
     }
     if (sceneColorFormat == DXGI_FORMAT_UNKNOWN ||
-        (march_ && composite_ && coverage_ && compositeFormat_ == sceneColorFormat))
+        (march_ && marchWide_ && composite_ && coverage_ && compositeFormat_ == sceneColorFormat))
         return true;
     failed_ = true;
-    ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, compositeShader{}, coverageShader{};
+    ASSETS::SHADER::ShaderAssetResolveResult vertex{}, marchShader{}, marchWideShader{}, compositeShader{},
+        coverageShader{};
     if (!resolve("FullscreenVS", ShaderStage::Vertex, vertex) || !resolve("MarchPS", ShaderStage::Pixel, marchShader) ||
+        !resolve("MarchWidePS", ShaderStage::Pixel, marchWideShader) ||
         !resolve("CompositePS", ShaderStage::Pixel, compositeShader) ||
         !resolve("CoveragePS", ShaderStage::Pixel, coverageShader))
         return false;
@@ -122,6 +125,10 @@ bool FluidRenderer::EnsurePipelines(ID3D12Device* device, DXGI_FORMAT sceneColor
     desc.RTVFormats[1] = kDepthFormat;
     if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(march_.ReleaseAndGetAddressOf())),
                          "FluidRenderer::CreateMarchPipeline"))
+        return false;
+    desc.PS = {marchWideShader.lease.GetDxil().data(), marchWideShader.lease.GetDxil().size()};
+    if (!HIKARI_DX_CHECK(device->CreateGraphicsPipelineState(&desc, IID_PPV_ARGS(marchWide_.ReleaseAndGetAddressOf())),
+                         "FluidRenderer::CreateMarchWidePipeline"))
         return false;
     // 合成は乗算済みの流体を場面の上へ重ねる（ONE / INV_SRC_ALPHA）。深度は読み取り専用で束ねたまま。
     desc.PS = {compositeShader.lease.GetDxil().data(), compositeShader.lease.GetDxil().size()};
@@ -307,7 +314,7 @@ void FluidRenderer::Shutdown(const GFX::Context& context) {
     noiseReady_ = false;
     for (ComPtr<ID3D12PipelineState>* pipeline :
          {std::addressof(noise_), std::addressof(light_), std::addressof(cameraVolume_), std::addressof(solar_),
-          std::addressof(march_), std::addressof(composite_), std::addressof(coverage_)})
+          std::addressof(march_), std::addressof(marchWide_), std::addressof(composite_), std::addressof(coverage_)})
         if (*pipeline)
             GFX::RetireD3D12ObjectForFrame(*pipeline, context, "FluidRenderer.Pipeline");
     if (root_)

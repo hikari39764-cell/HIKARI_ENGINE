@@ -2013,6 +2013,12 @@
           "profile": "ps_6_0"
         },
         {
+          "id": "MarchWidePS",
+          "stage": "Pixel",
+          "entry": "MarchWidePS",
+          "profile": "ps_6_0"
+        },
+        {
           "id": "NoiseCS",
           "stage": "Compute",
           "entry": "NoiseCS",
@@ -2027,11 +2033,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.FluidVolume",
-        "engineInterfaceVersion": 10,
-        "engineInterfaceHash": "1201f3c1a8ced639f8a5c8c057ac21e2f4f6cb23cda562bbb8cbdd6ae2209c50",
+        "engineInterfaceVersion": 11,
+        "engineInterfaceHash": "d069cf06e854602e6d5755c7a6418d557fe9842488c6a910b9bc0850ff3062b9",
         "rootLayoutId": "HIKARI.FluidVolume.Root",
-        "rootLayoutVersion": 4,
-        "rootLayoutHash": "3da567e56900572ffd10dd478d7ea0181a1c556e4ee9770889f7f0dadf0bd472",
+        "rootLayoutVersion": 5,
+        "rootLayoutHash": "016e6a49d0fa5372f11151304bd9737c63a0198031164500d3c33d10aee477c7",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

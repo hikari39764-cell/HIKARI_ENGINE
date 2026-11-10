@@ -18,7 +18,10 @@
 // 再構成、場面への合成、場面へ落とす烟の影の表。解いた域の体積は FluidVolumePass から借りる。
 namespace HIKARI::RENDER3D::FLUID::INTERNAL {
 
-inline constexpr uint32_t kMaximumRenderedFluidDomains = 4u;
+inline constexpr uint32_t kMaximumRenderedFluidDomains = 8u;
+// 域がこの数以下の時は 4 枠の步进（MarchPS）、多い時は 8 枠の步进（MarchWidePS）で描く（Render3D_FluidVolume.hlsl の
+// HIKARI_FLUID_COMPACT_DOMAINS）。
+inline constexpr uint32_t kCompactMarchFluidDomains = 4u;
 
 // 描く域 1 つ（今の密度と速度、光照体積、格子と世界の位置、外観）。
 struct FluidRenderDomain {
@@ -66,26 +69,26 @@ public:
     void Shutdown(const GFX::Context& context);
 
 private:
-    // Render3D_FluidVolume.hlsl の根の並び：b0、b1、入力 t0..t16（1 つずつの表、kFirstInput + 入力の番号）、出力 u0（体積）
-    // と u1（烟の影の表）。
+    // Render3D_FluidVolume.hlsl の根の並び：b0、b1、入力 t0..t28（1 つずつの表、kFirstInput + 入力の番号。域の枠ごとの密度・
+    // 速度・光照が 8 つずつ、続いて場面の深度・步进の結果 2 つ・ノイズ・影）、出力 u0（体積）と u1（烟の影の表）。
     static constexpr UINT kConstants = 0u;
     static constexpr UINT kPassConstants = 1u;
     static constexpr UINT kFirstInput = 2u;
     static constexpr UINT kDensity = 0u;
-    static constexpr UINT kVelocity = 4u;
-    static constexpr UINT kLight = 8u;
-    static constexpr UINT kSceneDepth = 12u;
-    static constexpr UINT kInputColor = 13u;
-    static constexpr UINT kInputDepth = 14u;
-    static constexpr UINT kNoise = 15u;
-    static constexpr UINT kShadow = 16u;
-    static constexpr UINT kInputCount = 17u;
+    static constexpr UINT kVelocity = kMaximumRenderedFluidDomains;
+    static constexpr UINT kLight = 2u * kMaximumRenderedFluidDomains;
+    static constexpr UINT kSceneDepth = 3u * kMaximumRenderedFluidDomains;
+    static constexpr UINT kInputColor = kSceneDepth + 1u;
+    static constexpr UINT kInputDepth = kSceneDepth + 2u;
+    static constexpr UINT kNoise = kSceneDepth + 3u;
+    static constexpr UINT kShadow = kSceneDepth + 4u;
+    static constexpr UINT kInputCount = kSceneDepth + 5u;
     static constexpr UINT kOutput = kFirstInput + kInputCount;
     static constexpr UINT kSolarOutput = kOutput + 1u;
-    // t17〜t20：域ごとの解算の統計の緩衝（砖块の活動状態を步进が読み、動いていない砖块を飛ばす）。
+    // t29〜t36：域ごとの解算の統計の緩衝（砖块の活動状態を步进が読み、動いていない砖块を飛ばす）。
     static constexpr UINT kActivity = kSolarOutput + 1u;
     static constexpr UINT kRootCount = kActivity + kMaximumRenderedFluidDomains;
-    // 砖块の活動状態（域ごとの解算の統計の緩衝）を読める状態へ移し、t17〜t20 に束ねる住所を返す（空いた枠は空の緩衝）。
+    // 砖块の活動状態（域ごとの解算の統計の緩衝）を読める状態へ移し、t29〜t36 に束ねる住所を返す（空いた枠は空の緩衝）。
     std::array<D3D12_GPU_VIRTUAL_ADDRESS, kMaximumRenderedFluidDomains> PrepareActivity(
         ID3D12GraphicsCommandList* commands, std::span<FluidRenderDomain> domains, size_t count);
     static constexpr D3D12_RESOURCE_STATES kRead =
@@ -138,6 +141,7 @@ private:
     Microsoft::WRL::ComPtr<ID3D12PipelineState> cameraVolume_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> solar_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> march_{};
+    Microsoft::WRL::ComPtr<ID3D12PipelineState> marchWide_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> composite_{};
     Microsoft::WRL::ComPtr<ID3D12PipelineState> coverage_{};
     DXGI_FORMAT compositeFormat_ = DXGI_FORMAT_UNKNOWN;
@@ -145,7 +149,7 @@ private:
     FluidVolume noiseVolume_{};
     bool noiseReady_ = false;
     FluidVolume fallbackVolume_{};
-    // 域の無い活動状態の枠と、步进を使わない pass（烟の影の表）の t17〜t20。
+    // 域の無い活動状態の枠と、步进を使わない pass（烟の影の表）の t29〜t36。
     Microsoft::WRL::ComPtr<ID3D12Resource> fallbackBuffer_{};
     // 烟の影の表（RG32F の 2D 図集）と、前向きが読む無絆定の貼図。
     FluidVolume solarAtlas_{};

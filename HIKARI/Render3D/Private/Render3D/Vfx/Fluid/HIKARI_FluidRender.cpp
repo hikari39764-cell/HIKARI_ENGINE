@@ -52,7 +52,7 @@ struct alignas(16) RenderConstants {
     LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
 };
-static_assert(sizeof(RenderConstants) == 1200u);
+static_assert(sizeof(RenderConstants) == 1840u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -199,7 +199,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     const auto volumeAt = [&](size_t index, FluidVolume* FluidRenderDomain::* member) {
         return index < count ? (domains[index].*member)->srv.gpu : fallbackVolume_.srv.gpu;
     };
-    // 影を使わない時の t16 は場面の深度（読める状態の 2D）で埋める。
+    // 影を使わない時の影の枠（t28）は場面の深度（読める状態の 2D）で埋める。
     const D3D12_GPU_DESCRIPTOR_HANDLE shadowSrv = shadowed ? SHADOW::GetDirectionalShadowSrv() : view.sceneDepthSrv;
     // 全ての入力を束ねる（計算と全画面で同じ並び）。步进の結果（13、14）はまだ無いので場面の深度で埋め（読まない）、
     // 合成の前に上書きする。
@@ -287,7 +287,7 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     const D3D12_CPU_DESCRIPTOR_HANDLE marchTargets[2] = {state.marchColor.rtv, state.marchDepth.rtv};
     commands->OMSetRenderTargets(2, marchTargets, FALSE, nullptr);
     viewport(halfWidth, halfHeight);
-    commands->SetPipelineState(march_.Get());
+    commands->SetPipelineState((count > kCompactMarchFluidDomains ? marchWide_ : march_).Get());
     draw();
     TransitionTarget(commands, state.marchColor, kRead);
     TransitionTarget(commands, state.marchDepth, kRead);
