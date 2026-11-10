@@ -537,7 +537,8 @@ bool GameProjectEditorWorkspaceUi::BeginPopup(std::string_view stablePopupId, st
     const std::string id = "###" + MakeWorkspaceControlLabel("Popup", workspaceId_, stablePopupId);
     bool opened = false;
     if (modal) {
-        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Appearing, ImVec2(0.5f, 0.5f));
+        // 対話窓はいつも画面の真ん中（前に開いた位置を覚えさせない）。
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
         opened = ImGui::BeginPopupModal((std::string(Shown(title)) + id).c_str(), nullptr,
                                         ImGuiWindowFlags_AlwaysAutoResize);
     } else {
