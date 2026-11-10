@@ -6,13 +6,18 @@
 #include <vector>
 
 #include "Project/HIKARI_ProjectDescriptor.h"
+#include "Project/HIKARI_SdkInterface.h"
 
 namespace HIKARI {
 
 inline constexpr char kModuleManifestExtension[] = ".hmodule";
 inline constexpr uint32_t kModuleManifestFormatVersion = 1u;
-// 項目に置いた挿件包を探すフォルダ：<項目>/Plugins/<id>/<id>.hmodule。
+// 項目に置いたモジュールを探すフォルダ：<項目>/Plugins/<id>/<id>.hmodule。構築済みの挿件包か、モジュールのソース。
 inline constexpr char kProjectPluginsDirectory[] = "Plugins";
+// Plugins/<id> にこのファイルがあれば、ソースの形のモジュール。項目を開く時の構築（Build-HikariProject.ps1）が
+// 今の引擎の SDK で編訳し、包を <項目>/Library/Plugins/<id> に作る。
+inline constexpr char kModuleSourceMarker[] = "CMakeLists.txt";
+inline constexpr char kProjectBuiltPluginsDirectory[] = "Library/Plugins";
 
 // モジュールの資産の種類。JSON のファイルが資産として走査・取り込み・書き出しされる。
 struct ModuleManifestAssetType {
@@ -27,9 +32,8 @@ struct ModuleManifest {
     std::string id{};
     std::string name{};
     std::string version{};
-    // DLL を構築した SDK の版（"major.minor.patch"）。構築が書く。major と minor が引擎と同じ時だけ読み込む。
-    std::string sdkVersion{};
-    // 編集器と開発用の実行。ゲームの書き出しは shippingRuntimeLibrary を配る。
+    // 編集器と開発用の実行。ゲームの書き出しは shippingRuntimeLibrary を配る。DLL の路径は構築が書く：
+    // 構築前の元の清単（ソースの形のモジュール）では三つとも空。
     std::filesystem::path runtimeLibrary{};
     std::filesystem::path shippingRuntimeLibrary{};
     std::filesystem::path editorLibrary{};
@@ -41,6 +45,10 @@ struct ModuleManifest {
     std::vector<ModuleManifestAssetType> assetTypes{};
     // 清単のあるフォルダ（読み込み時に埋める絶対路径）。
     std::filesystem::path directory{};
+    // 項目の Plugins にソースの形で置かれたモジュールなら、そのフォルダ（参照を解決する時に埋める）。
+    std::filesystem::path sourceDirectory{};
+
+    bool IsBuilt() const noexcept { return !runtimeLibrary.empty(); }
 };
 
 // 項目に入れたモジュールの読み込み結果（項目設定の一覧と本地橋の問い合わせが読む）。
@@ -64,18 +72,26 @@ std::filesystem::path MakeModuleManifestPath(const std::filesystem::path& root, 
 inline constexpr char kEngineModulesDirectory[] = "Modules";
 std::filesystem::path GetEngineModulesDirectory();
 
-// 清単の sdkVersion が今の引擎の SDK と合うか（major と minor が同じ）。合わなければ、どの版向けの包かを書く。
-bool IsModuleSdkCompatible(const ModuleManifest& manifest, std::string* outMessage = nullptr);
+// モジュールの DLL（library）が、provided の表の引擎と合うか。DLL の隣の記録（編訳の時に読んだ SDK のファイルの
+// 指紋）と比べる。合わなければ false と、利用者に見せる理由と直し方。
+bool IsModuleLibraryCurrent(const ModuleManifest& manifest, const std::filesystem::path& library,
+                            const SdkInterfaceFiles& provided, std::string* outMessage = nullptr);
+
+// 編集器と開発用の実行が読む DLL（runtimeLibrary と、別の DLL なら editorLibrary）が、この host と合うか。
+bool AreModuleLibrariesCurrent(const ModuleManifest& manifest, std::string* outMessage = nullptr);
 
 // Project.hikari の一覧を清単へ解決し、依存が先に来る順に並べる。路径の無い参照と一覧に無い依存は、
-// 項目の Plugins、引擎に同梱のフォルダの順に探す。
-// 清単が読めない・id が食い違う・依存が見つからない・循環している時は false と理由。
+// 項目の Plugins、引擎に同梱のフォルダの順に探す。Plugins のソースの形のモジュールは、構築された包の清単になる。
+// 清単が読めない・id が食い違う・まだ構築されていない・依存が見つからない・循環している時は false と理由。
 bool ResolveProjectModules(const std::vector<ProjectModuleReference>& references,
                            const std::filesystem::path& projectRoot, const std::filesystem::path& builtinRoot,
                            std::vector<ModuleManifest>& outModules, std::string* outMessage = nullptr);
 
 enum class ModuleSource : uint8_t {
+    // 項目の Plugins に置いた、構築済みの挿件包。
     ProjectPlugins,
+    // 項目の Plugins に置いたソース。項目を開く時の構築が今の引擎に合わせて作り直す。
+    ProjectSource,
     Engine,
     // Project.hikari が清単の路径を直接書いている。
     ManifestPath,
@@ -90,11 +106,12 @@ struct ProjectModuleOption {
     bool enabled = false;
     // 有効なモジュールのうち、これに依存しているものの id（空でなければ参照が無くても読み込まれ、外せない）。
     std::vector<std::string> requiredBy{};
-    // 使えない理由：清単が読めない、id が食い違う、SDK の版が合わない。空なら使える。
+    // 使えない理由：清単が読めない、id が食い違う、包の DLL が今の引擎と合わない。空なら使える。
+    // ソースの形のモジュールは合わなくても理由にしない（項目を開く時に作り直される）。
     std::string problem{};
 };
 
-// Project.hikari が参照するモジュールと、項目の Plugins・引擎に同梱のフォルダにある包を id の昇順で並べる。
+// Project.hikari が参照するモジュールと、項目の Plugins・引擎に同梱のフォルダにあるモジュールを id の昇順で並べる。
 std::vector<ProjectModuleOption> ListProjectModuleOptions(const ProjectDescriptor& descriptor,
                                                           const std::filesystem::path& projectRoot,
                                                           const std::filesystem::path& builtinRoot);

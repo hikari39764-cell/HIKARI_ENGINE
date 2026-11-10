@@ -15,6 +15,10 @@ param(
 
     [switch]$PrepareGameExport,
 
+    # Compile the project code only. Used by the Editor's code check, which builds a copy of the project and
+    # loads nothing from it.
+    [switch]$SkipSourceModules,
+
     [string]$InstallDirectory
 )
 
@@ -340,6 +344,216 @@ function Resolve-HikariCMake {
         "bundle and PATH were checked.$failureText")
 }
 
+# Source modules: a folder Plugins/<id> that holds a module's source (CMakeLists.txt and <id>.hmodule) instead of
+# a built package. The project build compiles every enabled one, and the source modules they depend on, with
+# this SDK into Library/Plugins/<id>, which is where the engine loads them from. A module is rebuilt when its
+# files changed, or when the SDK files its library was compiled against changed (the record next to the library,
+# checked with Sdk/Tools/HIKARI_SdkInterface.exe). An engine update that does not touch what the module includes
+# keeps the existing library.
+function Get-HikariSourceModuleState {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ModuleRoot
+    )
+
+    # Paths, sizes and write times of the module's files. Its own build output and VCS data are not inputs.
+    $excluded = @('Library', 'out', '.git', '.vs')
+    $lines = [Collections.Generic.List[string]]::new()
+    foreach ($entry in @(Get-ChildItem -LiteralPath $ModuleRoot -Force)) {
+        if ($entry.PSIsContainer -and $excluded -contains $entry.Name) {
+            continue
+        }
+        $files = if ($entry.PSIsContainer) {
+            @(Get-ChildItem -LiteralPath $entry.FullName -Recurse -File -Force)
+        } else {
+            @($entry)
+        }
+        foreach ($file in $files) {
+            $lines.Add((
+                '{0}|{1}|{2}' -f
+                $file.FullName.Substring($ModuleRoot.Length),
+                $file.Length,
+                $file.LastWriteTimeUtc.Ticks))
+        }
+    }
+    $lines.Sort([StringComparer]::Ordinal)
+    $sha256 = [Security.Cryptography.SHA256]::Create()
+    try {
+        $bytes = [Text.Encoding]::UTF8.GetBytes(($lines -join "`n"))
+        return -join ($sha256.ComputeHash($bytes) | ForEach-Object { $_.ToString('x2') })
+    }
+    finally {
+        $sha256.Dispose()
+    }
+}
+
+function Get-HikariSourceModuleOrder {
+    param(
+        [Parameter(Mandatory)]
+        [string]$PluginRoot,
+
+        [string[]]$Ids
+    )
+
+    # Dependencies first. Ids that are not source modules (built packages, engine modules) are skipped.
+    $ordered = [Collections.Generic.List[string]]::new()
+    $visited = [Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    $visit = $null
+    $visit = {
+        param([string]$id)
+        if (-not $visited.Add($id)) {
+            return
+        }
+        $moduleRoot = Join-Path $PluginRoot $id
+        $manifestPath = Join-Path $moduleRoot "$id.hmodule"
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot 'CMakeLists.txt') -PathType Leaf) -or
+            -not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+            return
+        }
+        $manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
+        $dependencies = $manifest.PSObject.Properties['dependencies']
+        foreach ($dependency in @(if ($null -ne $dependencies) { $dependencies.Value })) {
+            & $visit ([string]$dependency)
+        }
+        $ordered.Add($id)
+    }
+    foreach ($id in @($Ids)) {
+        & $visit $id
+    }
+    return , $ordered.ToArray()
+}
+
+function Build-HikariSourceModules {
+    param(
+        [Parameter(Mandatory)]
+        [string]$ProjectRoot,
+
+        [Parameter(Mandatory)]
+        $Descriptor,
+
+        [Parameter(Mandatory)]
+        [string]$Preset,
+
+        [Parameter(Mandatory)]
+        [string]$Configuration,
+
+        [Parameter(Mandatory)]
+        [string]$SdkRoot,
+
+        [switch]$Force
+    )
+
+    $pluginRoot = Join-Path $ProjectRoot 'Plugins'
+    $moduleList = $Descriptor.PSObject.Properties['modules']
+    if ($null -eq $moduleList -or -not (Test-Path -LiteralPath $pluginRoot -PathType Container)) {
+        return
+    }
+    $enabled = @(
+        foreach ($module in @($moduleList.Value)) {
+            $manifestProperty = $module.PSObject.Properties['manifest']
+            if ($null -eq $manifestProperty -or [string]::IsNullOrWhiteSpace([string]$manifestProperty.Value)) {
+                [string]$module.id
+            }
+        })
+    $ids = Get-HikariSourceModuleOrder -PluginRoot $pluginRoot -Ids $enabled
+    if ($ids.Count -eq 0) {
+        return
+    }
+    if ($Preset -eq 'debug') {
+        Write-Host 'HIKARI source modules are not built for the debug preset: module packages carry EditorRelease and Shipping libraries.'
+        return
+    }
+
+    $tool = Join-Path $SdkRoot 'Tools\HIKARI_SdkInterface.exe'
+    $table = Join-Path $SdkRoot 'HIKARI_SdkInterface.json'
+    foreach ($required in @($tool, $table)) {
+        if (-not (Test-Path -LiteralPath $required -PathType Leaf)) {
+            throw "This HIKARI SDK cannot build source modules: $required is missing."
+        }
+    }
+    $packageRoot = Join-Path $ProjectRoot 'Library\Plugins'
+    $libraryKey = if ($Preset -eq 'game-shipping') { 'shippingRuntimeLibrary' } else { 'runtimeLibrary' }
+    $cmake = $null
+    foreach ($id in $ids) {
+        $moduleRoot = (Resolve-Path -LiteralPath (Join-Path $pluginRoot $id)).Path
+        $package = Join-Path $packageRoot $id
+        $buildTree = Join-Path $ProjectRoot "Library\Build\CMake\modules\$id\$Preset"
+        $statePath = Join-Path $buildTree 'HIKARI_ModuleBuild.json'
+        $fingerprint = Get-HikariSourceModuleState -ModuleRoot $moduleRoot
+
+        # The library this preset produces (named by the packaged manifest) and its interface record.
+        $findRecord = {
+            $manifestPath = Join-Path $package "$id.hmodule"
+            if (-not (Test-Path -LiteralPath $manifestPath -PathType Leaf)) {
+                return $null
+            }
+            $manifest = Get-Content -LiteralPath $manifestPath -Encoding UTF8 -Raw | ConvertFrom-Json
+            $property = $manifest.PSObject.Properties[$libraryKey]
+            if ($null -eq $property -or [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+                return $null
+            }
+            $library = Join-Path $package ([string]$property.Value)
+            $record = [IO.Path]::ChangeExtension($library, '.interface.json')
+            if (-not (Test-Path -LiteralPath $library -PathType Leaf) -or
+                -not (Test-Path -LiteralPath $record -PathType Leaf)) {
+                return $null
+            }
+            return $record
+        }
+
+        if (-not $Force -and (Test-Path -LiteralPath $statePath -PathType Leaf)) {
+            $state = try {
+                Get-Content -LiteralPath $statePath -Encoding UTF8 -Raw | ConvertFrom-Json
+            } catch {
+                $null
+            }
+            $built = if ($null -ne $state) { $state.PSObject.Properties['fingerprint'] } else { $null }
+            $record = & $findRecord
+            if ($null -ne $built -and [string]$built.Value -ceq $fingerprint -and $null -ne $record) {
+                $null = & $tool check $record $table
+                if ($LASTEXITCODE -eq 0) {
+                    Write-Host "HIKARI module $id is current."
+                    continue
+                }
+                Write-Host "HIKARI module ${id}: the engine files it was built against changed."
+            }
+        }
+
+        Write-Host 'HIKARI_STAGE building'
+        Write-Host "HIKARI module ${id}: building from its source in Plugins\$id."
+        if ($null -eq $cmake) {
+            $cmake = Resolve-HikariCMake -SdkRoot $SdkRoot
+        }
+        & $cmake `
+            -S $moduleRoot `
+            -B $buildTree `
+            -G 'Visual Studio 17 2022' `
+            -A x64 `
+            "-DCMAKE_CONFIGURATION_TYPES:STRING=$Configuration" `
+            "-DHIKARI_DIR:PATH=$(Join-Path $SdkRoot 'lib\cmake\HIKARI')" `
+            "-DHIKARI_MODULE_PACKAGE_ROOT:PATH=$packageRoot"
+        if ($LASTEXITCODE -ne 0) {
+            throw "Module $id could not be configured from $moduleRoot."
+        }
+        & $cmake --build $buildTree --config $Configuration
+        if ($LASTEXITCODE -ne 0) {
+            throw "Module $id failed to build from $moduleRoot."
+        }
+        $record = & $findRecord
+        if ($null -eq $record) {
+            throw "Module $id was built, but its $libraryKey or the interface record next to it is missing in $package."
+        }
+        & $tool check $record $table
+        if ($LASTEXITCODE -ne 0) {
+            throw "Module $id was built, but its interface record does not match this SDK."
+        }
+        [IO.File]::WriteAllText(
+            $statePath,
+            ([ordered]@{ version = 1; fingerprint = $fingerprint } | ConvertTo-Json),
+            [Text.UTF8Encoding]::new($false))
+    }
+}
+
 $projectInput = $Project
 if (Test-Path -LiteralPath $projectInput -PathType Leaf) {
     $projectInput = Split-Path -Parent $projectInput
@@ -490,6 +704,15 @@ if ($Preset -ne 'game-shipping') {
 }
 
 Write-Host "HIKARI_STAGE checking"
+if (-not $ConfigureOnly -and -not $SkipSourceModules) {
+    Build-HikariSourceModules `
+        -ProjectRoot $projectRoot `
+        -Descriptor $descriptor `
+        -Preset $Preset `
+        -Configuration $configuration `
+        -SdkRoot $sdkRootPath `
+        -Force:$ForceBuild
+}
 $projectInputs = Get-HikariProjectInputFiles `
     -ProjectRoot $projectRoot `
     -ManifestRoot $manifestRoot `

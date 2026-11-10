@@ -1,5 +1,4 @@
 #include "Editor/Projects/HIKARI_ProjectSourceTemplate.h"
-#include "HIKARI/Project/GameProjectSdk.h"
 
 namespace HIKARI::EDITOR::PROJECT_TEMPLATE {
 
@@ -39,10 +38,7 @@ std::string MakeGameProjectCMake(const std::string& identifier) {
            "        \"HIKARI GameProjects require x64 "
            "Visual Studio 2022.\")\n"
            "endif()\n\n"
-           "find_package(HIKARI " +
-           std::to_string(SDK::kVersionMajor) + "." + std::to_string(SDK::kVersionMinor) + "." +
-           std::to_string(SDK::kVersionPatch) +
-           " CONFIG REQUIRED)\n\n"
+           "find_package(HIKARI CONFIG REQUIRED)\n\n"
            "hikari_add_game_project(\n"
            "    NAME \"" +
            identifier +

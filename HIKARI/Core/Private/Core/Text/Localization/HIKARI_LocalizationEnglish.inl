@@ -703,6 +703,7 @@
     {"ui.projectFeatures.moduleReopenPending", "applies after reopening the project"},
     {"ui.projectFeatures.moduleReopenHint", "Reopen the project to apply the module changes."},
     {"ui.projectFeatures.moduleSourceProject", "project Plugins folder"},
+    {"ui.projectFeatures.moduleSourceCode", "source in the project Plugins folder (built when the project opens)"},
     {"ui.projectFeatures.moduleSourceEngine", "shipped with the engine"},
     {"ui.projectFeatures.moduleSourcePath", "referenced by path"},
     {"ui.projectFeatures.loaded", "Project feature settings loaded."},

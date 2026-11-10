@@ -596,6 +596,7 @@
     {"ui.projectFeatures.moduleReopenPending", "重新打开项目后生效"},
     {"ui.projectFeatures.moduleReopenHint", "模块的改动要重新打开项目才会生效。"},
     {"ui.projectFeatures.moduleSourceProject", "项目的 Plugins 文件夹"},
+    {"ui.projectFeatures.moduleSourceCode", "项目 Plugins 里的源码（打开项目时自动编译）"},
     {"ui.projectFeatures.moduleSourceEngine", "引擎自带"},
     {"ui.projectFeatures.moduleSourcePath", "按路径引用"},
     {"ui.projectFeatures.loaded", "项目功能设置已加载。"}, {"ui.projectFeatures.moreFormat", "... 以及另外 %zu 个"},

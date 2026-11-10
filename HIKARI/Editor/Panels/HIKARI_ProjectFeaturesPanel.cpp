@@ -313,9 +313,10 @@ void ProjectFeaturesPanel::DrawModules(DocumentSceneBase& scene) {
         ImGui::Indent();
         ImGui::TextDisabled(
             "%s  -  %s", manifest.id.c_str(),
-            TEXT::Localize(option.source == ModuleSource::ProjectPlugins ? "ui.projectFeatures.moduleSourceProject"
-                           : option.source == ModuleSource::Engine       ? "ui.projectFeatures.moduleSourceEngine"
-                                                                         : "ui.projectFeatures.moduleSourcePath")
+            TEXT::Localize(option.source == ModuleSource::ProjectPlugins  ? "ui.projectFeatures.moduleSourceProject"
+                           : option.source == ModuleSource::ProjectSource ? "ui.projectFeatures.moduleSourceCode"
+                           : option.source == ModuleSource::Engine        ? "ui.projectFeatures.moduleSourceEngine"
+                                                                          : "ui.projectFeatures.moduleSourcePath")
                 .c_str());
         // フォルダの路径は長いので、行を分けて折り返す。
         ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));

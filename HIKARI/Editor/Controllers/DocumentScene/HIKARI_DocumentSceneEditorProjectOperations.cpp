@@ -23,6 +23,7 @@ bool Contains(const std::vector<std::string>& values, std::string_view value) {
 
 constexpr TEXT::EnumName<ModuleSource> kModuleSourceNames[] = {
     {ModuleSource::ProjectPlugins, "project"},
+    {ModuleSource::ProjectSource, "projectSource"},
     {ModuleSource::Engine, "engine"},
     {ModuleSource::ManifestPath, "path"},
 };
@@ -91,7 +92,6 @@ void DocumentSceneEditorController::RegisterProjectOperations() {
                 entries.push_back({{"id", manifest.id},
                                    {"name", manifest.name},
                                    {"version", manifest.version},
-                                   {"sdkVersion", manifest.sdkVersion},
                                    {"source", TEXT::EnumToName(kModuleSourceNames, row.option.source)},
                                    {"directory", TEXT::PathToUtf8(manifest.directory)},
                                    {"enabled", row.option.enabled},

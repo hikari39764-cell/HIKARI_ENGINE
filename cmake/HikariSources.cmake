@@ -608,6 +608,7 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/HIKARI_ProjectContext.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/HIKARI_ProjectDescriptor.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/HIKARI_ProjectModules.cpp"
+    "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/HIKARI_SdkInterface.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/HIKARI_ProjectLaunch.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/HIKARI_ProjectSettings.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Project/Private/Project/Paths/HIKARI_ProjectPath.cpp"

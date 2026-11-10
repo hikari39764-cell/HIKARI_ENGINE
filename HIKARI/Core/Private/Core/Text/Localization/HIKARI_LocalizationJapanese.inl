@@ -730,6 +730,7 @@
     {"ui.projectFeatures.moduleReopenPending", "プロジェクトを開き直すと反映"},
     {"ui.projectFeatures.moduleReopenHint", "モジュールの変更はプロジェクトを開き直すと反映されます。"},
     {"ui.projectFeatures.moduleSourceProject", "プロジェクトの Plugins フォルダ"},
+    {"ui.projectFeatures.moduleSourceCode", "プロジェクトの Plugins にあるソース（プロジェクトを開くときに自動でビルド）"},
     {"ui.projectFeatures.moduleSourceEngine", "エンジン同梱"},
     {"ui.projectFeatures.moduleSourcePath", "パスで参照"},
     {"ui.projectFeatures.loaded", "プロジェクト機能設定を読み込みました。"},

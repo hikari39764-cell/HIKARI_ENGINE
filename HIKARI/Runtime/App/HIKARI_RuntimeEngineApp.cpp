@@ -99,8 +99,8 @@ bool RuntimeEngineApp::ComposeInstalledModules(DocumentSceneBase& scene) {
         status.manifest = std::move(manifest);
         const ModuleManifest& loaded = status.manifest;
         auto library = std::make_unique<GameProjectModuleLibrary>();
-        // 版の合わない DLL は読まない（仮想関数表が合わず、読むと落ちる）。
-        if (!IsModuleSdkCompatible(loaded, &status.error) ||
+        // 今の引擎と違う界面で編訳した DLL は読まない（仮想関数表や構造体の形が合わず、読むと落ちる）。
+        if (!AreModuleLibrariesCurrent(loaded, &status.error) ||
             !library->LoadInstalledModule(loaded.directory / loaded.runtimeLibrary, status.error)) {
             HIKARI_LOG_ERROR("[ProjectModules] " + loaded.id + ": " + status.error);
         } else if (library->GetModuleId() != loaded.id) {

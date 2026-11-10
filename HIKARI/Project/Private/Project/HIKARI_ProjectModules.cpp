@@ -1,9 +1,7 @@
 #include "Project/HIKARI_ProjectModules.h"
 
 #include <algorithm>
-#include <charconv>
 #include <map>
-#include <string_view>
 #include <system_error>
 #include <utility>
 
@@ -11,7 +9,6 @@
 
 #include "Core/IO/HIKARI_PathNormalization.h"
 #include "Core/Paths/HIKARI_ExecutablePath.h"
-#include "HIKARI/Project/GameProjectSdk.h"
 
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
 #include "Core/Serialization/Json/HIKARI_JsonStrict.h"
@@ -25,25 +22,54 @@ std::filesystem::path ReadRelativePath(const std::string& text) {
     return text.empty() ? std::filesystem::path{} : TEXT::PathFromUtf8(text);
 }
 
+// 一つのモジュールの在り処。
+struct ModuleLocation {
+    // 読む清単。
+    std::filesystem::path manifest{};
+    ModuleSource source = ModuleSource::Engine;
+    // ソースの形で項目に置かれている時、そのフォルダ。
+    std::filesystem::path sourceDirectory{};
+};
+
 // 参照からモジュールの清単を決める：明示の路径、項目の Plugins、引擎に同梱のフォルダの順。
-std::filesystem::path FindModuleManifest(const std::vector<ProjectModuleReference>& references, const std::string& id,
-                                         const std::filesystem::path& projectRoot,
-                                         const std::filesystem::path& builtinRoot, ModuleSource& outSource) {
+// Plugins/<id> がソースなら、項目の構築が作った包（Library/Plugins/<id>）の清単。まだ構築されていなければ
+// 元の清単（名前や依存は読めるが、DLL は無い）。
+ModuleLocation LocateModule(const std::vector<ProjectModuleReference>& references, const std::string& id,
+                            const std::filesystem::path& projectRoot, const std::filesystem::path& builtinRoot) {
+    ModuleLocation location{};
     const auto reference = std::find_if(references.begin(), references.end(),
                                         [&](const ProjectModuleReference& item) { return item.id == id; });
     if (reference != references.end() && !reference->manifest.empty()) {
-        outSource = ModuleSource::ManifestPath;
-        return reference->manifest.is_absolute() ? reference->manifest
-                                                 : (projectRoot / reference->manifest).lexically_normal();
+        location.source = ModuleSource::ManifestPath;
+        location.manifest = reference->manifest.is_absolute() ? reference->manifest
+                                                              : (projectRoot / reference->manifest).lexically_normal();
+        return location;
     }
-    const std::filesystem::path projectManifest = MakeModuleManifestPath(projectRoot / kProjectPluginsDirectory, id);
+    const std::filesystem::path pluginManifest = MakeModuleManifestPath(projectRoot / kProjectPluginsDirectory, id);
     std::error_code ec{};
-    if (std::filesystem::is_regular_file(projectManifest, ec)) {
-        outSource = ModuleSource::ProjectPlugins;
-        return projectManifest;
+    if (std::filesystem::is_regular_file(pluginManifest.parent_path() / kModuleSourceMarker, ec)) {
+        const std::filesystem::path builtManifest =
+            MakeModuleManifestPath(projectRoot / kProjectBuiltPluginsDirectory, id);
+        location.source = ModuleSource::ProjectSource;
+        location.sourceDirectory = pluginManifest.parent_path();
+        location.manifest = std::filesystem::is_regular_file(builtManifest, ec) ? builtManifest : pluginManifest;
+        return location;
     }
-    outSource = ModuleSource::Engine;
-    return MakeModuleManifestPath(builtinRoot, id);
+    if (std::filesystem::is_regular_file(pluginManifest, ec)) {
+        location.source = ModuleSource::ProjectPlugins;
+        location.manifest = pluginManifest;
+        return location;
+    }
+    location.manifest = MakeModuleManifestPath(builtinRoot, id);
+    return location;
+}
+
+bool LoadLocatedManifest(const ModuleLocation& location, ModuleManifest& outManifest, std::string* outMessage) {
+    if (!LoadModuleManifest(location.manifest, outManifest, outMessage)) {
+        return false;
+    }
+    outManifest.sourceDirectory = location.sourceDirectory;
+    return true;
 }
 
 class ModuleResolver {
@@ -76,18 +102,26 @@ private:
             return true;
         }
         marks_[id] = Mark::Visiting;
-        ModuleSource source{};
-        const std::filesystem::path manifestPath =
-            FindModuleManifest(references_, id, projectRoot_, builtinRoot_, source);
+        const ModuleLocation location = LocateModule(references_, id, projectRoot_, builtinRoot_);
         ModuleManifest manifest{};
         std::string readMessage{};
-        if (!LoadModuleManifest(manifestPath, manifest, &readMessage)) {
-            outMessage = "module " + id + " could not be read (" + TEXT::PathToUtf8(manifestPath) + "): " + readMessage;
+        if (!LoadLocatedManifest(location, manifest, &readMessage)) {
+            outMessage =
+                "module " + id + " could not be read (" + TEXT::PathToUtf8(location.manifest) + "): " + readMessage;
             return false;
         }
         if (manifest.id != id) {
-            outMessage = "module manifest " + TEXT::PathToUtf8(manifestPath) + " declares id " + manifest.id +
+            outMessage = "module manifest " + TEXT::PathToUtf8(location.manifest) + " declares id " + manifest.id +
                          " but the project expects " + id;
+            return false;
+        }
+        if (!manifest.IsBuilt()) {
+            outMessage = location.source == ModuleSource::ProjectSource
+                             ? "module " + id + " is in source form (" + TEXT::PathToUtf8(location.sourceDirectory) +
+                                   ") and has not been built yet. Opening the project from the launcher builds it."
+                             : "module manifest " + TEXT::PathToUtf8(location.manifest) +
+                                   " names no runtimeLibrary: build the module with hikari_add_module, which "
+                                   "writes the packaged manifest";
             return false;
         }
         for (const std::string& dependency : manifest.dependencies) {
@@ -128,16 +162,14 @@ bool LoadModuleManifest(const std::filesystem::path& manifestPath, ModuleManifes
     if (!JSONSTRICT::ReadString(root, "id", {}, manifest.id, error, "root") ||
         !JSONSTRICT::ReadString(root, "name", {}, manifest.name, error, "root") ||
         !JSONSTRICT::ReadString(root, "version", {}, manifest.version, error, "root") ||
-        !JSONSTRICT::ReadString(root, "sdkVersion", {}, manifest.sdkVersion, error, "root") ||
         !JSONSTRICT::ReadString(root, "runtimeLibrary", {}, runtimeLibrary, error, "root") ||
         !JSONSTRICT::ReadString(root, "shippingRuntimeLibrary", {}, shippingRuntimeLibrary, error, "root") ||
         !JSONSTRICT::ReadString(root, "editorLibrary", {}, editorLibrary, error, "root")) {
         SetMessage(outMessage, error);
         return false;
     }
-    if (manifest.id.empty() || manifest.version.empty() || manifest.sdkVersion.empty() || runtimeLibrary.empty()) {
-        SetMessage(outMessage, "module manifest requires id, version, sdkVersion and runtimeLibrary (build the module "
-                               "with hikari_add_module, which writes the packaged manifest)");
+    if (manifest.id.empty() || manifest.version.empty()) {
+        SetMessage(outMessage, "module manifest requires id and version");
         return false;
     }
     if (const auto dependencies = root.find("dependencies"); dependencies != root.end()) {
@@ -200,7 +232,6 @@ bool SaveModuleManifest(const std::filesystem::path& manifestPath, const ModuleM
                         {"id", manifest.id},
                         {"name", manifest.name},
                         {"version", manifest.version},
-                        {"sdkVersion", manifest.sdkVersion},
                         {"runtimeLibrary", TEXT::PathToUtf8(manifest.runtimeLibrary)},
                         {"dependencies", manifest.dependencies}};
     const auto writeOptional = [&root](const char* key, const std::filesystem::path& value) {
@@ -236,34 +267,31 @@ std::filesystem::path GetEngineModulesDirectory() {
     return PLATFORM::GetExecutableDirectory() / kEngineModulesDirectory;
 }
 
-bool IsModuleSdkCompatible(const ModuleManifest& manifest, std::string* outMessage) {
-    // 先頭の "major.minor" だけを読む。公開ヘッダーが変わると minor が上がり、DLL の仮想関数表が合わなくなる。
-    const auto readNumber = [](std::string_view& text, unsigned int& outValue) {
-        const auto [end, error] = std::from_chars(text.data(), text.data() + text.size(), outValue);
-        if (error != std::errc{}) {
-            return false;
-        }
-        text.remove_prefix(static_cast<size_t>(end - text.data()));
-        return true;
-    };
-    std::string_view rest = manifest.sdkVersion;
-    unsigned int major = 0u;
-    unsigned int minor = 0u;
-    bool parsed = readNumber(rest, major) && rest.starts_with('.');
-    if (parsed) {
-        rest.remove_prefix(1u);
-        parsed = readNumber(rest, minor);
-    }
-    if (parsed && major == SDK::kVersionMajor && minor == SDK::kVersionMinor) {
+bool IsModuleLibraryCurrent(const ModuleManifest& manifest, const std::filesystem::path& library,
+                            const SdkInterfaceFiles& provided, std::string* outMessage) {
+    std::string reason{};
+    if (IsLibraryInterfaceCurrent(library, provided, &reason)) {
         SetMessage(outMessage, {});
         return true;
     }
-    SetMessage(outMessage, "module " + manifest.id + " was built for HIKARI SDK " +
-                               (manifest.sdkVersion.empty() ? std::string("(unknown)") : manifest.sdkVersion) +
-                               ", but this engine provides SDK " + std::to_string(SDK::kVersionMajor) + "." +
-                               std::to_string(SDK::kVersionMinor) + "." + std::to_string(SDK::kVersionPatch) +
-                               ". Rebuild the module with this engine's SDK, or get a package made for it.");
+    // ソースの形のモジュールは項目の構築が作り直すので、ここへ来るのは構築を通さずに開いた時か、構築が失敗した時。
+    SetMessage(outMessage,
+               "module " + manifest.id + " does not match this engine: " + reason + ". " +
+                   (manifest.sourceDirectory.empty()
+                        ? "Get a package built for this engine, or put the module's source folder into the "
+                          "project's Plugins folder so that it is rebuilt automatically."
+                        : "Its source is in the project's Plugins folder: open the project from the launcher, "
+                          "which rebuilds it (build log: Library/Build/HIKARI_ProjectBuild.log)."));
     return false;
+}
+
+bool AreModuleLibrariesCurrent(const ModuleManifest& manifest, std::string* outMessage) {
+    const SdkInterfaceFiles& host = GetHostSdkInterface();
+    if (!IsModuleLibraryCurrent(manifest, manifest.directory / manifest.runtimeLibrary, host, outMessage)) {
+        return false;
+    }
+    return manifest.editorLibrary.empty() || manifest.editorLibrary == manifest.runtimeLibrary ||
+           IsModuleLibraryCurrent(manifest, manifest.directory / manifest.editorLibrary, host, outMessage);
 }
 
 std::vector<ProjectModuleOption> ListProjectModuleOptions(const ProjectDescriptor& descriptor,
@@ -274,17 +302,20 @@ std::vector<ProjectModuleOption> ListProjectModuleOptions(const ProjectDescripto
         return std::find_if(options.begin(), options.end(),
                             [&](const ProjectModuleOption& option) { return option.manifest.id == id; });
     };
-    const auto add = [&options](const std::filesystem::path& manifestPath, const std::string& id, ModuleSource source,
-                                bool enabled) {
+    const auto add = [&options](const ModuleLocation& location, const std::string& id, bool enabled) {
         ProjectModuleOption option{};
-        option.source = source;
+        option.source = location.source;
         option.enabled = enabled;
-        if (!LoadModuleManifest(manifestPath, option.manifest, &option.problem)) {
-            option.manifest.directory = manifestPath.parent_path();
+        if (!LoadLocatedManifest(location, option.manifest, &option.problem)) {
+            option.manifest.directory = location.manifest.parent_path();
         } else if (option.manifest.id != id) {
             option.problem = "the manifest declares id " + option.manifest.id;
+        } else if (location.source == ModuleSource::ProjectSource) {
+            // 包がまだ無い・古いのは問題にしない：有効にして項目を開き直すと、構築が今の引擎に合わせて作る。
+        } else if (!option.manifest.IsBuilt()) {
+            option.problem = "the package has no library: build the module with hikari_add_module";
         } else {
-            IsModuleSdkCompatible(option.manifest, &option.problem);
+            AreModuleLibrariesCurrent(option.manifest, &option.problem);
         }
         option.manifest.id = id;
         options.push_back(std::move(option));
@@ -292,24 +323,23 @@ std::vector<ProjectModuleOption> ListProjectModuleOptions(const ProjectDescripto
 
     for (const ProjectModuleReference& reference : descriptor.modules) {
         if (find(reference.id) == options.end()) {
-            ModuleSource source{};
-            const std::filesystem::path manifestPath =
-                FindModuleManifest(descriptor.modules, reference.id, projectRoot, builtinRoot, source);
-            add(manifestPath, reference.id, source, true);
+            add(LocateModule(descriptor.modules, reference.id, projectRoot, builtinRoot), reference.id, true);
         }
     }
-    const std::pair<std::filesystem::path, ModuleSource> roots[] = {
-        {projectRoot / kProjectPluginsDirectory, ModuleSource::ProjectPlugins},
-        {builtinRoot, ModuleSource::Engine},
-    };
-    for (const auto& [root, source] : roots) {
+    // 参照されていないモジュール：項目の Plugins（包かソース）、引擎に同梱のフォルダの順。
+    const std::vector<ProjectModuleReference> noReferences{};
+    const std::filesystem::path roots[] = {projectRoot / kProjectPluginsDirectory, builtinRoot};
+    for (const std::filesystem::path& root : roots) {
         std::error_code ec{};
         for (std::filesystem::directory_iterator entry(root, ec), end; !ec && entry != end; entry.increment(ec)) {
             const std::string id = TEXT::PathToUtf8(entry->path().filename());
             const std::filesystem::path manifestPath = MakeModuleManifestPath(root, id);
-            if (find(id) == options.end() && std::filesystem::is_regular_file(manifestPath, ec)) {
-                add(manifestPath, id, source, false);
+            if (find(id) != options.end() || !std::filesystem::is_regular_file(manifestPath, ec)) {
+                continue;
             }
+            add(root == builtinRoot ? ModuleLocation{manifestPath, ModuleSource::Engine, {}}
+                                    : LocateModule(noReferences, id, projectRoot, builtinRoot),
+                id, false);
         }
     }
 
