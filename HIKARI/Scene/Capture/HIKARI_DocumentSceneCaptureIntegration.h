@@ -13,7 +13,6 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Render3D/Core/HIKARI_Material.h"
-#include "Render3D/Ui/HIKARI_GameUiEffectRenderer.h"
 #include "Render3D/Render/HIKARI_ModelRenderer.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Render3D/ScreenSpace/HIKARI_ScreenComposite.h"
@@ -179,9 +178,10 @@ inline void ApplyPublishedMaterialBinding(World& world, SceneCaptureService& ser
         const auto has = [&](GameProjectSceneCaptureMaterialBindingFlag flag) {
             return (binding.flags & GameProjectSceneCaptureMaterialBindingFlags(flag)) != 0u;
         };
-        const auto alphaMode = has(GameProjectSceneCaptureMaterialBindingFlag::AlphaMask)    ? RuntimeMaterialAlphaMode::Mask
-                               : has(GameProjectSceneCaptureMaterialBindingFlag::AlphaBlend) ? RuntimeMaterialAlphaMode::Blend
-                                                                                              : RuntimeMaterialAlphaMode::Opaque;
+        const auto alphaMode =
+            has(GameProjectSceneCaptureMaterialBindingFlag::AlphaMask)    ? RuntimeMaterialAlphaMode::Mask
+            : has(GameProjectSceneCaptureMaterialBindingFlag::AlphaBlend) ? RuntimeMaterialAlphaMode::Blend
+                                                                          : RuntimeMaterialAlphaMode::Opaque;
         if (ownsAppliedMaterial && appliedMaterial != nullptr) {
             appliedMaterial->SetTextureSlot(MaterialTextureUsage::BaseColor, std::move(textureSlot));
             appliedMaterial->SetMaterialAlphaMode(alphaMode);
@@ -322,7 +322,8 @@ inline RENDER3D::ScreenCompositeWorldFrame CollectScreenComposites(World& world,
                     region.corners[corner] = {point.x, point.y, point.z};
                     // 材質の UV 変換（HikariApplyMaterialUvTransform と同じ：拡大縮小 → 回転 → ずらし）。
                     const float x = meshUv[corner].x * slot.uvScale.x, y = meshUv[corner].y * slot.uvScale.y;
-                    region.uv[corner] = {x * cosine - y * sine + slot.uvOffset.x, x * sine + y * cosine + slot.uvOffset.y};
+                    region.uv[corner] = {x * cosine - y * sine + slot.uvOffset.x,
+                                         x * sine + y * cosine + slot.uvOffset.y};
                 }
                 region.texture = binding.appliedTexture;
                 region.baseColor = baseColor;
@@ -341,16 +342,11 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
                                    const RENDER3D::WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource) {
     SceneCaptureService& service = state.runtime.sceneCaptureService;
     for (const uint32_t retiredSlot : service.ConsumeRetiredCaptureTargets()) {
-        if (retiredSlot < kGameProjectSceneCaptureMaximumActiveCount)
-            MODELRENDERER::ResetSecondarySceneCaptureTarget(retiredSlot);
-        else
-            GAME_UI::ResetGameUiCanvasTarget(retiredSlot - kGameProjectSceneCaptureMaximumActiveCount);
+        MODELRENDERER::ResetSecondarySceneCaptureTarget(retiredSlot);
     }
     const std::vector<SceneCaptureRequest> requests = service.Requests();
     if (requests.empty()) {
         MODELRENDERER::ResetSecondarySceneCaptureTarget();
-        for (uint32_t i = 0; i < kGameProjectUiCanvasMaximumCount; ++i)
-            GAME_UI::ResetGameUiCanvasTarget(i);
         return;
     }
     static const auto cpuTimer = CPU_PROFILE::RegisterDynamicPass("Render.SceneCaptures");
@@ -369,20 +365,6 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
             std::clamp(request.width, kGameProjectSceneCaptureMinimumExtent, kGameProjectSceneCaptureMaximumExtent);
         const uint32_t height =
             std::clamp(request.height, kGameProjectSceneCaptureMinimumExtent, kGameProjectSceneCaptureMaximumExtent);
-        if (request.uiCanvas) {
-            RENDER3D::TextureResourceHandle texture{};
-            uint64_t revision{}, renderedFrame{};
-            if (request.uiFrame &&
-                GAME_UI::RenderGameUiCanvasTarget(request.renderSlot - kGameProjectSceneCaptureMaximumActiveCount,
-                                                  state.runtime.world.GetRuntimeIdentity(), *request.uiFrame,
-                                                  request.contentRevision, width, height, request.clearColor, texture,
-                                                  revision, renderedFrame)) {
-                service.PublishReady(request.handle, texture, width, height, renderedFrame, revision);
-            } else if (request.contentRevision) {
-                service.PublishFailure(request.handle, GameProjectSceneCaptureFailure::RenderFailed);
-            }
-            continue;
-        }
         GameObject* cameraObject = state.runtime.world.FindObject(request.cameraObject);
         Camera3D camera{};
         // 並べた視点（SetViews）：視点ごとのカメラで描く。カメラ物体は作成と更新の判定にだけ使う。はみ出す視点は描かない。
@@ -404,7 +386,8 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
                 sub.width = desc.width;
                 sub.height = desc.height;
                 sub.keepPrevious =
-                    (desc.flags & GameProjectSceneCaptureViewFlags(GameProjectSceneCaptureViewFlag::KeepPrevious)) != 0u;
+                    (desc.flags & GameProjectSceneCaptureViewFlags(GameProjectSceneCaptureViewFlag::KeepPrevious)) !=
+                    0u;
                 subViews.push_back(sub);
             }
         }
@@ -434,6 +417,7 @@ inline void RenderSecondaryCapture(DocumentSceneState& state, const GFX::Context
         view.assetRegistry = &state.assets.Registry();
         view.worldSpriteFrameSource = worldSpriteFrameSource;
         view.worldTextFrameSource = worldTextFrameSource;
+        view.surfaceExtensions = state.runtime.world.GetRenderSurfaceExtensions();
         const uint32_t renderVfxFlag = GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::RenderVfx);
         if ((request.flags & renderVfxFlag) != 0u) {
             view.particleFrameSource = particleFrameSource;

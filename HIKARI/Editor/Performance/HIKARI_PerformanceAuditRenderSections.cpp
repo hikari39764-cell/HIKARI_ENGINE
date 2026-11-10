@@ -249,21 +249,19 @@ void DrawGeometryPipelineTable(const RuntimePerformanceSnapshot& s) {
                   visibility.width, visibility.height, visibility.mipCount);
         for (size_t phase = 0; phase < visibility.samples.size(); ++phase) {
             const auto& sample = visibility.samples[phase];
-            MetricRow(phase == 0 ? "AS Aux Sample / Retire Fence" : "AS Forward Sample / Retire Fence", "%s / %llu",
+            const std::string prefix = std::string("AS ") + RENDER3D::MESHLET::kMeshletVisibilityPhaseNames[phase];
+            MetricRow((prefix + " Sample / Retire Fence").c_str(), "%s / %llu",
                       sample.valid ? "ready (1/16 frames)" : "pending",
                       static_cast<unsigned long long>(sample.retireFence));
             if (!sample.valid)
                 continue;
             const auto& c = sample.counters;
-            MetricRow(phase == 0 ? "AS Aux Candidates / Submitted / Invalid"
-                                 : "AS Forward Candidates / Submitted / Invalid",
-                      "%u / %u / %u", c.candidates, c.submitted, c.invalid);
-            MetricRow(phase == 0 ? "AS Aux Frustum / Cone Culled / Unbounded"
-                                 : "AS Forward Frustum / Cone Culled / Unbounded",
-                      "%u / %u / %u", c.frustumCulled, c.coneCulled, c.unbounded);
-            MetricRow(phase == 0 ? "AS Aux Cone Tested / HZB Tested / Culled"
-                                 : "AS Forward Cone Tested / HZB Tested / Culled",
-                      "%u / %u / %u", c.coneTested, c.hzbTested, c.hzbCulled);
+            MetricRow((prefix + " Candidates / Submitted / Invalid").c_str(), "%u / %u / %u", c.candidates, c.submitted,
+                      c.invalid);
+            MetricRow((prefix + " Frustum / Cone Culled / Unbounded").c_str(), "%u / %u / %u", c.frustumCulled,
+                      c.coneCulled, c.unbounded);
+            MetricRow((prefix + " Cone Tested / HZB Tested / Culled").c_str(), "%u / %u / %u", c.coneTested,
+                      c.hzbTested, c.hzbCulled);
         }
         MetricRow("CS HZB Page Tested / Culled | Cluster Tested / Culled", "%u / %u | %u / %u",
                   s.mesh.clusterGpuCull.gpuPageOcclusionTestedCount, s.mesh.clusterGpuCull.gpuPageOcclusionCulledCount,

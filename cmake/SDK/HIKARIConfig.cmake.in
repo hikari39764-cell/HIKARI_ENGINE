@@ -28,6 +28,19 @@ if(NOT TARGET HIKARI::GameProjectSdk)
                 "HIKARI::GameProjectHost")
 endif()
 
+# 引擎と同じ実装をモジュールでも使うための共用の核：数学型、JSON の項目表、列挙名の表など。
+# ヘッダーと少数のソースだけで完結し、引擎のライブラリには繋がない（ソースは使う側の DLL に編訳される）。
+if(NOT TARGET HIKARI::CoreShared)
+    add_library(HIKARI::CoreShared INTERFACE IMPORTED)
+    set_target_properties(
+        HIKARI::CoreShared
+        PROPERTIES
+            INTERFACE_INCLUDE_DIRECTORIES
+                "${_HIKARI_SDK_ROOT}/shared/include;${_HIKARI_SDK_ROOT}/third_party/nlohmann"
+            INTERFACE_SOURCES
+                "@HIKARI_SDK_CORE_SHARED_SOURCE_PATHS@")
+endif()
+
 set(
     HIKARI_GAME_PROJECT_EDITOR_AVAILABLE
     @HIKARI_WITH_EDITOR_BUILD@)
@@ -50,5 +63,6 @@ if(HIKARI_GAME_PROJECT_EDITOR_AVAILABLE AND
 endif()
 
 include("${CMAKE_CURRENT_LIST_DIR}/HIKARIGameProject.cmake")
+include("${CMAKE_CURRENT_LIST_DIR}/HIKARIModule.cmake")
 
 check_required_components(HIKARI)

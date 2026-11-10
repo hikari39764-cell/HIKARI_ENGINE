@@ -40,6 +40,8 @@ public:
     bool ConsumeApplyRuntimeMaterialRequest(AssetGuid& outGuid, PbrMaterialAssetData& outData) const;
     std::string ConsumeRefreshRuntimeMaterialGuid() const;
     bool ConsumeRefreshCurrentSceneResourcesRequested() const;
+    // 後台の取り込みが終わったら結果を受け取り、場面の資源の引き直しを頼む。面板が見えていなくても毎フレーム呼ぶ。
+    void PollCompletedImports(AssetDatabase& assetDatabase) const;
 
 private:
     mutable EDITOR::ASSET_BROWSER::AssetBrowserUsageCache usageCache_{};

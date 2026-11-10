@@ -1,4 +1,6 @@
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
 #include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
@@ -107,8 +109,7 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         projectWorkspaceHost_->Draw(workspaceHost_, TIME::GetFrameContext().unscaledDt, scene.GetAssetDatabase(),
                                     scene.GetAssetRegistry());
         if (projectWorkspaceHost_->ActiveWorkspaceRequestsSceneViewport()) {
-            projectWorkspaceHost_->PrepareSceneViewportWindow();
-            DrawGameViewportWindow(scene, playSession, "Project Scene View");
+            DrawGameViewportWindow(scene, playSession, projectWorkspaceHost_->PrepareSceneViewportWindow());
         } else {
             playSession.ReleaseEmbeddedInput();
             EDITOR::ClearGameViewportInputRect();
@@ -182,21 +183,6 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Text)) {
         textWorkspaceController_.DrawDockSpace(workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::Text));
         textWorkspaceController_.Draw(scene, operationRegistry_, commandRouter_);
-        DrawPendingSceneOpenModal(scene);
-        return;
-    }
-    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui)) {
-        auto& workspace = uiWorkspaceController_;
-        workspace.DrawDockSpace(workspaceHost_.ConsumeReset(workspaceHost_.GetActive()));
-        auto result =
-            workspace.Draw(scene, context_, selectionSync_, sceneObjectCommands_, commandRouter_, operationRegistry_);
-        if (result.history)
-            CommitSceneObjectAuthoringHistory(scene, std::move(*result.history));
-        if (auto history = sceneObjectCommands_.ConsumeHistoryRequest())
-            CommitSceneObjectAuthoringHistory(scene, std::move(*history));
-        playSession.UpdateEmbeddedViewportInput(result.playViewport, result.playViewportClicked);
-        if (result.togglePlay)
-            ToggleGamePreview(scene, playSession);
         DrawPendingSceneOpenModal(scene);
         return;
     }
@@ -399,7 +385,16 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
     if (!context_.windows.resources.showAssetBrowser) {
         return;
     }
-    if (const auto activation = resourceWorkspacePanel_.ConsumeActivatedAsset()) {
+    if (const auto activation = resourceWorkspacePanel_.ConsumeActivatedAsset();
+        activation && activation->type == AssetType::ModuleAsset) {
+        // モジュールが登記した種類の資産は、その種類を編集する項目の工作区へ渡す。
+        const AssetRecord* record = scene.GetAssetDatabase().FindByGuid(activation->guid);
+        const ASSETS::SEMANTICS::ModuleAssetTypeDesc* type =
+            record != nullptr ? ASSETS::SEMANTICS::FindModuleAssetTypeForPath(record->sourcePath) : nullptr;
+        if (type != nullptr && projectWorkspaceHost_ != nullptr) {
+            (void)projectWorkspaceHost_->RequestOpenAsset(type->typeId, activation->guid.value);
+        }
+    } else if (activation) {
         EDITOR::AssetWorkspaceActivationRoute route = EDITOR::RouteAssetWorkspaceActivation(*activation);
         if (route.workspaceRequest.has_value()) {
             (void)workspaceHost_.RequestOpen(std::move(*route.workspaceRequest));
@@ -414,6 +409,9 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
             context_.sceneDirty = false;
             scene.SetUnsavedSceneChanges(false);
             viewportDropMessage_ = "Scene saved to selected asset";
+            if (projectWorkspaceHost_ != nullptr) {
+                projectWorkspaceHost_->Extensions().NotifySceneSaved(RuntimeSceneContext::GetCurrentSceneFilePath());
+            }
             HIKARI_LOG_INFO("[SceneAsset] save scene: " + saveSceneAsGuid);
         } else {
             viewportDropMessage_ = "Scene save target failed";
@@ -427,6 +425,7 @@ void DocumentSceneEditorController::HandleResourceWorkspaceRequests(DocumentScen
         viewportDropMessage_ = SummarizeRuntimeRefreshReport(context_.lastRuntimeRefreshReport);
     };
 
+    resourceWorkspacePanel_.PollCompletedImports(scene.GetAssetDatabase());
     const bool refreshCurrentScene = resourceWorkspacePanel_.ConsumeRefreshCurrentSceneResourcesRequested();
     const std::string refreshRuntimeGuid = resourceWorkspacePanel_.ConsumeRefreshRuntimeAssetGuid();
     const std::string reimportAndRefreshRuntimeGuid =

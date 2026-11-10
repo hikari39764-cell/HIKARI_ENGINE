@@ -68,7 +68,9 @@ bool GameProjectEditorModuleLibrary::Load(const std::filesystem::path& modulePat
     if (api == nullptr || api->structSize < sizeof(EDITOR_PROJECT::GameProjectEditorModuleApi) ||
         api->abiVersion != EDITOR_PROJECT::kGameProjectEditorModuleAbiVersion || api->createInstance == nullptr ||
         api->destroyInstance == nullptr || api->getModuleId == nullptr || api->getWorkspaceCount == nullptr ||
-        api->getWorkspace == nullptr || api->registerEditorOperations == nullptr) {
+        api->getWorkspace == nullptr || api->registerEditorOperations == nullptr ||
+        api->getViewportToolCount == nullptr || api->getViewportTool == nullptr || api->getPanelCount == nullptr ||
+        api->getPanel == nullptr || api->collectGameExportFiles == nullptr) {
         outMessage = "GameProject Editor companion ABI is incompatible. "
                      "Rebuild the project with this HIKARI Editor SDK.";
         FreeLibrary(library);
@@ -125,6 +127,22 @@ bool GameProjectEditorModuleLibrary::IsLoaded() const noexcept {
 
 std::string_view GameProjectEditorModuleLibrary::GetModuleId() const noexcept { return moduleId_; }
 
+size_t GameProjectEditorModuleLibrary::GetViewportToolCount() const noexcept {
+    return IsLoaded() ? api_->getViewportToolCount(instance_) : 0u;
+}
+
+EDITOR_PROJECT::IEditorViewportTool* GameProjectEditorModuleLibrary::GetViewportTool(size_t index) const noexcept {
+    return IsLoaded() ? api_->getViewportTool(instance_, index) : nullptr;
+}
+
+size_t GameProjectEditorModuleLibrary::GetPanelCount() const noexcept {
+    return IsLoaded() ? api_->getPanelCount(instance_) : 0u;
+}
+
+EDITOR_PROJECT::IEditorPanel* GameProjectEditorModuleLibrary::GetPanel(size_t index) const noexcept {
+    return IsLoaded() ? api_->getPanel(instance_, index) : nullptr;
+}
+
 size_t GameProjectEditorModuleLibrary::GetWorkspaceCount() const noexcept {
     return IsLoaded() ? api_->getWorkspaceCount(instance_) : 0u;
 }
@@ -135,6 +153,7 @@ EDITOR_PROJECT::IEditorWorkspace* GameProjectEditorModuleLibrary::GetWorkspace(s
 
 bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
                                                               EDITOR_PROJECT::IEditorDocumentService* documents,
+                                                              EDITOR_PROJECT::IEditorSceneServices* sceneServices,
                                                               std::string& outMessage,
                                                               GameProjectEditorWorkspaceRegistry* commands) const {
     outMessage.clear();
@@ -142,7 +161,7 @@ bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationReg
         outMessage = "GameProject Editor operation registration requires a loaded module and owner token.";
         return false;
     }
-    GameProjectEditorOperationRegistration registrar{registry, ownerToken, documents, commands};
+    GameProjectEditorOperationRegistration registrar{registry, ownerToken, documents, commands, sceneServices};
     if (!api_->registerEditorOperations(instance_, &registrar)) {
         outMessage = "GameProject Editor operation registration callback failed.";
         return false;
@@ -152,6 +171,10 @@ bool GameProjectEditorModuleLibrary::RegisterEditorOperations(EditorOperationReg
         return false;
     }
     return true;
+}
+
+bool GameProjectEditorModuleLibrary::CollectGameExportFiles(EDITOR_PROJECT::IGameExportFiles& files) const noexcept {
+    return IsLoaded() && api_->collectGameExportFiles(instance_, &files);
 }
 
 const std::filesystem::path& GameProjectEditorModuleLibrary::GetModulePath() const noexcept { return modulePath_; }

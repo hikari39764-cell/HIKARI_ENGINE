@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <string>
+#include <vector>
 
 #include "Editor/Selection/HIKARI_EditorSelection.h"
 #include "Core/Math/HIKARI_Math3D.h"
@@ -62,6 +63,8 @@ struct EditorTransformGizmoState {
     EditorTransformGizmoOperation operation = EditorTransformGizmoOperation::Translate;
     EditorTransformGizmoMode mode = EditorTransformGizmoMode::World;
     bool snapEnabled = false;
+    // 移動の手柄で動かす物を真下の地面へ載せたまま動かす（Unreal の表面吸着）。
+    bool groundSnap = false;
     MATH::Vec3 translateSnap{0.5f, 0.5f, 0.5f};
     float rotateSnapDeg = 15.0f;
     float scaleSnap = 0.1f;
@@ -141,6 +144,14 @@ struct EditorAiIntegrationSettings {
     std::string localBridgeStatus{};
 };
 
+// Play 中に「Play の結果を残す」で記録した物の姿勢。Play を止めて文書を戻した後、一つの撤销として文書へ書き戻す。
+struct KeptPlayPose {
+    SceneObjectId id{};
+    MATH::Vec3 position{};
+    MATH::Vec3 rotationEulerDeg{};
+    MATH::Vec3 scale{1.0f, 1.0f, 1.0f};
+};
+
 struct EditorContext {
     DebugWindowState windows{};
     EditorAiIntegrationSettings aiIntegration{};
@@ -160,6 +171,9 @@ struct EditorContext {
     bool componentAddStatusIsError = false;
     uint64_t nextSceneObjectId = 1;
     bool sceneDirty = false;
+    std::vector<KeptPlayPose> keptPlayPoses{};
+    // 記録した時の場面。Play 中に別の場面へ切り替わっていたら、番号が別の物を指すので書き戻さない。
+    std::string keptPlayScenePath{};
     RuntimeResourceRefreshReport lastRuntimeRefreshReport{};
 };
 

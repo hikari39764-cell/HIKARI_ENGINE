@@ -602,7 +602,32 @@ void Win32Window::Show() {
     }
 }
 
+namespace {
+float gPenPressure = 1.0f;
+
+// ペンの筆圧だけを覚える。メッセージは消費しないので、マウスのメッセージへの変換はそのまま。
+void CapturePenPressure(UINT msg, WPARAM wparam) {
+    if (msg == WM_POINTERUP || msg == WM_POINTERLEAVE || msg == WM_POINTERCAPTURECHANGED) {
+        gPenPressure = 1.0f;
+        return;
+    }
+    if (msg != WM_POINTERDOWN && msg != WM_POINTERUPDATE) {
+        return;
+    }
+    const UINT32 pointer = GET_POINTERID_WPARAM(wparam);
+    POINTER_INPUT_TYPE type = PT_POINTER;
+    POINTER_PEN_INFO pen{};
+    if (GetPointerType(pointer, &type) && type == PT_PEN && GetPointerPenInfo(pointer, &pen) &&
+        (pen.penMask & PEN_MASK_PRESSURE) != 0u) {
+        gPenPressure = static_cast<float>(pen.pressure) / 1024.0f;
+    }
+}
+} // namespace
+
+float CurrentPenPressure() noexcept { return gPenPressure; }
+
 LRESULT Win32Window::WndProc(HWND hwnd, UINT msg, WPARAM wparam, LPARAM lparam) {
+    CapturePenPressure(msg, wparam);
     try {
         CaptureTextInput(hwnd, msg, wparam, lparam);
     } catch (...) {

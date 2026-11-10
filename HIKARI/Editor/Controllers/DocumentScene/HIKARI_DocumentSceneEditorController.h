@@ -32,6 +32,7 @@
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/History/HIKARI_EditorDocumentHistory.h"
 #include "Editor/History/HIKARI_SceneObjectTransformHistorySession.h"
+#include "Editor/Authoring/HIKARI_GroundFollow.h"
 #include "Editor/SystemAuthoring/HIKARI_SystemAuthoringRegistry.h"
 #include "Editor/Gizmos/HIKARI_EditorTransformGizmo.h"
 #include "Editor/Environment/HIKARI_EnvironmentPanel.h"
@@ -59,7 +60,6 @@
 #include "Editor/Windows/HIKARI_SceneAuthoringUtilityWindows.h"
 #include "Editor/Workspaces/Cinematics/HIKARI_CinematicsWorkspaceController.h"
 #include "Editor/Workspaces/GameplayCamera/HIKARI_GameplayCameraWorkspaceController.h"
-#include "Editor/Workspaces/Ui/HIKARI_UiWorkspaceController.h"
 #include "Editor/Workspaces/TextStyle/HIKARI_TextStyleWorkspaceController.h"
 #include "Editor/Workspaces/HIKARI_EditorWorkspaceHost.h"
 #include "Editor/Workspaces/ModelCollision/HIKARI_ModelCollisionWorkspaceController.h"
@@ -94,9 +94,9 @@ public:
     // （二度目は何もしない）。
     void Shutdown();
     EDITOR::EditorOperationRegistry& Operations() noexcept { return operationRegistry_; }
-    void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) noexcept {
-        projectWorkspaceHost_ = host;
-    }
+    void SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host);
+    // モジュールの DLL を外す前に呼ぶ。撤销の記録にはモジュールの中のオブジェクトが残っている。
+    void DiscardModuleUndoEntries();
 
     void Draw(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
               EDITOR::EditorProjectSessionController& projectSession);
@@ -134,7 +134,7 @@ private:
     struct CameraPilot {
         SceneObjectId camera{};
         uint64_t mergeGroup = 0;
-        float editorFovY = 0.0f;   // 終えた時に戻す視口の画角
+        float editorFovY = 0.0f; // 終えた時に戻す視口の画角
         // 最後に機位へ書いた視点（視口の画のカメラの位置と前の向き）。変わった時だけ書く。
         MATH::Vec3 lastPosition{};
         MATH::Vec3 lastForward{};
@@ -194,9 +194,7 @@ private:
     EDITOR::EditorOperationRegistry operationRegistry_{};
     DocumentSceneBase* aiOperationScene_ = nullptr;
     EDITOR::GameplayCameraWorkspaceController gameplayCameraWorkspaceController_;
-    EDITOR::UiWorkspaceController uiWorkspaceController_;
     EDITOR::TextStyleWorkspaceController textWorkspaceController_;
-    void RegisterUiOperations();
     EDITOR::GameplayCameraWorkspaceController& GameplayCameraWorkspace() {
         return authoringSessions_.ResolveController("gameplay_camera", gameplayCameraWorkspaceController_);
     }
@@ -459,6 +457,8 @@ private:
     bool SaveSceneDocument(DocumentSceneBase& scene);
     void ExecuteSceneDocumentHistory(DocumentSceneBase& scene, bool redo);
     void CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene, SceneObjectAuthoringHistoryRequest history);
+    // Play を止めた直後に、Play 中に「Play の結果を残す」で記録した姿勢を文書へ書き戻す。
+    void ApplyKeptPlayResults(DocumentSceneBase& scene);
     void ApplyHistoryResult(DocumentSceneBase& scene, const EDITOR::EditorHistoryResult& result, bool redo);
     // objectChanges があれば runtime world は差分反映、無ければ作り直す。
     void ApplyDocumentImpact(DocumentSceneBase& scene, EDITOR::EditorDocumentImpact impact,
@@ -483,6 +483,8 @@ private:
     EDITOR::EditorDocumentHistory documentHistory_{};
     EDITOR::EditorCommandRouter commandRouter_{};
     EDITOR::SceneObjectTransformHistorySession viewportTransformHistory_{};
+    EDITOR::GroundFollowService groundFollow_{};
+    bool playWasActive_ = false;
     bool sceneViewCameraSnapshotValid_ = false;
     Camera3D sceneViewEditorCameraSnapshot_{};
     DebugCameraController3D sceneViewDebugCameraSnapshot_{};

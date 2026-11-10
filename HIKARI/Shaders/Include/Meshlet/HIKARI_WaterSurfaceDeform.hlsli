@@ -35,6 +35,8 @@ void HikariApplyWaterSurfaceDeformWithWorld(
     float3 oceanBaseLocalPosition = authoredPosition;
     float3 phasePosition = authoredPosition;
     float2 worldAnchorXZ = sourceLocalPosition.xz;
+    // 海の格子のこの頂点での格の大きさ（m）。遠くの波と頻譜の変位を消すのに使う。
+    float oceanCell = 0.0f;
 
     if (p.cameraCenteredOcean)
     {
@@ -64,14 +66,22 @@ void HikariApplyWaterSurfaceDeformWithWorld(
             uv1,
             p.authoredCenterXZ,
             safeAuthoredHalfExtent);
-        // CameraCenteredOcean is a stable translated authored lattice.  The
-        // Scene render-data bridge has already applied the one authoritative
-        // wavelength-to-grid sampling filter.  Stretching this same lattice
-        // toward the far plane and filtering it again can reduce every valid
-        // carrier to zero, producing a perfectly flat ocean while the finite
-        // route still shows the same waves.
+        // 相机の近くほど細かい格子へ歪める。CPU は一番細かい格で波を間引いてあり、ここで頂点ごとの格の大きさに
+        // 合わせて遠くの短い波を消す（格子より短い波を残すとちらつき、全部の格で一律に間引くと近くが平らになる）。
+        const float2 uniformCell = HikariOceanResolveUniformCell(safeAuthoredHalfExtent, instance.clusterIndexCount);
+        const float gradeShare = HikariOceanGradeShare(uniformCell);
+        const float2 gradeSlope = HikariOceanGradeSlope(centeredUv, gradeShare);
+        oceanCell = max(uniformCell.x * gradeSlope.x, uniformCell.y * gradeSlope.y);
+        [unroll]
+        for (uint waveIndex = 0u; waveIndex < HIKARI_WATER_SURFACE_WAVE_COUNT; ++waveIndex)
+        {
+            const float waveNumber = max(p.waves[waveIndex].waveNumber, 1.0e-6f);
+            const float resolved = HikariOceanResolvedWaveShare(6.28318530718f / waveNumber, oceanCell);
+            p.waves[waveIndex].amplitude *= resolved;
+            p.waves[waveIndex].steepness *= resolved;
+        }
         localPosition.xz = snappedGridCenterLocalXZ +
-            safeAuthoredHalfExtent * centeredUv;
+            safeAuthoredHalfExtent * HikariOceanGrade(centeredUv, gradeShare);
         oceanBaseLocalPosition = localPosition;
         phasePosition = localPosition;
         worldAnchorXZ = HikariOceanWorldAnchoredXZ(
@@ -103,8 +113,9 @@ void HikariApplyWaterSurfaceDeformWithWorld(
     // water query.  The optional spectrum is a bounded residual/detail field;
     // replacing all carriers with it made realistic water visually flat and
     // caused render/query disagreement.
+    // 頻譜は数 m 以下の波なので、格が粗い遠くでは変位にも法線にも使わない。
     const float spectrumResidualWeight = oceanSpectrum.connected != 0u
-        ? HIKARI_WATER_SPECTRUM_RESIDUAL_WEIGHT
+        ? HIKARI_WATER_SPECTRUM_RESIDUAL_WEIGHT * (p.cameraCenteredOcean ? 1.0f - smoothstep(1.5f, 6.0f, oceanCell) : 1.0f)
         : 0.0f;
 
     const HikariWaterSurfaceEvaluation evaluation =

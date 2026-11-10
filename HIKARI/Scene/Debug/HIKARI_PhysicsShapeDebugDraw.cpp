@@ -142,6 +142,7 @@ void DrawPhysicsShape(const MATH::Mat4& bodyWorld, const PHYSICS::PhysicsShapeDe
     case PHYSICS::PhysicsShapeType::Capsule: DrawCapsule(shapeWorld, shape.radius, shape.height, style); break;
     case PHYSICS::PhysicsShapeType::ConvexHull:
     case PHYSICS::PhysicsShapeType::TriangleMesh: DrawGeometry(shapeWorld, shape, style); break;
+    case PHYSICS::PhysicsShapeType::HeightField: break; // 地形そのものが見えているので線は重ねない。
     }
 }
 

@@ -12,6 +12,7 @@
 #include <utility>
 
 #include "HIKARI/Project/ActionTypes.h"
+#include "HIKARI/Project/AssetKind.h"
 #include "HIKARI/Project/GameProjectSdk.h"
 #include "HIKARI/Project/UiTypes.h"
 #include "HIKARI/Project/ValueTypes.h"
@@ -29,33 +30,6 @@ enum class PropertyFieldsMode : uint8_t {
     Load,
     Save,
     Inspect,
-};
-
-// GUID で参照する資産の種類。保存形式は共通で、Inspector の選択候補だけが変わる。
-enum class GameProjectAssetKind : uint8_t {
-    Scene,
-    Prefab,
-    Model,
-    ModelMaterialSet,
-    Material,
-    Texture,
-    Sky,
-    Sprite,
-    SpriteMaterial,
-    Animation,
-    AnimationStateMachine,
-    Sequence,
-    Dialogue,
-    GameplayCamera,
-    VfxEffect,
-    Shader,
-    PostEffect,
-    PostProfile,
-    Font,
-    TextStyle,
-    UiAnimation,
-    Environment,
-    Weather,
 };
 
 // 呼び出し側が所有する固定長文字列。DLL 境界を越えて STL の所有権を渡さないための薄い参照。
@@ -99,6 +73,8 @@ struct GameProjectTextFieldDesc {
     GameProjectInputValueType inputType = GameProjectInputValueType::Button;
     GameProjectBindingValueType valueType = GameProjectBindingValueType::Float;
     bool eventHasPayload = false;
+    // kind が Asset で空でない時、assetKind の代わりに、モジュールが清単に登記した資産の種類（typeId）で候補を絞る。
+    std::string_view moduleAssetTypeId{};
 };
 
 // 一つの宣言で、シーンへの保存形式・読込時の検証・Inspector 表示・AI/オーサリング操作の ID を揃える。
@@ -160,6 +136,19 @@ public:
     }
     bool Asset(std::string_view id, std::string_view label, GameProjectAssetKind kind, std::string& guid) {
         return TextString({id, label, GameProjectTextFieldKind::Asset, kind}, guid);
+    }
+    // モジュールが清単に登記した種類（assetTypes の typeId）の資産。保存形式は Asset と同じ。
+    bool ModuleAsset(std::string_view id, std::string_view label, std::string_view moduleAssetTypeId,
+                     GameProjectTextBuffer guid) {
+        GameProjectTextFieldDesc field{id, label, GameProjectTextFieldKind::Asset};
+        field.moduleAssetTypeId = moduleAssetTypeId;
+        return TextField(field, guid.Data(), guid.Capacity());
+    }
+    bool ModuleAsset(std::string_view id, std::string_view label, std::string_view moduleAssetTypeId,
+                     std::string& guid) {
+        GameProjectTextFieldDesc field{id, label, GameProjectTextFieldKind::Asset};
+        field.moduleAssetTypeId = moduleAssetTypeId;
+        return TextString(field, guid);
     }
     // Engine が既定のキー名で読む資産 GUID。素の文字列で保存する（GUID 形式の値は Cook が依存に数える）。
     bool AssetId(std::string_view id, std::string_view label, GameProjectAssetKind kind, GameProjectTextBuffer guid) {
@@ -247,5 +236,32 @@ private:
     void* archive_ = nullptr;
     void* inspector_ = nullptr;
 };
+
+// 項目の宣言。部品（IGameComponent::DescribeProperties）以外のデータ、たとえばモジュールが自分のファイルに書く
+// 設定も、同じ Describe 一つで読込・保存・画面（IEditorWorkspaceUi::Fields）を済ませられる。
+class IPropertyFieldDeclaration {
+public:
+    virtual void Describe(PropertyFields& fields) = 0;
+
+protected:
+    ~IPropertyFieldDeclaration() = default;
+};
+
+// SavePropertyFields の結果を受け取る。文字はこの呼び出しの間だけ有効。
+class IPropertyFieldsTextSink {
+public:
+    virtual void Receive(std::string_view utf8Json) = 0;
+
+protected:
+    ~IPropertyFieldsTextSink() = default;
+};
+
+// JSON のオブジェクト（UTF-8 の文字）へ宣言を当てて読む。オブジェクトとして読めない文字なら false で、宣言は呼ばない。
+// 無い項目は現在値のまま残る（PropertyFields の Load と同じ）。
+HIKARI_GAME_PROJECT_SDK_API bool LoadPropertyFields(std::string_view utf8Json,
+                                                    IPropertyFieldDeclaration& declaration) noexcept;
+// 宣言を保存用に評価し、JSON のオブジェクト（UTF-8 の文字）を sink へ渡す。
+HIKARI_GAME_PROJECT_SDK_API bool SavePropertyFields(IPropertyFieldDeclaration& declaration,
+                                                    IPropertyFieldsTextSink& sink) noexcept;
 
 } // namespace HIKARI

@@ -57,13 +57,20 @@ bool ExecuteMeshletDrawFrame(const GFX::Context& graphics, const MeshPassResourc
                                     visibilityDepth, GetCameraConstants()->viewProj,
                                     GetGpuDrivenCullingCameraConstants()->viewProj, IsGpuDrivenCullingCameraFrozen());
     const bool aux = passKind == MeshDrawPassKind::GeometryAux || passKind == MeshDrawPassKind::GeometryAuxFeatureMask;
-    const uint32_t visibilityPhase =
-        aux ? 0u
-            : (passKind == MeshDrawPassKind::Forward && gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque
-                   ? 1u
-                   : 2u);
-    const auto visibilityBinding = gMeshRendererState.meshletRenderBackend.BeginVisibility(
-        graphics, occlusionValid ? &visibilityDepth : nullptr, visibilityPhase);
+    using RENDER3D::MESHLET::MeshletVisibilityPhase;
+    const auto& auxHistory = passResources.geometryAuxHistoryDepth;
+    auto& meshletBackend = gMeshRendererState.meshletRenderBackend;
+    const RENDER3D::MESHLET::MeshletVisibilityBinding visibilityBinding =
+        aux && passResources.geometryAuxSecondPhase
+            ? meshletBackend.BeginVisibility(graphics, &visibilityDepth, MeshletVisibilityPhase::GeometryAuxSecond,
+                                             &auxHistory)
+        : aux ? meshletBackend.BeginVisibility(graphics, auxHistory.valid ? &auxHistory : nullptr,
+                                               MeshletVisibilityPhase::GeometryAux)
+              : meshletBackend.BeginVisibility(graphics, occlusionValid ? &visibilityDepth : nullptr,
+                                               passKind == MeshDrawPassKind::Forward &&
+                                                       gpuPass == RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque
+                                                   ? MeshletVisibilityPhase::Forward
+                                                   : MeshletVisibilityPhase::Other);
     if (visibilityBinding.table.ptr == 0u)
         return false;
     graphics.cmdList->SetGraphicsRootDescriptorTable(ROOT_PARAM::MeshletOcclusionDepth, visibilityBinding.table);
@@ -299,7 +306,9 @@ bool ExecuteGeometryBackend(const GFX::Context& graphics, RENDER3D::GPUDRIVEN::G
         return ExecuteMeshletDrawFrame(graphics, passResources, gpuPass, passKind, meshletPipelineKind, layerOverride,
                                        bindingOverrides);
     case RENDER3D::GPUDRIVEN::GeometryBackendKind::GpuDrivenTraditionalVsPs:
-        return ExecuteTraditionalDrawFrame(graphics, passResources, gpuPass, passKind, layerOverride, bindingOverrides);
+        // 従来の経路は一段目で全部描く。
+        return passResources.geometryAuxSecondPhase ||
+               ExecuteTraditionalDrawFrame(graphics, passResources, gpuPass, passKind, layerOverride, bindingOverrides);
     default: return false;
     }
 }

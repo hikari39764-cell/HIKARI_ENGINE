@@ -47,6 +47,8 @@ enum class Pass : uint32_t {
     TemporalDlaaResolve,
     TemporalDlssResolve,
     ForwardOpaque,
+    ModuleSurfaces,
+    ModuleSurfaceShadows,
     DepthAware,
     ForwardTransparent,
     DepthOfField,

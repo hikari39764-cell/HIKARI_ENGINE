@@ -2,7 +2,6 @@
 
 #include "HIKARI/Project/ComponentViews.h"
 #include "HIKARI/Project/PrefabView.h"
-#include "HIKARI/Project/UiCanvasView.h"
 
 #include <cstdint>
 #include <span>
@@ -19,6 +18,7 @@
 #include "HIKARI/Project/SpriteMaterialView.h"
 #include "HIKARI/Project/ValueTypes.h"
 #include "HIKARI/Project/WorldTypes.h"
+#include "HIKARI/Project/WorldInstanceTypes.h"
 #include "HIKARI/Project/WorldMassTypes.h"
 #include "HIKARI/Project/WorldSpriteTypes.h"
 #include "HIKARI/Project/WorldTextTypes.h"
@@ -33,6 +33,13 @@ class DebugView;
 class EnvironmentView;
 class DisplaySettingsView;
 class IGameComponent;
+class INavigationGeometrySource;
+class IRenderSurfaceExtension;
+class IWaterSource;
+class IGroundSource;
+struct GameProjectGroundHit;
+struct GameProjectOcean;
+struct GameProjectWaterSample;
 class IGameProjectSession;
 class InputView;
 class MotionView;
@@ -96,7 +103,6 @@ private:
     GameProjectObjectHandle handle_{};
 };
 
-
 // WorldView はワールド全体の操作窓口を表す。
 // オブジェクトの生成・削除、変換、親子関係、変数・イベントの管理、
 // そして入力・音声・物理・UI などの実行時サブシステムへのアクセスを提供する。
@@ -109,6 +115,33 @@ public:
     // ワールドが有効なハンドルを保持しているかを確認する。
     HIKARI_GAME_PROJECT_SDK_API bool IsValid() const noexcept;
     GameProjectWorldHandle GetHandle() const noexcept { return world_; }
+
+    // 動かない高さ場の当たりを足す。sampleCount は辺の標本数（2^n + 1）、heights は sampleCount² の高さ（m）を z 行優先で。
+    // (originX, originZ) が標本 (0, 0) の世界位置。物理の動いている世界（Play）でだけ作れる。戻りは外す時の番号、失敗は 0。
+    HIKARI_GAME_PROJECT_SDK_API uint64_t AddStaticHeightField(GameProjectObjectHandle owner, float originX,
+                                                              float originZ, float spacingMeters, uint32_t sampleCount,
+                                                              std::span<const float> heights) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveStaticHeightField(uint64_t body) const noexcept;
+    // モジュールの幾何を道案内の入力へ足す。外すまで source を生かしておく。
+    HIKARI_GAME_PROJECT_SDK_API bool AddNavigationGeometrySource(INavigationGeometrySource& source) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveNavigationGeometrySource(INavigationGeometrySource& source) const noexcept;
+    // モジュールの水（河や湖）を水の問い合わせへ足す。外すまで source を生かしておく（HIKARI/Project/WaterSource.h）。
+    HIKARI_GAME_PROJECT_SDK_API bool AddWaterSource(IWaterSource& source) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveWaterSource(IWaterSource& source) const noexcept;
+    // 一点の水：水面の高さ、流速、深さ。引擎の水面とモジュールの水のうち position の高さに一番近い水面。
+    HIKARI_GAME_PROJECT_SDK_API bool SampleWater(GameProjectFloat3 position,
+                                                 GameProjectWaterSample& out) const noexcept;
+    // 場面の海（相机を追う水面）。無ければ false。
+    HIKARI_GAME_PROJECT_SDK_API bool FindOcean(GameProjectOcean& out) const noexcept;
+    // モジュールの地面（地形など）を地面の問い合わせへ足す（HIKARI/Project/GroundSource.h）。外すまで生かしておく。
+    HIKARI_GAME_PROJECT_SDK_API bool AddGroundSource(IGroundSource& source) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveGroundSource(IGroundSource& source) const noexcept;
+    // 地面への光線。登録された地面のうち一番近い当たり。物理の無い編集中の世界でも使える。
+    HIKARI_GAME_PROJECT_SDK_API bool RaycastGround(GameProjectFloat3 origin, GameProjectFloat3 direction,
+                                                   float maxDistance, GameProjectGroundHit& out) const noexcept;
+    // モジュールの面を登録する。OnWorldDetached までに外すこと。
+    HIKARI_GAME_PROJECT_SDK_API bool AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;
+    HIKARI_GAME_PROJECT_SDK_API void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) const noexcept;
 
     HIKARI_GAME_PROJECT_SDK_API ObjectView FindObject(GameProjectObjectHandle handle) const noexcept;
 
@@ -136,6 +169,24 @@ public:
     QueryMassObjects(ComponentTypeId typeId, void* context, GameProjectWorldMassCallback callback) const noexcept;
     template <class Data, class Visitor>
     GameProjectWorldQueryResult ForEachMassObject(ComponentTypeId typeId, Visitor&& visitor) const;
+    // 実例集を足す（同じ名前があれば定義を置き換える）。ID は MakeComponentTypeId(desc.name)。
+    HIKARI_GAME_PROJECT_SDK_API bool AddInstanceSet(const GameProjectWorldInstanceSetDesc& desc) const noexcept;
+    // 実例集をその個体ごと消す。
+    HIKARI_GAME_PROJECT_SDK_API bool RemoveInstanceSet(ComponentTypeId setId) const noexcept;
+    // 実例集の ID を足した順に書き、全部の数を返す（outIds が短ければ書けた分だけ）。
+    HIKARI_GAME_PROJECT_SDK_API uint32_t GetInstanceSetIds(std::span<ComponentTypeId> outIds) const noexcept;
+    // 実例集の定義。無ければ nullptr。
+    HIKARI_GAME_PROJECT_SDK_API const GameProjectWorldInstanceSetDesc* FindInstanceSet(
+        ComponentTypeId setId) const noexcept;
+    // 一格の個体を丸ごと置き換える。格子は WorldCellAt(x, z, 256) で求める。
+    HIKARI_GAME_PROJECT_SDK_API bool ReplaceInstanceCell(
+        ComponentTypeId setId, int32_t cellX, int32_t cellZ,
+        std::span<const GameProjectWorldInstance> instances) const noexcept;
+    // 一格の個体。次にその実例集を変えるまで有効。
+    HIKARI_GAME_PROJECT_SDK_API std::span<const GameProjectWorldInstance> ReadInstanceCell(
+        ComponentTypeId setId, int32_t cellX, int32_t cellZ) const noexcept;
+    // 実例集の個体数。
+    HIKARI_GAME_PROJECT_SDK_API uint64_t GetInstanceCount(ComponentTypeId setId) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SpawnObject(const GameProjectSpawnObjectDesc& desc) const noexcept;
     // 複数のオブジェクトをまとめて生成する。
@@ -201,7 +252,6 @@ public:
     HIKARI_GAME_PROJECT_SDK_API VfxView GetVfx() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API UiView GetUi() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API DisplaySettingsView GetDisplaySettings() const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API UiCanvasView GetUiCanvases() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SequenceView GetSequence() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API PrefabView GetPrefabs() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API SceneCaptureView GetSceneCapture() const noexcept;

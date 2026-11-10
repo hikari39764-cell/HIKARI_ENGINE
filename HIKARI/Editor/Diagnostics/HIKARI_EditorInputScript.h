@@ -34,6 +34,7 @@ private:
         // 縦の wheel（正で上）。
         float wheel = 0.0f;
         std::string key{};
+        std::string text{};
         bool down = false;
     };
     std::vector<Event> events_;

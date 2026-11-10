@@ -1,20 +1,50 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include <chrono>
 #include <filesystem>
 #include <algorithm>
 #include <vector>
 #include <utility>
 
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/HIKARI_SceneDocumentQueries.h"
 #include "Scene/HIKARI_RenderSubmissionSystem.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 
 namespace HIKARI {
+namespace {
+
+// 場景の隣の格子フォルダへ、変わった格子の実例集を書く。
+bool SaveSceneInstances(WorldInstanceStore& instances, const std::filesystem::path& scenePath) {
+    WorldInstanceStore::SaveReport report{};
+    std::string error{};
+    if (!instances.Save(ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(scenePath), report, error)) {
+        HIKARI_LOG_ERROR("[SceneAsset] scene instances could not be saved: " + error);
+        return false;
+    }
+    if (report.writtenCells != 0u || report.removedCells != 0u) {
+        HIKARI_LOG_INFO("[SceneAsset] saved scene instances: cells written=" + std::to_string(report.writtenCells) +
+                        " removed=" + std::to_string(report.removedCells));
+    }
+    return true;
+}
+// 分区場景は何を書いたかを一行残す（保存が変わった格子だけに留まっているかを後から確かめられるように）。
+void LogPartitionedSave(const SceneDocument& document, const SceneSaveReport& report) {
+    if (!document.partition.enabled) {
+        return;
+    }
+    HIKARI_LOG_INFO("[SceneAsset] saved partitioned scene: cells written=" +
+                    std::to_string(report.writtenCells.size()) + " removed=" + std::to_string(report.removedCellFiles) +
+                    " main=" + (report.mainWritten ? "written" : "unchanged"));
+}
+} // namespace
+
 bool DocumentSceneBase::OpenSceneAssetNow(const AssetGuid& sceneGuid) {
     if (!IsValidAssetGuid(sceneGuid.value)) {
         return false;
@@ -47,14 +77,32 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
 
     const std::filesystem::path scenePath = state_->assets.Database().ResolveSourcePath(*record);
     SceneDocument loaded{};
+    SceneCellFileState loadedCells{};
     const std::filesystem::path contentSource = contentPath.empty() ? scenePath : contentPath;
-    if (!state_->identity.serializer.LoadFromFile(contentSource.generic_string(), loaded)) {
+    if (!state_->identity.serializer.LoadFromFile(contentSource.generic_string(), loaded, &loadedCells)) {
         state_->identity.loadError = "Scene could not be read: " + contentSource.generic_string();
         HIKARI_LOG_ERROR(state_->identity.loadError);
         return false;
     }
 
+    WorldInstanceStore loadedInstances{};
+    std::string instanceError{};
+    const auto instancesStarted = std::chrono::steady_clock::now();
+    if (!loadedInstances.Load(ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(scenePath), instanceError)) {
+        state_->identity.loadError = "Scene instances could not be read: " + instanceError;
+        HIKARI_LOG_ERROR(state_->identity.loadError);
+        return false;
+    }
+    if (loadedInstances.TotalCount() != 0u) {
+        const auto elapsed = std::chrono::steady_clock::now() - instancesStarted;
+        HIKARI_LOG_INFO("[SceneAsset] loaded scene instances: " + std::to_string(loadedInstances.TotalCount()) +
+                        " in " +
+                        std::to_string(std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count()) + " ms");
+    }
+
     SceneDocument previousDocument = state_->identity.document;
+    SceneCellFileState previousCells = state_->identity.cells;
+    WorldInstanceStore previousInstances = std::move(state_->identity.instances);
     const uint64_t previousDocumentRevision = state_->identity.documentRevision;
     std::string previousScenePath = state_->identity.scenePath;
     std::string previousSceneId = state_->identity.sceneId;
@@ -64,6 +112,8 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
         EndEditorCameraPreview();
     }
     state_->identity.document = std::move(loaded);
+    state_->identity.cells = std::move(loadedCells);
+    state_->identity.instances = std::move(loadedInstances);
     ++state_->identity.documentRevision;
     state_->identity.scenePath = scenePath.generic_string();
     state_->identity.sceneId = sceneGuid.value;
@@ -84,6 +134,8 @@ bool DocumentSceneBase::OpenSceneAssetWithCurrentAssets(const AssetGuid& sceneGu
                                       : state_->identity.loadError;
 
     state_->identity.document = std::move(previousDocument);
+    state_->identity.cells = std::move(previousCells);
+    state_->identity.instances = std::move(previousInstances);
     state_->identity.documentRevision = previousDocumentRevision;
     state_->identity.scenePath = std::move(previousScenePath);
     state_->identity.sceneId = std::move(previousSceneId);
@@ -178,18 +230,23 @@ bool DocumentSceneBase::CreateTransientEmptySceneDocument() {
     state_->camera.director.SetBaseCamera({});
     return true;
 }
-bool DocumentSceneBase::HasUnsavedSceneChanges() const { return state_->identity.documentDirty; }
+bool DocumentSceneBase::HasUnsavedSceneChanges() const {
+    return state_->identity.documentDirty || state_->identity.instances.HasUnsavedChanges();
+}
 void DocumentSceneBase::SetUnsavedSceneChanges(bool dirty) { state_->identity.documentDirty = dirty; }
 bool DocumentSceneBase::SaveCurrentSceneDocument() {
     if (!state_->identity.currentSceneAssetGuid.IsValid() || state_->identity.scenePath.empty()) {
         return false;
     }
 
-    const bool saved = state_->identity.serializer.SaveToFile(state_->identity.scenePath, state_->identity.document);
+    SceneSaveReport report{};
+    const bool saved = state_->identity.serializer.SaveToFile(state_->identity.scenePath, state_->identity.document,
+                                                              &state_->identity.cells, &report);
     if (saved) {
         state_->identity.documentDirty = false;
+        LogPartitionedSave(state_->identity.document, report);
     }
-    return saved;
+    return saved && SaveSceneInstances(state_->identity.instances, state_->identity.scenePath);
 }
 bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
     if (!IsValidAssetGuid(sceneGuid.value)) {
@@ -213,11 +270,18 @@ bool DocumentSceneBase::SaveCurrentSceneDocumentAs(const AssetGuid& sceneGuid) {
     }
 
     const std::filesystem::path absolutePath = state_->assets.Database().ResolveSourcePath(*record);
-    if (!state_->identity.serializer.SaveToFile(absolutePath.generic_string(), state_->identity.document)) {
+    SceneSaveReport report{};
+    if (!state_->identity.serializer.SaveToFile(absolutePath.generic_string(), state_->identity.document,
+                                                &state_->identity.cells, &report)) {
+        return false;
+    }
+    LogPartitionedSave(state_->identity.document, report);
+    if (!SaveSceneInstances(state_->identity.instances, absolutePath)) {
         return false;
     }
 
     state_->identity.scenePath = absolutePath.generic_string();
+    RuntimeSceneContext::SetCurrentSceneFilePath(state_->identity.scenePath);
     state_->identity.sceneId = sceneGuid.value;
     state_->identity.currentSceneAssetGuid = sceneGuid;
     state_->identity.documentDirty = false;

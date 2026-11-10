@@ -125,7 +125,12 @@ GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiv
     return MaterializeCreatedObject(scene, id);
 }
 
-GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
+// 海の格子：8 km 四方を 512 分割。等間隔なら 16 m の格を、着色器が相机の近くで約 0.5 m まで細かくする。
+constexpr float kOceanGridMeters = 8192.0f;
+constexpr uint32_t kOceanGridSegments = 512u;
+
+GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
+                                     WATER::WaterSurfaceGeometryMode geometryMode) {
     CreateObjectRequest objectRequest = request;
     if (objectRequest.name.empty()) {
         objectRequest.name = "Water Surface";
@@ -140,13 +145,14 @@ GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjec
                                                     {"castShadow", false},
                                                     {"receiveShadow", false},
                                                     {"renderStatic", false}}});
+    const bool ocean = geometryMode == WATER::WaterSurfaceGeometryMode::CameraCenteredOcean;
     object.components.push_back(SceneComponentData{"ProceduralMeshComponent",
                                                    {{"kind", "GridPlane"},
-                                                    {"width", 200.0f},
+                                                    {"width", ocean ? kOceanGridMeters : 200.0f},
                                                     {"height", 1.0f},
-                                                    {"depth", 200.0f},
-                                                    {"segmentsX", 300u},
-                                                    {"segmentsY", 300u},
+                                                    {"depth", ocean ? kOceanGridMeters : 200.0f},
+                                                    {"segmentsX", ocean ? kOceanGridSegments : 300u},
+                                                    {"segmentsY", ocean ? kOceanGridSegments : 300u},
                                                     {"segmentsZ", 1u},
                                                     {"sphereSlices", 32u},
                                                     {"sphereStacks", 16u},
@@ -156,6 +162,9 @@ GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjec
     nlohmann::json waterProperties = nlohmann::json::object();
     WaterSurfaceComponent waterDefaults{};
     waterDefaults.ApplyPreset(WATER::WaterSurfacePreset::AnimeSummer);
+    WATER::WaterSurfaceSettings settings = waterDefaults.GetSettings();
+    settings.geometryMode = geometryMode;
+    waterDefaults.SetSettings(settings);
     waterDefaults.Serialize(waterProperties);
     object.components.push_back(SceneComponentData{"WaterSurfaceComponent", std::move(waterProperties)});
 

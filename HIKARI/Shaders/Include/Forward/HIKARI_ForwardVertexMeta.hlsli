@@ -1,6 +1,18 @@
 #ifndef HIKARI_FORWARD_VERTEX_META_INCLUDED
 #define HIKARI_FORWARD_VERTEX_META_INCLUDED
 
+#include "Include/Surface/HIKARI_SurfacePartition.hlsli"
+
+// 大量配置の面だけが持つ、meshlet ごとの探針の値（rgb と被覆。上向きと下向き）と空の見える割合。
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+#define HIKARI_FORWARD_MASS_INTERPOLANTS \
+    nointerpolation float4 massProbeUp : TEXCOORD13; \
+    nointerpolation float4 massProbeDown : TEXCOORD14; \
+    nointerpolation float2 massProbeSky : TEXCOORD15;
+#else
+#define HIKARI_FORWARD_MASS_INTERPOLANTS
+#endif
+
 // DXIL は宣言順で hardware register を割り当てる。未使用の field も省かない。
 // SV_IsFrontFace は rasterizer 由来なので、VS/MS 出力には含めず PS 入力にだけ付加。
 // このローカル宣言 macro は二つの型を定義した直後に解除する。
@@ -20,7 +32,8 @@
     float3 characterForwardWS : TEXCOORD9; \
     nointerpolation uint surfaceFeatureFlags : TEXCOORD7; \
     float3 surfaceFeatureData : TEXCOORD11; \
-    nointerpolation float4 shellLayer : TEXCOORD12;
+    nointerpolation float4 shellLayer : TEXCOORD12; \
+    HIKARI_FORWARD_MASS_INTERPOLANTS
 
 struct HikariForwardVertexOutput
 {

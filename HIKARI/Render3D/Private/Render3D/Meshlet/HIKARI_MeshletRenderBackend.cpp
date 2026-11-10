@@ -546,6 +546,8 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
     ASSETS::SHADER::ShaderAssetEntryLease terrainReflectionPixelShader{};
     // 深度を読む Forward を光照贴图の有無で分ける AS と、光照贴图の面の PS（揃わなければ分けない）。
     struct LightingSplitShaders {
+        ASSETS::SHADER::ShaderAssetEntryLease standardMassAs{}, standardMassMs{}, standardMassPs{},
+            standardMassReflectionPs{};
         ASSETS::SHADER::ShaderAssetEntryLease standardProbeAs{}, standardLightmapAs{}, programProbeAs{},
             programLightmapAs{};
         ASSETS::SHADER::ShaderAssetEntryLease standardLightmapPs{}, programLightmapPs{}, standardLightmapReflectionPs{},
@@ -733,6 +735,14 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
              &lightingShaders.programProbeAs},
             {"HIKARI.EngineShader.Render3D_MeshletProgramLightmapAS", ShaderStage::Amplification, "as_6_5",
              &lightingShaders.programLightmapAs},
+            {"HIKARI.EngineShader.Render3D_MeshletStandardMassAS", ShaderStage::Amplification, "as_6_5",
+             &lightingShaders.standardMassAs},
+            {"HIKARI.EngineShader.Render3D_MeshletMassMS", ShaderStage::Mesh, "ms_6_5",
+             &lightingShaders.standardMassMs},
+            {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardMassPS", ShaderStage::Pixel, "ps_6_0",
+             &lightingShaders.standardMassPs},
+            {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardReflectionMassPS", ShaderStage::Pixel, "ps_6_0",
+             &lightingShaders.standardMassReflectionPs},
             {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueStandardLightmapPS", ShaderStage::Pixel, "ps_6_0",
              &lightingShaders.standardLightmapPs},
             {"HIKARI.EngineShader.Render3D_GpuDrivenOpaqueLightmapPS", ShaderStage::Pixel, "ps_6_0",
@@ -791,11 +801,13 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 // 深度を読む capture の光照贴图での分割（探針の面は分けない PS を使う）。
                 const auto createRead = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
                                             const ASSETS::SHADER::ShaderAssetEntryLease& ps, bool captureSubsurface,
-                                            PipelineBucketArray& out) {
+                                            PipelineBucketArray& out,
+                                            const ASSETS::SHADER::ShaderAssetEntryLease* mesh = nullptr) {
                     for (size_t i = 0; i < out.size(); ++i) {
                         if (!CreateMeshletPipelineState(
-                                device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
-                                ShaderBytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                device.Get(), rootSignature.Get(), ShaderBytecode(as),
+                                ShaderBytecode(mesh != nullptr ? *mesh : ms), ShaderBytecode(ps),
+                                DXGI_FORMAT_R16G16B16A16_FLOAT,
                                 CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false, false,
                                 true, L"Meshlet.ForwardReflectionCapture", out[i].GetAddressOf(),
                                 DXGI_FORMAT_R16G16B16A16_FLOAT, D3D12_COMPARISON_FUNC_LESS_EQUAL,
@@ -812,6 +824,8 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                         createRead(lighting.standardProbeAs, standardPs, subsurface != 0u, split.standardProbe);
                         createRead(lighting.standardLightmapAs, lighting.standardLightmapReflectionPs, subsurface != 0u,
                                    split.standardLightmap);
+                        createRead(lighting.standardMassAs, lighting.standardMassReflectionPs, subsurface != 0u,
+                                   split.standardMass, &lighting.standardMassMs);
                         createRead(lighting.programProbeAs, programPs, subsurface != 0u, split.programProbe);
                         createRead(lighting.programLightmapAs, lighting.programLightmapReflectionPs, subsurface != 0u,
                                    split.programLightmap);
@@ -831,11 +845,13 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                 ReadDepthForwardPipelines pipelines{};
                 const auto create = [&](const ASSETS::SHADER::ShaderAssetEntryLease& as,
                                         const ASSETS::SHADER::ShaderAssetEntryLease& ps, const wchar_t* name,
-                                        PipelineBucketArray& out) {
+                                        PipelineBucketArray& out,
+                                        const ASSETS::SHADER::ShaderAssetEntryLease* mesh = nullptr) {
                     for (size_t i = 0; i < out.size(); ++i) {
                         if (!CreateMeshletPipelineState(
-                                device.Get(), rootSignature.Get(), ShaderBytecode(as), ShaderBytecode(ms),
-                                ShaderBytecode(ps), DXGI_FORMAT_R16G16B16A16_FLOAT,
+                                device.Get(), rootSignature.Get(), ShaderBytecode(as),
+                                ShaderBytecode(mesh != nullptr ? *mesh : ms), ShaderBytecode(ps),
+                                DXGI_FORMAT_R16G16B16A16_FLOAT,
                                 CullModeForBucket(static_cast<GPUDRIVEN::GpuDrivenCommandBucket>(i)), false, false,
                                 true, name, out[i].GetAddressOf())) {
                             out = {};
@@ -852,6 +868,8 @@ bool MeshletRenderBackend::Initialize(ID3D12Device* device, ID3D12RootSignature*
                            split.standardProbe);
                     create(lighting.standardLightmapAs, lighting.standardLightmapPs,
                            L"Meshlet Forward Lightmap ReadDepth PSO", split.standardLightmap);
+                    create(lighting.standardMassAs, lighting.standardMassPs, L"Meshlet Forward Mass ReadDepth PSO",
+                           split.standardMass, &lighting.standardMassMs);
                     create(lighting.programProbeAs, programPs, L"Meshlet Forward MaterialProgram Probe ReadDepth PSO",
                            split.programProbe);
                     create(lighting.programLightmapAs, lighting.programLightmapPs,
@@ -1198,8 +1216,8 @@ void MeshletRenderBackend::Reset() {
             for (auto& pipeline : capture)
                 GFX::RetireD3D12ObjectForCurrentFrame(pipeline, "Meshlet.ReflectionCapturePSO");
     const auto retireSplit = [](LightingSplitPipelines& split, const char* name) {
-        for (PipelineBucketArray* pipelines :
-             {&split.standardProbe, &split.standardLightmap, &split.programProbe, &split.programLightmap})
+        for (PipelineBucketArray* pipelines : {&split.standardProbe, &split.standardLightmap, &split.standardMass,
+                                               &split.programProbe, &split.programLightmap})
             for (auto& pipeline : *pipelines)
                 GFX::RetireD3D12ObjectForCurrentFrame(pipeline, name);
     };
@@ -1517,6 +1535,7 @@ bool MeshletRenderBackend::Execute(const MeshletRenderExecutionContext& ctx) {
         } else if (lightingSplit) {
             submit(lighting.standardProbe[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
             submit(lighting.standardLightmap[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
+            submit(lighting.standardMass[bucketIndex].Get(), GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
         } else {
             submit(selectedPipeline, GFX::GPU_PROFILE::Pass::MeshletForwardStandard);
         }

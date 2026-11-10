@@ -121,6 +121,9 @@ bool EditorCommandRouter::ProcessViewportShortcuts(bool focused) const {
     if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_F, focused)) {
         return Execute(EditorCommandId::FocusSelection);
     }
+    if (!io.KeyCtrl && ConsumeEditorShortcut(EditorShortcutScope::Viewport, ImGuiKey_End, focused)) {
+        return Execute(EditorCommandId::DropSelectionToGround);
+    }
     return false;
 }
 
@@ -132,6 +135,7 @@ const char* EditorCommandRouter::Shortcut(EditorCommandId command) noexcept {
     case EditorCommandId::DuplicateSelection: return "Ctrl+D";
     case EditorCommandId::DeleteSelection: return "Delete";
     case EditorCommandId::FocusSelection: return "F";
+    case EditorCommandId::DropSelectionToGround: return "End";
     case EditorCommandId::Count:
     default: return "";
     }

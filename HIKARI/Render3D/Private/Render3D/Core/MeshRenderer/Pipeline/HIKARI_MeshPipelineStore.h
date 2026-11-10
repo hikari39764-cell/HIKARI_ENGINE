@@ -44,6 +44,9 @@ struct VariantKeyEqual {
 struct MeshPipelineStore {
     Microsoft::WRL::ComPtr<ID3D12RootSignature> rootSig;
     Microsoft::WRL::ComPtr<ID3D12RootSignature> skinnedRootSig;
+    // モジュールの面（HIKARI/Project/RenderSurface.h、着色器はモジュールが持つ）。番号と予算は同じで、次の三つの型だけ違う：
+    // JointPalette -> t0 space10、MeshletVisibleRanges -> b3、ClusterGeometryPool -> t1..t4 space10。
+    Microsoft::WRL::ComPtr<ID3D12RootSignature> surfaceExtensionRootSig;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> skinnedPso;
     D3D12_GRAPHICS_PIPELINE_STATE_DESC fallbackDesc{};

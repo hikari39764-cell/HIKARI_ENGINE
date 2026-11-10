@@ -54,6 +54,11 @@ float4 HikariShadeForwardWithReflections(PSInput input,
 float4 main(PSInput input) : SV_TARGET
 #endif
 {
+#if HIKARI_SURFACE_LIGHTING == HIKARI_SURFACE_LIGHTING_MASS
+    gMassProbeUp = input.massProbeUp;
+    gMassProbeDown = input.massProbeDown;
+    gMassProbeSky = input.massProbeSky;
+#endif
 #if HIKARI_FORWARD_REFLECTION_CAPTURE
     // 未対応の早期 return も必ず無効値を書き、背後の面の反射を残さない。
     fallbackSpecular = 0.0f.xxxx;
@@ -246,6 +251,11 @@ float4 main(PSInput input) : SV_TARGET
         }
         baseColorSample = HikariResolveMaterialSourceColor(materialData, baseColorSample);
         albedo *= baseColorSample;
+    }
+    if ((input.surfaceFeatureFlags & (HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE | HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u)
+    {
+        // 実例集の個体ごとの揺らぎ：暖かく明るい側と、冷たく暗い側へ。
+        albedo.rgb *= 1.0f + input.surfaceFeatureData.z * float3(0.28f, 0.1f, -0.22f);
     }
     if (painterly && !neutralClay)
     {

@@ -8,6 +8,7 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/HIKARI_WorldInstanceStore.h"
 
 namespace HIKARI {
 namespace {
@@ -26,6 +27,63 @@ static_assert(static_cast<uint8_t>(WorldCommandKind::ParallelMassSystem) ==
 bool GameProjectSdkAccess::VisitMassObjects(World& world, ComponentTypeId typeId, void* context,
                                             MassObjectVisitorFn visitor) noexcept {
     return world.VisitMassObjects(typeId, context, visitor);
+}
+
+bool WorldView::AddInstanceSet(const GameProjectWorldInstanceSetDesc& desc) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    try {
+        return store != nullptr && store->AddSet(desc);
+    } catch (...) {
+        return false;
+    }
+}
+
+bool WorldView::RemoveInstanceSet(ComponentTypeId setId) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    try {
+        return store != nullptr && store->RemoveSet(setId);
+    } catch (...) {
+        return false;
+    }
+}
+
+uint32_t WorldView::GetInstanceSetIds(std::span<ComponentTypeId> outIds) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    const WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    return store != nullptr ? store->CopySetIds(outIds) : 0u;
+}
+
+const GameProjectWorldInstanceSetDesc* WorldView::FindInstanceSet(ComponentTypeId setId) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    const WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    return store != nullptr ? store->FindSet(setId) : nullptr;
+}
+
+bool WorldView::ReplaceInstanceCell(ComponentTypeId setId, int32_t cellX, int32_t cellZ,
+                                    std::span<const GameProjectWorldInstance> instances) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    try {
+        return store != nullptr && store->ReplaceCell(setId, WorldCellCoord{cellX, cellZ}, instances);
+    } catch (...) {
+        return false;
+    }
+}
+
+std::span<const GameProjectWorldInstance> WorldView::ReadInstanceCell(ComponentTypeId setId, int32_t cellX,
+                                                                      int32_t cellZ) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    const WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    return store != nullptr ? store->ReadCell(setId, WorldCellCoord{cellX, cellZ})
+                            : std::span<const GameProjectWorldInstance>{};
+}
+
+uint64_t WorldView::GetInstanceCount(ComponentTypeId setId) const noexcept {
+    const World* world = GameProjectSdkAccess::GetWorld(*this);
+    const WorldInstanceStore* store = world != nullptr ? world->GetInstanceStore() : nullptr;
+    return store != nullptr ? store->CountOf(setId) : 0u;
 }
 
 uint64_t WorldView::GetMassObjectCount(ComponentTypeId typeId) const noexcept {

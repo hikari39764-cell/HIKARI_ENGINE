@@ -136,9 +136,8 @@ bool GpuParticleStorage::EnsureCollisionDepth(const GFX::Context& context, uint3
         context.resourceStates->Forget(collisionDepth_.Get());
     RetireRenderResourceDescriptor(collisionDepthSrv_, context, "ParticleCollisionDepth.Srv");
     RetireRenderResourceDescriptor(collisionDepthUav_, context, "ParticleCollisionDepth.Uav");
-    if (collisionDepth_ != nullptr)
-        GFX::RetireD3D12ObjectForFrame(collisionDepth_.Get(), context, "ParticleCollisionDepth");
-    collisionDepth_.Reset();
+    // ComPtr ごと渡す（参照を待ち行列へ移す）。素のポインタで渡してから Reset すると、同じ参照を二度解放する。
+    GFX::RetireD3D12ObjectForFrame(collisionDepth_, context, "ParticleCollisionDepth");
     collisionDepthWidth_ = collisionDepthHeight_ = 0u;
     const auto defaultHeap = CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT);
     const auto description = CD3DX12_RESOURCE_DESC::Tex2D(DXGI_FORMAT_R32_FLOAT, width, height, 1u, 1u, 1u, 0u,

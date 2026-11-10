@@ -58,23 +58,39 @@ function Get-HikariFileSetFingerprint {
         [IO.FileInfo[]]$Files
     )
 
-    $resolvedFiles = @(
-        $Files |
-            Where-Object {
-                $null -ne $_ -and
-                $_.Exists
-            } |
-            Sort-Object -Property FullName -Unique)
-    if ($resolvedFiles.Count -eq 0) {
+    # Order the inputs by their relative path, ASCII-lowered and compared
+    # ordinally. The Editor computes the same fingerprint before a game
+    # export (GameShippingArtifactValidator) and must see the same order;
+    # culture sorting orders '_' and '.' differently.
+    $lowerAscii = [Text.RegularExpressions.MatchEvaluator] {
+        param($match)
+        $match.Value.ToLowerInvariant()
+    }
+    $entries = [Collections.Generic.SortedDictionary[string, object]]::new(
+        [StringComparer]::Ordinal)
+    foreach ($file in $Files) {
+        if ($null -eq $file -or -not $file.Exists) {
+            continue
+        }
+        $relativePath = Get-HikariRelativePath `
+            -BasePath $BasePath `
+            -Path $file.FullName
+        $key = [regex]::Replace($relativePath, '[A-Z]', $lowerAscii)
+        if (-not $entries.ContainsKey($key)) {
+            $entries[$key] = [pscustomobject]@{
+                FullName = $file.FullName
+                RelativePath = $relativePath
+            }
+        }
+    }
+    if ($entries.Count -eq 0) {
         throw "No fingerprint inputs were found under $BasePath"
     }
 
     $fingerprintSource =
         [Text.StringBuilder]::new()
-    foreach ($file in $resolvedFiles) {
-        $relativePath = Get-HikariRelativePath `
-            -BasePath $BasePath `
-            -Path $file.FullName
+    foreach ($file in $entries.Values) {
+        $relativePath = $file.RelativePath
         $fileHash =
             (Get-FileHash `
                 -LiteralPath $file.FullName `
@@ -140,6 +156,23 @@ function Get-HikariProjectInputFiles {
             -LiteralPath $cmakeRoot `
             -Recurse `
             -File
+    }
+
+    # Plugin packages (Plugins/<id>/): their manifests and the public
+    # headers project code may include. Replacing a package rebuilds
+    # the project module against the new headers.
+    $pluginRoot = Join-Path $ProjectRoot 'Plugins'
+    if (Test-Path -LiteralPath $pluginRoot -PathType Container) {
+        $pluginExtensions = @(
+            '.h', '.hh', '.hpp', '.hxx', '.inl', '.hmodule')
+        $inputs += Get-ChildItem `
+            -LiteralPath $pluginRoot `
+            -Recurse `
+            -File |
+            Where-Object {
+                $pluginExtensions -contains
+                    $_.Extension.ToLowerInvariant()
+            }
     }
     return @(
         $inputs |
@@ -353,6 +386,38 @@ if (-not (Test-Path -LiteralPath $descriptorPath -PathType Leaf)) {
 
 $descriptor = Get-Content -LiteralPath $descriptorPath -Encoding UTF8 -Raw |
     ConvertFrom-Json
+
+# Modules referenced by path with their own Project.hikari are built first. Engine-bundled modules ship with the host.
+if (-not $ConfigureOnly) {
+    $moduleList = $descriptor.PSObject.Properties['modules']
+    foreach ($module in @(if ($null -ne $moduleList) { $moduleList.Value })) {
+        $manifestProperty = $module.PSObject.Properties['manifest']
+        if ($null -eq $manifestProperty -or [string]::IsNullOrWhiteSpace([string]$manifestProperty.Value)) {
+            continue
+        }
+        $moduleManifest = if ([IO.Path]::IsPathRooted([string]$module.manifest)) {
+            [string]$module.manifest
+        } else {
+            [IO.Path]::GetFullPath((Join-Path $projectRoot ([string]$module.manifest)))
+        }
+        $moduleRoot = Split-Path -Parent $moduleManifest
+        if (-not (Test-Path -LiteralPath (Join-Path $moduleRoot 'Project.hikari') -PathType Leaf)) {
+            continue
+        }
+        $moduleArguments = @{
+            Project = $moduleRoot
+            Preset = $Preset
+            SdkRoot = $SdkRoot
+            PrepareGameExport = $PrepareGameExport
+            ForceBuild = $ForceBuild
+        }
+        if (-not [string]::IsNullOrWhiteSpace($InstallDirectory)) {
+            $moduleArguments.InstallDirectory = Join-Path $moduleRoot "out/install/$Preset"
+        }
+        & $PSCommandPath @moduleArguments
+    }
+}
+
 $manifestRelative = if (
     $null -ne $descriptor.gameProjectManifest -and
     -not [string]::IsNullOrWhiteSpace(

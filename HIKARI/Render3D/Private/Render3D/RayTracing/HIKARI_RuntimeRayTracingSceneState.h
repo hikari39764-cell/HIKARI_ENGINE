@@ -123,7 +123,7 @@ struct RuntimeRayTracingScene::State {
     uint32_t frameBuilds = 0;
     uint32_t frameUploads = 0;
     const void* sourceIdentity = nullptr;
-    uint64_t sourceVersion = 0, layoutVersion = 0;
+    uint64_t sourceVersion = 0, layoutVersion = 0, proxyVersion = 0;
     uint32_t sourceSurfaceCount = 0;
     size_t sourceRecordCount = 0, materialSlotCount = 0, materialCount = 0;
     RuntimeRayTracingMaterialVersion materialVersion{};
@@ -162,6 +162,9 @@ struct RuntimeRayTracingScene::State {
     std::vector<INTERNAL::RecordUse> recordUses;
     std::vector<INTERNAL::GroupUse> groupUses;
     bool terrainBound = false;
+    // モジュールの代理の並び：lastInstances と lastHits の中の先頭と、代理ごとの面の数。
+    uint32_t proxyFirstInstance = 0, proxyFirstHit = 0;
+    std::vector<uint32_t> proxySurfaceCounts;
     // UpdateInPlace の作業領域（毎フレーム確保し直さない）。groupStates は 0: 未確認, 1: 同じ, 2: 動いた。
     // groupRetints は面の材質 slot が替わった群（hit 記録を書き直す）。
     std::vector<MATH::Mat4> movedWorlds;
@@ -194,6 +197,11 @@ struct RuntimeRayTracingScene::State {
                                                         RuntimeRayTracingMaterialVersion currentMaterials,
                                                         const RuntimeRayTracingBudget& budget,
                                                         const RuntimeRayTracingSurfaceBindings& surfaces);
+    // モジュールの代理（地形の瓦片など）が、前回と同じ数・同じ面の数のまま BLAS か面の値だけ変わったか。そうなら
+    // UpdateInPlace が RetargetProxies で記述を直して TLAS をその場で組み直す（筆で彫る間は毎回ここを通る）。
+    bool CanRetargetProxies(std::span<const RuntimeRayTracingProxy> proxies) const;
+    // 代理の instance 記述の BLAS と hit 記録の面の値を書き直す。hit 記録が変わったら true。
+    bool RetargetProxies(std::span<const RuntimeRayTracingProxy> proxies);
     // 大量配置が入った場面の配置替え：先頭を（変わっていれば）写し、大量配置の記述を compute で書いて TLAS を組み直す。
     bool RebuildFromGpuInstances(const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
                                  D3D12_GPU_VIRTUAL_ADDRESS massRecords, bool prefixChanged);

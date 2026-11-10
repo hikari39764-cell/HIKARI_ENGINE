@@ -10,6 +10,7 @@
 
 namespace HIKARI {
 class AssetRegistry;
+class IRenderSurfaceExtension;
 struct GameProjectRenderFrameView;
 struct GameProjectRenderPassDesc;
 struct GameProjectRenderPassContext;
@@ -94,6 +95,8 @@ struct RenderViewContext {
     const COMBAT_VFX::PerfectGuardShockwaveFrameSource* actionPostReactionFrameSource = nullptr;
     const AssetRegistry* assetRegistry = nullptr;
     RenderFrameProjectExtensionSink projectRenderExtensions{};
+    // この世界に登録されたモジュールの面。視点の描画の間だけ有効。
+    std::span<IRenderSurfaceExtension* const> surfaceExtensions{};
 };
 
 } // namespace HIKARI::RENDER3D

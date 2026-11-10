@@ -10,7 +10,6 @@
 #include "HIKARI/Project/GameFlowViews.h"
 #include "HIKARI/Project/GameSystem.h"
 #include "HIKARI/Project/RuntimeFeature.h"
-#include "HIKARI/Project/UiView.h"
 #include "Scene/Features/HIKARI_BuiltInRuntimeFeatures.h"
 
 // UI ボタン・入力アクション・画面領域から Scene Flow の切替要求を出す組み込み Feature。
@@ -43,7 +42,6 @@ public:
         if (actionEnabled_ || !fields.IsInspecting()) {
             fields.InputAction("actionId", "Input Action", GameProjectInputValueType::Button, actionId_);
         }
-        fields.Bool("uiButtonEnabled", "UI Button Trigger", uiButtonEnabled_);
         fields.Bool("pointerRegionEnabled", "Pointer Region Trigger", pointerRegionEnabled_);
         if (pointerRegionEnabled_ || !fields.IsInspecting()) {
             fields.Float("pointerMinimumX", "Pointer Region Min X", pointerMinimumX_, 0.0f, 1.0f, 0.01f);
@@ -68,7 +66,7 @@ public:
         if (!IsCanonicalAssetGuid(targetSceneGuid_)) {
             fields.Note("Assign a valid Scene asset before Play.");
         }
-        if (!actionEnabled_ && !pointerRegionEnabled_ && !uiButtonEnabled_) {
+        if (!actionEnabled_ && !pointerRegionEnabled_) {
             fields.Note("Enable at least one trigger source.");
         }
         fields.Note("One-shot and cooldown begin when the transition request is accepted; they do not imply that "
@@ -76,7 +74,6 @@ public:
     }
 
     bool IsActionEnabled() const noexcept { return actionEnabled_; }
-    bool IsUiButtonEnabled() const noexcept { return uiButtonEnabled_; }
     bool IsPointerRegionEnabled() const noexcept { return pointerRegionEnabled_; }
     const std::string& GetActionId() const noexcept { return actionId_; }
     const std::string& GetTargetSceneGuid() const noexcept { return targetSceneGuid_; }
@@ -124,7 +121,6 @@ private:
     float cooldownRemaining_ = 0.0f;
     bool enabled_ = true;
     bool actionEnabled_ = true;
-    bool uiButtonEnabled_ = true;
     bool pointerRegionEnabled_ = false;
     bool useTransition_ = true;
     bool oneShotPerWorld_ = true;
@@ -146,7 +142,6 @@ public:
             return;
         }
         const InputView input = world.GetInput();
-        const UiView ui = world.GetUi();
         const SceneFlowView sceneFlow = world.GetSceneFlow();
         if (!sceneFlow.IsValid()) {
             return;
@@ -167,7 +162,7 @@ public:
         const float unscaledDeltaSeconds =
             std::isfinite(frame.unscaledDt) ? std::clamp(frame.unscaledDt, 0.0f, 1.0f) : 0.0f;
         (void)world.ForEachComponent<SceneSwitchTriggerComponent>(
-            kComponentTypeId, [&](ObjectView object, SceneSwitchTriggerComponent& trigger) {
+            kComponentTypeId, [&](ObjectView, SceneSwitchTriggerComponent& trigger) {
                 trigger.AdvanceCooldown(unscaledDeltaSeconds);
                 if (!trigger.CanRequest()) {
                     return;
@@ -179,9 +174,7 @@ public:
                     action.valueType == GameProjectInputValueType::Button && action.pressed != 0u;
                 const bool pointerPressed = trigger.IsPointerRegionEnabled() && pointerValid && primaryPressed &&
                                             trigger.ContainsPointer(pointer.normalizedX, pointer.normalizedY);
-                const bool uiActivated =
-                    trigger.IsUiButtonEnabled() && ui.IsValid() && ui.WasActivated(object.GetHandle());
-                if (actionPressed || pointerPressed || uiActivated) {
+                if (actionPressed || pointerPressed) {
                     trigger.SetPendingRequest();
                 }
                 if (!trigger.HasPendingRequest() || sceneFlow.IsTransitioning()) {

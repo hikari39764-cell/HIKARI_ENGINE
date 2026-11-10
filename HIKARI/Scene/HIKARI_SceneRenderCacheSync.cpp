@@ -5,6 +5,7 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <cstdlib>
 #include <cstring>
 #include <limits>
 #include <map>
@@ -148,25 +149,49 @@ std::string ResolveClusteredGeometryPath(const GameObject& object, const ModelCo
     return path.lexically_normal().generic_string();
 }
 
-bool HasRuntimeMaterialRevisionChange(const RENDER3D::RUNTIME::SceneRenderObjectDesc& cached,
-                                      const ModelComponent& model) {
-    size_t liveMaterialCount = 0u;
-    for (const RuntimeMaterialOverrideSlot& slot : model.GetRuntimeMaterialOverrides()) {
-        const Material* material = slot.material.get();
-        if (material == nullptr) {
-            continue;
-        }
-        ++liveMaterialCount;
-        const auto found = std::find_if(cached.materialOverrides.begin(), cached.materialOverrides.end(),
-                                        [&slot](const RENDER3D::RUNTIME::SceneRenderMaterialOverride& cachedSlot) {
-                                            return cachedSlot.materialIndex == slot.materialIndex;
-                                        });
-        if (found == cached.materialOverrides.end() || found->material != material ||
-            found->materialRevision != material->GetRevision()) {
-            return true;
-        }
+// 校验模式（環境変数 HIKARI_VALIDATE_RENDER_SYNC=1）：dirty でない物体の描画記述を作り直してキャッシュと比べ、
+// 違えば改動通知の漏れとして記録する。テストと検証場景で使い、通常は何もしない。
+bool RenderSyncValidationEnabled() noexcept {
+    static const bool enabled = [] {
+        const char* value = std::getenv("HIKARI_VALIDATE_RENDER_SYNC");
+        return value != nullptr && value[0] == '1';
+    }();
+    return enabled;
+}
+
+// 描画の結果を変える項目のうち、違っていた最初の項目名（同じなら nullptr）。地形・水面・骨格動画は別の経路で更新する。
+const char* FindRenderStateDifference(const RENDER3D::RUNTIME::SceneRenderObjectDesc& cached,
+                                      const RENDER3D::RUNTIME::SceneRenderObjectDesc& rebuilt) {
+    const MATH::Mat4 cachedWorld = cached.worldTransform.GetWorldMatrix();
+    const MATH::Mat4 rebuiltWorld = rebuilt.worldTransform.GetWorldMatrix();
+    if (std::memcmp(&cachedWorld, &rebuiltWorld, sizeof(MATH::Mat4)) != 0) {
+        return "worldTransform";
     }
-    return liveMaterialCount != cached.materialOverrides.size();
+    if (cached.model != rebuilt.model || cached.clusteredGeometryPath != rebuilt.clusteredGeometryPath) {
+        return "model";
+    }
+    if (cached.visible != rebuilt.visible || cached.nodeVisibilityMask != rebuilt.nodeVisibilityMask) {
+        return "visible";
+    }
+    if (cached.isStatic != rebuilt.isStatic || cached.castShadow != rebuilt.castShadow ||
+        cached.receiveShadow != rebuilt.receiveShadow || cached.postGroupMask != rebuilt.postGroupMask) {
+        return "flags";
+    }
+    const auto sameMaterial = [](const RENDER3D::RUNTIME::SceneRenderMaterialOverride& a,
+                                 const RENDER3D::RUNTIME::SceneRenderMaterialOverride& b) {
+        return a.materialIndex == b.materialIndex && a.material == b.material &&
+               a.materialRevision == b.materialRevision;
+    };
+    if (!std::equal(cached.materialOverrides.begin(), cached.materialOverrides.end(), rebuilt.materialOverrides.begin(),
+                    rebuilt.materialOverrides.end(), sameMaterial)) {
+        return "materials";
+    }
+    if (cached.materialFxProfileId != rebuilt.materialFxProfileId ||
+        std::memcmp(cached.materialFxParamValues, rebuilt.materialFxParamValues,
+                    sizeof(cached.materialFxParamValues)) != 0) {
+        return "materialFx";
+    }
+    return nullptr;
 }
 
 class ClusteredGeometryPathResolver {
@@ -341,6 +366,31 @@ struct SceneRenderCacheSync::State {
     std::unordered_map<const RENDER3D::RUNTIME::SceneRenderCache*, PRESENTATION_MODEL::MaterialStorageByRenderObject>
         presentationMaterialOverrides{};
 
+    uint64_t validationMisses = 0u;
+
+    template <class BuildDesc>
+    void ValidateCleanObjects(World& world, const RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache,
+                              BuildDesc&& buildDesc) {
+        std::unordered_set<const GameObject*> dirty(world.GetRenderDirtyObjects().begin(),
+                                                    world.GetRenderDirtyObjects().end());
+        world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
+            if (dirty.contains(&object) || object.GetComponent<TerrainSurfaceComponent>() != nullptr ||
+                object.GetComponent<WaterSurfaceComponent>() != nullptr) {
+                return;
+            }
+            const RENDER3D::RUNTIME::SceneRenderObject* cached =
+                sceneRenderCache.Find(ResolveSceneRenderObjectId(object));
+            const RENDER3D::RUNTIME::SceneRenderObjectDesc rebuilt = buildDesc(object, model);
+            const char* difference = cached == nullptr ? "missing" : FindRenderStateDifference(cached->desc, rebuilt);
+            if (difference == nullptr || rebuilt.hasRuntimeAnimation) {
+                return;
+            }
+            if (++validationMisses <= 32u) {
+                HIKARI_LOG_ERROR("[RenderSync] missed change: object='" + object.GetName() + "' field=" + difference);
+            }
+        });
+    }
+
     void Synchronize(World& world, RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
                      RENDER3D::RUNTIME::SceneRenderCache& sceneRenderCache, uint64_t frameIndex,
                      const AssetRegistry* assetRegistry, std::filesystem::path projectRoot,
@@ -475,27 +525,32 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
     if (fullSync) {
         sceneRenderCache.EndSync();
     } else {
-        // Material asset は既存 runtime Material object へ publish する。
-        // revision の変化だけでは owning GameObject は dirty にならないため、
-        // この frame の SceneRenderCache snapshot が authoritative GPU Scene source
-        // になる前に明示的に検出する。
-        world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
-            const RENDER3D::RUNTIME::SceneRenderObjectId objectId = ResolveSceneRenderObjectId(object);
-            const RENDER3D::RUNTIME::SceneRenderObject* cached = sceneRenderCache.Find(objectId);
-            bool responseWarmReady = false;
-            const auto projection = cacheTerrainProjections.find(objectId.value);
-            if (projection != cacheTerrainProjections.end() && projection->second.warmPending &&
-                projection->second.warmSettingsValid) {
-                const ModelAsset* warmedModel = nullptr;
-                std::string warmedPath{};
-                responseWarmReady = PROCEDURAL::TryGetWarmedClusteredGeometry(
-                    projection->second.warmSettings, projection->second.warmProjectRoot, warmedModel, warmedPath);
+        // 材質の原地変更（版本の更新）は ModelComponent が材質の通知を受けて物体を dirty にするので、ここで全物体を
+        // 見直さない。残るのは地形の非同期 warm-up の完了だけで、warm 待ちの地形投影だけを確かめる。
+        for (auto& entry : cacheTerrainProjections) {
+            TerrainProjectionState& projection = entry.second;
+            if (!projection.warmPending || !projection.warmSettingsValid) {
+                continue;
             }
-            if (cached != nullptr && !HasRuntimeMaterialRevisionChange(cached->desc, model) && !responseWarmReady) {
-                return;
+            const ModelAsset* warmedModel = nullptr;
+            std::string warmedPath{};
+            if (!PROCEDURAL::TryGetWarmedClusteredGeometry(projection.warmSettings, projection.warmProjectRoot,
+                                                           warmedModel, warmedPath)) {
+                continue;
             }
-            upsertModel(object, model);
-        });
+            GameObject* object = world.FindObject(projection.sourceObject);
+            if (ModelComponent* model = object != nullptr ? object->GetComponent<ModelComponent>() : nullptr) {
+                upsertModel(*object, *model);
+            }
+        }
+        if (RenderSyncValidationEnabled()) {
+            ValidateCleanObjects(world, sceneRenderCache, [&](GameObject& object, ModelComponent& model) {
+                TerrainProjectionState unusedProjection{};
+                return BuildSceneRenderObjectDesc(object, model, renderModelCache, clusteredGeometryPaths,
+                                                  presentationTransforms, animationPoses, terrainSurfaceQuery,
+                                                  runtimeActivityService, unusedProjection, debugStats, purpose);
+            });
+        }
         sceneRenderCache.EndPatchSync();
     }
     sceneRenderCache.PreRenderSync();

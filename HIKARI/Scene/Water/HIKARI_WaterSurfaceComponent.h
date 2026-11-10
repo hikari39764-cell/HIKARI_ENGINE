@@ -121,7 +121,8 @@ public:
 #endif
 
 private:
-    WATER::WaterSurfaceSettings settings_{};
+    // 文書で指定のない項目はプリセットの値（Deserialize と同じ）なので、新しい部品も既定プリセットの値から始める。
+    WATER::WaterSurfaceSettings settings_ = WATER::MakeWaterSurfacePresetSettings(WATER::WaterSurfaceSettings{}.preset);
 };
 
 } // namespace HIKARI

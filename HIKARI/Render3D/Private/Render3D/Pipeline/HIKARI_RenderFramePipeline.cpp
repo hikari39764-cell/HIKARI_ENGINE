@@ -12,6 +12,7 @@
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Core/HIKARI_MeshPassResources.h"
 #include "Render3D/Core/HIKARI_MeshRenderer.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Render3D/Debug/HIKARI_RenderDebugOutput.h"
 #include "Render3D/Features/HIKARI_RenderFeatureSceneAnalysis.h"
 #include "Render3D/Features/HIKARI_StylizedScreenFeatureRenderer.h"
@@ -252,9 +253,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         return false;
     }
     const bool projectPassWork = projectPassCount != 0u;
-    if (!MESHRENDERER::HasSubmittedItems() && !projectPassWork) {
+    if (!MESHRENDERER::HasSubmittedItems() && !projectPassWork && view.surfaceExtensions.empty()) {
         return true;
     }
+    SURFACE_EXTENSIONS::SetFrameCameraPosition(camera.GetPosition());
+    SURFACE_EXTENSIONS::BeginFrame(graphics, view.surfaceExtensions);
 
     const RenderFrameContext frame = BuildRenderFrameContext(graphics, view, environment);
     POST::PostSystem::SetScreenReadability(frame.screenReadability);
@@ -389,11 +392,15 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
             const MESHRENDERER::TerrainSurfaceGpuBindings terrain = MESHRENDERER::GetTerrainSurfaceGpuBindings();
+            const bool viewHasSurfaces = !view.surfaceExtensions.empty();
             rayScene =
                 gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.massMaterialSlots,
                                          materials.materialData, {}, {materials.dataVersion, materials.bindingVersion},
                                          {terrain.records, terrain.floats, terrain.floatVersion,
-                                          MESHRENDERER::GetResidentMassGpuSceneRecords()});
+                                          MESHRENDERER::GetResidentMassGpuSceneRecords(),
+                                          viewHasSurfaces ? SURFACE_EXTENSIONS::GetRayProxies()
+                                                          : std::span<const RAYTRACING::RuntimeRayTracingProxy>{},
+                                          viewHasSurfaces ? SURFACE_EXTENSIONS::GetRayProxyVersion() : 0u});
         } else {
             gRuntimeRayScene.Reset(frame.graphics);
             gRuntimeRayLighting.Reset(frame.graphics);
@@ -561,6 +568,9 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         shadowInputs.coneHalfAngle = std::clamp(rayLighting.data.sunColorRange.w, 0.0f, 0.5f) *
                                      std::max(renderQuality.directionalShadow.penumbraScale, 0.0f);
         shadowInputs.maxDistance = environment.shadows.distance;
+        shadowInputs.proxyReach = view.surfaceExtensions.empty() || SURFACE_EXTENSIONS::GetRayProxies().empty()
+                                      ? 0.0f
+                                      : RAYTRACING::kRuntimeRayTracingProxyShadowReach;
         shadowInputs.sampleCount = renderQuality.directionalShadow.rayTracedSamples;
         shadowInputs.frameIndex = static_cast<uint32_t>(frame.frameIndex);
         (void)RENDER3D::SCREENSPACE::ExecuteRayTracedShadowFromSceneDepth(

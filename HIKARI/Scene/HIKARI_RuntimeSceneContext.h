@@ -31,6 +31,9 @@ public:
     static void SetCurrentWorld(World* world, std::string sceneId = {});
     static World* GetCurrentWorld();
     static const std::string& GetCurrentSceneId();
+    // 今の場面の主ファイル（編集器は原本、書き出したゲームは配布先）。モジュールが場面に添えた内容を読むのに使う。
+    static void SetCurrentSceneFilePath(std::string path);
+    static const std::string& GetCurrentSceneFilePath();
     static void MarkCameraReady(const World& world) noexcept;
     static bool IsCameraReady(const World* world = nullptr) noexcept;
     static void ResolvePendingSceneEntry(const World& world, const std::string& sceneId);
@@ -44,6 +47,7 @@ private:
     static std::optional<ResolvedSceneEntry> resolvedEntry_;
     static World* currentWorld_;
     static std::string currentSceneId_;
+    static std::string currentSceneFilePath_;
     static bool cameraReady_;
 };
 

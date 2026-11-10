@@ -86,7 +86,8 @@ bool DxrAccelerationStructure::BuildBottomLevel(const Context& graphics,
 bool DxrAccelerationStructure::BuildTopLevel(const Context& graphics,
                                              std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances,
                                              uint64_t maximumAllocationBytes, bool allowUpdate,
-                                             const DxrAccelerationStructure* updateSource, std::string* outMessage) {
+                                             const DxrAccelerationStructure* updateSource, std::string* outMessage,
+                                             uint32_t reservedInstances) {
     if (!ValidInstances(instances) || (updateSource != nullptr && !allowUpdate)) {
         Reset(&graphics);
         SetMessage(outMessage, "DXR instance descriptors or update request are invalid.");
@@ -99,14 +100,14 @@ bool DxrAccelerationStructure::BuildTopLevel(const Context& graphics,
     if (allowUpdate)
         inputs.Flags |= D3D12_RAYTRACING_ACCELERATION_STRUCTURE_BUILD_FLAG_ALLOW_UPDATE;
     inputs.NumDescs = static_cast<UINT>(instances.size());
-    return Build(graphics, inputs, instances, maximumAllocationBytes, updateSource, outMessage);
+    return Build(graphics, inputs, instances, maximumAllocationBytes, updateSource, outMessage, reservedInstances);
 }
 
 bool DxrAccelerationStructure::Build(const Context& graphics,
                                      D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS inputs,
                                      std::span<const D3D12_RAYTRACING_INSTANCE_DESC> instances,
                                      uint64_t maximumAllocationBytes, const DxrAccelerationStructure* updateSource,
-                                     std::string* outMessage) {
+                                     std::string* outMessage, uint32_t reservedDescriptors) {
     const auto fail = [&](const char* message) {
         Reset(&graphics); // 不完全な scene に旧 TLAS を公開しない。
         SetMessage(outMessage, message);
@@ -129,7 +130,9 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
         return fail("DXR update source has incompatible type, device, count or build flags.");
 
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
-    device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
+    D3D12_BUILD_RAYTRACING_ACCELERATION_STRUCTURE_INPUTS sizing = inputs;
+    sizing.NumDescs = (std::max)(inputs.NumDescs, reservedDescriptors);
+    device->GetRaytracingAccelerationStructurePrebuildInfo(&sizing, &info);
     if (info.ResultDataMaxSizeInBytes == 0)
         return fail("DXR prebuild returned no acceleration structure.");
     const uint64_t resultBytes = info.ResultDataMaxSizeInBytes;
@@ -145,7 +148,7 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     const auto scratchDesc = CD3DX12_RESOURCE_DESC::Buffer((scratchBytes + kAlignment - 1) & ~(kAlignment - 1),
                                                            D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS);
     const auto instanceDesc = CD3DX12_RESOURCE_DESC::Buffer((std::max)(size_t{1}, instances.size_bytes()));
-    uint64_t allocationBytes = 0, instanceBytes = 0;
+    uint64_t allocationBytes = 0, instanceBytes = 0, scratchAllocationBytes = 0;
     for (const auto* desc : {&resultDesc, &scratchDesc, &instanceDesc}) {
         if (desc == &instanceDesc && instances.empty())
             continue;
@@ -155,6 +158,8 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
         allocationBytes += bytes;
         if (desc == &instanceDesc)
             instanceBytes = bytes;
+        else if (desc == &scratchDesc)
+            scratchAllocationBytes = bytes;
     }
 
     // 再 build/refit でも旧結果を上書きしない。記録済み View と GPU 読み取りを保護する。
@@ -184,13 +189,17 @@ bool DxrAccelerationStructure::Build(const Context& graphics,
     commands->ResourceBarrier(1, &barrier);
     Reset(&graphics);
     result_ = std::move(result);
-    scratch_ = std::move(scratch);
+    // 更新しない構造の scratch は組み立てが終われば要らない（BLAS の常駐量がほぼ半分になる）。
+    if (updatable)
+        scratch_ = std::move(scratch);
+    else
+        RetireD3D12ObjectForFrame(scratch, graphics, "DXR.Scratch");
     if (instanceBuffer)
         instances_.Adopt(graphics, std::move(instanceBuffer), instances.size_bytes(), instanceBytes, "DXR.Instances");
     externalInstances_ = 0;
     device_ = graphics.device;
     deviceGeneration_ = graphics.deviceGeneration;
-    allocationBytes_ = allocationBytes - instanceBytes;
+    allocationBytes_ = allocationBytes - instanceBytes - (updatable ? 0 : scratchAllocationBytes);
     resultBytes_ = resultDesc.Width;
     scratchBytes_ = scratchDesc.Width;
     descriptorCount_ = inputs.NumDescs;
@@ -241,13 +250,14 @@ bool DxrAccelerationStructure::RebuildTopLevelInPlace(const Context& graphics,
         !instances_.Write(graphics, instances.data(), instances.size_bytes(), "DXR.Instances"))
         return false;
     externalInstances_ = 0;
-    return RecordTopLevelRebuild(graphics, instances_.Current()->GetGPUVirtualAddress());
+    return RecordTopLevelRebuild(graphics, instances_.Current()->GetGPUVirtualAddress(),
+                                 static_cast<uint32_t>(instances.size()));
 }
 
 bool DxrAccelerationStructure::RebuildTopLevelInPlace(const Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS instanceDescs,
                                                       uint32_t count) {
     if (instanceDescs == 0 || !CanRebuildTopLevelInPlace(graphics, count) ||
-        !RecordTopLevelRebuild(graphics, instanceDescs))
+        !RecordTopLevelRebuild(graphics, instanceDescs, count))
         return false;
     externalInstances_ = instanceDescs;
     return true;
@@ -256,7 +266,7 @@ bool DxrAccelerationStructure::RebuildTopLevelInPlace(const Context& graphics, D
 bool DxrAccelerationStructure::CanRebuildTopLevelInPlace(const Context& graphics, uint32_t count) const {
     if (!result_ || !scratch_ || type_ != D3D12_RAYTRACING_ACCELERATION_STRUCTURE_TYPE_TOP_LEVEL ||
         graphics.cmdList == nullptr || graphics.frameFence == nullptr || device_ != graphics.device ||
-        deviceGeneration_ != graphics.deviceGeneration || count == 0 || count != descriptorCount_)
+        deviceGeneration_ != graphics.deviceGeneration || count == 0)
         return false;
     Microsoft::WRL::ComPtr<ID3D12Device5> device;
     if (FAILED(graphics.device->QueryInterface(IID_PPV_ARGS(&device))))
@@ -265,7 +275,7 @@ bool DxrAccelerationStructure::CanRebuildTopLevelInPlace(const Context& graphics
     inputs.Type = type_;
     inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     inputs.Flags = flags_;
-    inputs.NumDescs = descriptorCount_;
+    inputs.NumDescs = count;
     // 見積もりが今の結果と scratch に収まる時だけその場で組む。
     D3D12_RAYTRACING_ACCELERATION_STRUCTURE_PREBUILD_INFO info{};
     device->GetRaytracingAccelerationStructurePrebuildInfo(&inputs, &info);
@@ -273,7 +283,8 @@ bool DxrAccelerationStructure::CanRebuildTopLevelInPlace(const Context& graphics
            info.ScratchDataSizeInBytes <= scratchBytes_;
 }
 
-bool DxrAccelerationStructure::RecordTopLevelRebuild(const Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS instanceDescs) {
+bool DxrAccelerationStructure::RecordTopLevelRebuild(const Context& graphics, D3D12_GPU_VIRTUAL_ADDRESS instanceDescs,
+                                                     uint32_t count) {
     Microsoft::WRL::ComPtr<ID3D12GraphicsCommandList4> commands;
     if (FAILED(graphics.cmdList->QueryInterface(IID_PPV_ARGS(&commands))))
         return false;
@@ -281,7 +292,8 @@ bool DxrAccelerationStructure::RecordTopLevelRebuild(const Context& graphics, D3
     build.Inputs.Type = type_;
     build.Inputs.DescsLayout = D3D12_ELEMENTS_LAYOUT_ARRAY;
     build.Inputs.Flags = flags_;
-    build.Inputs.NumDescs = descriptorCount_;
+    build.Inputs.NumDescs = count;
+    descriptorCount_ = count;
     // 先に積んだ光線の読み取りと、前の build の scratch 書き込みが終わってから上書きする。
     const D3D12_RESOURCE_BARRIER before[] = {CD3DX12_RESOURCE_BARRIER::UAV(result_.Get()),
                                              CD3DX12_RESOURCE_BARRIER::UAV(scratch_.Get())};

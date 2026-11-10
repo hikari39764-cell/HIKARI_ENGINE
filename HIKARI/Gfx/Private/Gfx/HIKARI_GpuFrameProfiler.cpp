@@ -338,6 +338,8 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::TemporalDlaaResolve, "Temporal DLAA", "Render3D"},
     {Pass::TemporalDlssResolve, "Temporal DLSS", "Render3D"},
     {Pass::ForwardOpaque, "ForwardOpaque", "Render3D"},
+    {Pass::ModuleSurfaces, "ModuleSurfaces", "Render3D"},
+    {Pass::ModuleSurfaceShadows, "ModuleSurfaceShadows", "Render3D"},
     {Pass::DepthAware, "DepthAware", "Render3D"},
     {Pass::ForwardTransparent, "ForwardTransparent", "Render3D"},
     {Pass::DepthOfField, "Depth Of Field", "Render3D"},

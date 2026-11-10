@@ -304,6 +304,40 @@ IComponent* GameObject::AddComponentInstance(std::unique_ptr<IComponent> compone
     }
 }
 
+bool GameObject::RemoveComponent(IComponent& component) {
+    const auto found =
+        std::find_if(components_.begin(), components_.end(),
+                     [&component](const std::unique_ptr<IComponent>& owned) { return owned.get() == &component; });
+    if (found == components_.end() || !CanMutateOwnedState() ||
+        (ownerWorld_ != nullptr && !ownerWorld_->CanEnterStructureCallback(this))) {
+        return false;
+    }
+    try {
+        if (ownerWorld_ != nullptr) {
+            const World::StructureReadScope structureRead = ownerWorld_->AcquireStructureReadScope();
+            component.OnDetach();
+        } else {
+            component.OnDetach();
+        }
+    } catch (...) {
+        HIKARI_LOG_ERROR("[GameObject] component OnDetach failed.");
+    }
+    if (ownerWorld_ != nullptr) {
+        const bool wasRenderTracked = renderStateContributorCount_ != 0u;
+        ownerWorld_->RemoveComponentFromIndex(component);
+        // 最後の描画部品が外れると物体は描画の追跡から外れるので、描画キャッシュの項目を消すよう知らせる。
+        if (wasRenderTracked && renderStateContributorCount_ == 0u) {
+            ownerWorld_->MarkRenderObjectRemoved(GetRenderStableId());
+        }
+    }
+    component.SetOwner(nullptr);
+    const std::unique_ptr<IComponent> removed = std::move(*found);
+    components_.erase(found);
+    executionCapabilitiesDirty_ = true;
+    MarkRenderStateDirty();
+    return true;
+}
+
 void GameObject::DetachComponents() {
     for (size_t index = components_.size(); index-- > 0u;) {
         IComponent* component = components_[index].get();

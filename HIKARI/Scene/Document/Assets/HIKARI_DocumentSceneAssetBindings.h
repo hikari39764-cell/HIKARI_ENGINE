@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <functional>
 #include <string>
+#include <unordered_set>
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Core/HIKARI_AssetGuid.h"
@@ -11,10 +12,10 @@
 #include "Assets/HIKARI_DocumentAssetStores.h"
 #include "Assets/Camera/HIKARI_GameplayCameraAsset.h"
 #include "Assets/Environment/HIKARI_EnvironmentAssetStore.h"
+#include "Assets/Module/HIKARI_ModuleAssetStore.h"
 #include "Assets/Post/HIKARI_PostAssetStore.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAssetStore.h"
 #include "Assets/Text/HIKARI_TextStyleAsset.h"
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Sprite/HIKARI_SpriteAssetStore.h"
 #include "Assets/Sprite/HIKARI_SpriteMaterialStore.h"
 #include "Assets/Models/HIKARI_ModelManager.h"
@@ -44,7 +45,7 @@ public:
     ENVIRONMENT::EnvironmentAssetStore& EnvironmentAssets() noexcept { return environmentAssets_; }
     RENDERSTYLE::RenderStyleAssetStore& RenderStyleAssets() noexcept { return renderStyleAssets_; }
     TextAssetStore& TextAssets() noexcept { return textAssets_; }
-    UiAnimationAssetStore& UiAnimations() noexcept { return uiAnimations_; }
+    ModuleAssetStore& ModuleAssets() noexcept { return moduleAssets_; }
     SPRITE::SpriteAssetStore& SpriteAssets() noexcept { return spriteAssets_; }
     SPRITE::SpriteMaterialStore& SpriteMaterials() noexcept { return spriteMaterials_; }
     ModelManager& Models() noexcept { return models_; }
@@ -77,13 +78,15 @@ private:
     AssetDatabase database_{};
     AssetRegistry registry_{};
     uint64_t registrySourceRevision_ = 0u;
+    // この実行中に自動で取り込みへ回した資産。取り込みに失敗しても同じ実行中は繰り返さない。
+    std::unordered_set<std::string> autoImportQueued_{};
     SequenceAssetStore sequenceAssets_{};
     GameplayCameraAssetStore gameplayCameras_;
     POST::PostAssetStore postAssets_;
     ENVIRONMENT::EnvironmentAssetStore environmentAssets_;
     RENDERSTYLE::RenderStyleAssetStore renderStyleAssets_;
     TextAssetStore textAssets_;
-    UiAnimationAssetStore uiAnimations_;
+    ModuleAssetStore moduleAssets_{};
     SPRITE::SpriteAssetStore spriteAssets_{};
     SPRITE::SpriteMaterialStore spriteMaterials_{};
     ModelManager models_{};

@@ -123,11 +123,11 @@ bool RequiresPrimaryArtifact(AssetType type) {
     return type != AssetType::Material && SEMANTICS::FindPrimaryAssetArtifactSemantics(type) != nullptr;
 }
 
+} // namespace
+
 std::filesystem::path MakeRuntimePayloadPath(const std::filesystem::path& sourcePath) {
     return (std::filesystem::path("RuntimePayload") / sourcePath).lexically_normal();
 }
-
-} // namespace
 
 AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
     AssetCookResult result{};
@@ -189,11 +189,10 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
 
         if (!record->sourceExists ||
             ((RequiresPrimaryArtifact(record->type) || record->type == AssetType::Font ||
-              record->type == AssetType::TextStyle || record->type == AssetType::UiAnimation ||
-              record->type == AssetType::PostEffect || record->type == AssetType::PostProfile ||
-              record->type == AssetType::Environment || record->type == AssetType::Weather ||
-              record->type == AssetType::RenderStyle || record->type == AssetType::ColorLut ||
-              record->type == AssetType::LightProfile) &&
+              record->type == AssetType::TextStyle || record->type == AssetType::PostEffect ||
+              record->type == AssetType::PostProfile || record->type == AssetType::Environment ||
+              record->type == AssetType::Weather || record->type == AssetType::RenderStyle ||
+              record->type == AssetType::ColorLut || record->type == AssetType::LightProfile) &&
              (record->importOutdated || record->artifactMissing || !record->lastImportSucceeded))) {
             result.message = "Asset needs a successful, current import: " + TEXT::PathToUtf8(record->sourcePath) +
                              " (" + guid + "). " + record->lastImportMessage;
@@ -251,6 +250,9 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
             return result;
         }
 
+        if (sourceRecord->type == AssetType::Scene) {
+            result.scenePaths.push_back(sourceRecord->sourcePath);
+        }
         AssetRecord cookedRecord = *sourceRecord;
         cookedRecord.metaPath.clear();
         cookedRecord.artifactManifestPath.clear();
@@ -292,6 +294,19 @@ AssetCookResult AssetCooker::Cook(const AssetCookOptions& options) const {
             if (!CopyCookPayloadFile(options.projectRoot / sourceRecord->sourcePath,
                                      options.contentRoot / cookedRecord.sourcePath, result.fileCount, result.message)) {
                 return result;
+            }
+            // 分区場景の格子ファイル（取り込みが付属ファイルとして記録したもの）も場景の隣の同じ相対位置へ配る。
+            if (sourceRecord->type == AssetType::Scene) {
+                for (const AssetDependencyDesc& dependency : sourceRecord->artifactManifest.dependencies) {
+                    const std::filesystem::path companion = TEXT::PathFromUtf8(dependency.path);
+                    if (dependency.role == "SourceCompanion" && !dependency.guid.IsValid() &&
+                        PATHS::IsSafeRelativePath(companion) &&
+                        !CopyCookPayloadFile(options.projectRoot / companion,
+                                             options.contentRoot / MakeRuntimePayloadPath(companion), result.fileCount,
+                                             result.message)) {
+                        return result;
+                    }
+                }
             }
         }
 

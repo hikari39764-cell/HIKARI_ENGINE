@@ -31,6 +31,7 @@ struct RayTracedShadowInputs {
     float coneHalfAngle = 0.0f; // 太陽の角半径 × 半影の倍率 [rad]
     float maxDistance = 100.0f; // 影の距離 [m]
     float normalOffset = 0.02f; // 始点を面から浮かせる距離 [m]
+    float proxyReach = 0.0f;    // 影の距離より先へ代理だけを見て伸ばす長さ [m]（代理が無ければ 0）
     uint32_t sampleCount = 2u;
     uint32_t frameIndex = 0u;
     const TEMPORAL::TemporalFrameState* temporal = nullptr;

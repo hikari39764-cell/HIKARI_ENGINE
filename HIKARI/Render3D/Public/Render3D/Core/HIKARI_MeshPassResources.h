@@ -20,6 +20,9 @@ struct MeshPassResources {
     RENDER3D::DEPTH::DepthPyramidView depthPyramid{};
     // AS は現在フレームの render camera に一致する深度のみ消費する。
     RENDER3D::DEPTH::DepthPyramidView visibilityDepthPyramid{};
+    // GeometryAux の遮蔽判定に使う前フレームの階層（一段目はこれで落とし、二段目は落とした簇を今フレームの階層で測る）。
+    RENDER3D::DEPTH::DepthPyramidView geometryAuxHistoryDepth{};
+    bool geometryAuxSecondPhase = false;
     int fallbackAoTextureHandle = -1;
     RENDER3D::PIPELINE::RenderTargetAccess compositionTarget{};
     D3D12_CPU_DESCRIPTOR_HANDLE compositionDepth{};

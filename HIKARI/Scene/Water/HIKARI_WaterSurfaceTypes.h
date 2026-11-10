@@ -98,6 +98,12 @@ WaterSurfaceSettings ResolveWaterSurfaceSettingsForMesh(const WaterSurfaceSettin
 // CameraCenteredOcean is an infinite world-horizontal surface. Tilted or
 // sheared authored planes use the finite route; both render and query
 // owners must consume this same resolved settings snapshot.
+// 海の格子の歪め方（着色器の HIKARI_OCEAN_NEAR_CELL_METERS / HIKARI_OCEAN_MIN_GRADE_SHARE と同じ）。
+// 中心の一番細かい格は等間隔の格 × OceanGradeShare。
+inline constexpr float kOceanNearCellMeters = 0.5f;
+inline constexpr float kOceanMinimumGradeShare = 0.01f;
+float OceanGradeShare(float uniformCell) noexcept;
+
 WaterSurfaceSettings ResolveWaterSurfaceRuntimeSettings(const WaterSurfaceSettings& settings,
                                                         float maximumVertexSpacing, const MATH::Mat4& world) noexcept;
 

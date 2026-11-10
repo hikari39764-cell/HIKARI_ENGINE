@@ -9,7 +9,8 @@
 namespace HIKARI {
 namespace {
 
-constexpr uint32_t kSupportedMassRenderFlags = static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow);
+constexpr uint32_t kSupportedMassRenderFlags = static_cast<uint32_t>(GameProjectWorldMassRenderFlags::ReceiveShadow |
+                                                                     GameProjectWorldMassRenderFlags::SkipRayTracing);
 
 size_t FixedTextLength(const char* text, size_t capacity) noexcept {
     if (text == nullptr) {
@@ -254,7 +255,8 @@ bool WorldMassStore::HasChangedTransform(const GameProjectFloat3& position, cons
            std::memcmp(&scale, &before.scale, sizeof(scale)) != 0;
 }
 
-bool WorldMassStore::PublishRenderStores(uint64_t worldIdentity, uint64_t frameIndex, void* context,
+bool WorldMassStore::PublishRenderStores(uint64_t worldIdentity, uint64_t frameIndex,
+                                         std::span<const WorldMassRenderStoreView> extraViews, void* context,
                                          RenderPublicationVisitorFn visitor,
                                          WorldMassRenderPublicationReceipt& outReceipt) noexcept {
     outReceipt = {};
@@ -277,7 +279,7 @@ bool WorldMassStore::PublishRenderStores(uint64_t worldIdentity, uint64_t frameI
 
     try {
         renderPublicationViews_.clear();
-        renderPublicationViews_.reserve(renderStoreTypeOrder_.size());
+        renderPublicationViews_.reserve(renderStoreTypeOrder_.size() + extraViews.size());
         for (const uint64_t typeValue : renderStoreTypeOrder_) {
             const auto found = stores_.find(typeValue);
             if (found == stores_.end() || !found->second.hasRenderProxy) {
@@ -289,6 +291,7 @@ bool WorldMassStore::PublishRenderStores(uint64_t worldIdentity, uint64_t frameI
                 store.schema.typeId, &store.renderProxy, store.renderInstances, store.renderDirtyRanges,
                 store.renderLayoutVersion, store.renderSourceVersion, store.renderDirtyBaseSourceVersion});
         }
+        renderPublicationViews_.insert(renderPublicationViews_.end(), extraViews.begin(), extraViews.end());
         if (!visitor(context, candidateReceipt, renderPublicationViews_)) {
             return false;
         }

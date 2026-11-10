@@ -18,12 +18,14 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Navigation/HIKARI_NavigationWorldService.h"
 
 #include <algorithm>
 #include <cmath>
 #include <fstream>
 #include <string>
 #include <utility>
+#include <vector>
 
 namespace HIKARI {
 namespace {
@@ -488,6 +490,40 @@ void DocumentSceneEditorController::RegisterPlayOperations() {
              return EDITOR::OperationOk("Hit.", std::move(data));
          }},
         EDITOR::EditorOperationKind::Query, read, {"raycast", "hit test", "collision check", "射线", "碰撞检测"});
+    add({"runtime.navigation.path",
+         "Find a path on the playing world's navigation mesh and return its points, length and status.",
+         "runtime",
+         {{"start", EditorOperationParameterType::Json, true, "World [x, y, z]"},
+          {"end", EditorOperationParameterType::Json, true, "World [x, y, z]"},
+          {"halfExtents", EditorOperationParameterType::Json, false, "Search box [x, y, z]; default [4, 8, 4]"}},
+         [this](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+             if (aiOperationScene_ == nullptr || !aiOperationScene_->IsRuntimePlayActive())
+                 return EDITOR::OperationFailure("PLAY_NOT_RUNNING", "Navigation queries need a running Play session.");
+             World& world = aiOperationScene_->GetWorld();
+             NAVIGATION::NavigationWorldService* navigation =
+                 world.Services().Find<NAVIGATION::NavigationWorldService>();
+             if (navigation == nullptr)
+                 return EDITOR::OperationFailure("NAVIGATION_UNAVAILABLE", "This world has no navigation.");
+             MATH::Vec3 start{};
+             MATH::Vec3 end{};
+             MATH::Vec3 halfExtents{4.0f, 8.0f, 4.0f};
+             if (!ReadVec3Parameter(parameters, "start", start) || !ReadVec3Parameter(parameters, "end", end) ||
+                 (parameters.contains("halfExtents") && !ReadVec3Parameter(parameters, "halfExtents", halfExtents)))
+                 return EDITOR::OperationFailure("INVALID_POINT", "start, end and halfExtents must be [x, y, z].");
+             constexpr uint32_t kCapacity = 256u;
+             std::vector<MATH::Vec3> points(kCapacity);
+             std::vector<uint8_t> flags(kCapacity);
+             const NAVIGATION::PathResult path =
+                 navigation->FindPath(world, start, end, halfExtents, points.data(), flags.data(), kCapacity);
+             nlohmann::json pointsJson = nlohmann::json::array();
+             for (uint32_t point = 0u; point < (std::min)(path.pointCount, kCapacity); ++point)
+                 pointsJson.push_back(JsonMath::ToJsonArray(points[point]));
+             return EDITOR::OperationOk("Path query done.", {{"status", static_cast<int>(path.status)},
+                                                             {"partial", path.partial},
+                                                             {"pathLength", path.pathLength},
+                                                             {"points", std::move(pointsJson)}});
+         }},
+        EDITOR::EditorOperationKind::Query, read, {"navigation", "path", "pathfinding", "寻路", "导航"});
     add({"log.read",
          "Editor and game log records after a sequence number. Use nextSince for the following call.",
          "runtime",

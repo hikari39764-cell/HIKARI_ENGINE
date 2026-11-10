@@ -21,10 +21,6 @@ AssetWorkspaceActivationRoute RouteAssetWorkspaceActivation(const AssetWorkspace
         request.workspaceId = EditorWorkspaceId::ModelCollision;
         request.modelAssetGuid = activation.guid;
         break;
-    case AssetType::UiAnimation:
-        request.workspaceId = EditorWorkspaceId::Ui;
-        request.uiAnimationAssetGuid = activation.guid;
-        break;
     case AssetType::TextStyle:
         request.workspaceId = EditorWorkspaceId::Text;
         request.textStyleAssetGuid = activation.guid;

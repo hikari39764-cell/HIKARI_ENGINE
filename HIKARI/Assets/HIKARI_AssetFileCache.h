@@ -37,7 +37,17 @@ public:
             entries_.clear();
             revision_ = database_->GetContentRevision();
         }
+        // 元ファイルから読む時は、資産庫の内容が変わるまで結果（失敗も含む）が変わらない。
+        // 毎フレーム聞かれても、記録を引き直さず路径も組み立て直さない。
+        const bool fromSource = loadPath.empty();
+        if (fromSource) {
+            if (const auto found = entries_.find(guid.value); found != entries_.end() && found->second.fromSource) {
+                error = found->second.error;
+                return found->second.asset;
+            }
+        }
         Entry entry;
+        entry.fromSource = fromSource;
         const AssetRecord* record = database_->FindByGuid(guid);
         if (!record || record->type != Type || (!record->lastImportSucceeded && !allowUnimportedSource)) {
             entry.error =
@@ -67,6 +77,8 @@ private:
         std::shared_ptr<const Asset> asset;
         std::string error;
         std::filesystem::path path{};
+        // 資産の元ファイルから読んだ結果か（呼び手が別の路径を渡した結果ではない）。
+        bool fromSource = false;
     };
     const AssetDatabase* database_ = nullptr;
     mutable uint64_t revision_ = 0;

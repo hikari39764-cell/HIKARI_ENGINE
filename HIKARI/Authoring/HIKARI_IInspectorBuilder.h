@@ -10,6 +10,7 @@
 #include "Authoring/HIKARI_ComponentAuthoringTypes.h"
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Core/Binding/HIKARI_BindingValue.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 
 namespace HIKARI {
 
@@ -17,7 +18,6 @@ namespace INPUT {
 enum class InputActionValueType;
 }
 
-enum class AssetType;
 class AssetDatabase;
 class AssetRegistry;
 class IModelMaterialSlotProvider;
@@ -84,6 +84,12 @@ public:
     virtual bool Choice(const AuthoringFieldDescriptor& field, int& selectedIndex,
                         std::span<const AuthoringChoice> choices) = 0;
     virtual bool AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType, std::string& value) = 0;
+    // モジュールが清単に登記した種類（typeId）の資産を選ぶ。絞り込めない構築器は、モジュールの資産すべてを候補にする。
+    virtual bool ModuleAssetIdPicker(const AuthoringFieldDescriptor& field, std::string_view moduleAssetTypeId,
+                                     std::string& value) {
+        (void)moduleAssetTypeId;
+        return AssetIdPicker(field, AssetType::ModuleAsset, value);
+    }
     virtual bool SceneIdPicker(const AuthoringFieldDescriptor& field, std::string& value) = 0;
     virtual bool SceneObjectIdPicker(const AuthoringFieldDescriptor& field, SceneObjectId& value) = 0;
 };

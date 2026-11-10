@@ -3,6 +3,7 @@
 
 #include <algorithm>
 #include <string>
+#include <utility>
 
 #include <d3dx12.h>
 
@@ -63,6 +64,7 @@ void GpuDepthVisibilityLayer::Release() {
         DEPTH::UpdateDepthPyramidContext(*graphics);
     }
     depthPyramid_.Release();
+    previousDepthPyramid_.Release();
     ReleaseDepthResource(graphics);
     depthWidth_ = 0;
     depthHeight_ = 0;
@@ -76,6 +78,7 @@ void GpuDepthVisibilityLayer::Release(const GFX::Context& graphics) {
     hasGraphicsContext_ = true;
     DEPTH::UpdateDepthPyramidContext(graphics);
     depthPyramid_.Release();
+    previousDepthPyramid_.Release();
     ReleaseDepthResource(&graphics);
     depthWidth_ = 0;
     depthHeight_ = 0;
@@ -153,6 +156,7 @@ bool GpuDepthVisibilityLayer::BuildDepthPyramidFromDepthSrv(const GFX::Context& 
                                                             ID3D12GraphicsCommandList* cmd, uint32_t width,
                                                             uint32_t height, D3D12_GPU_DESCRIPTOR_HANDLE sourceDepthSrv,
                                                             const MATH::Mat4& viewProj, bool jitteredViewProj) {
+    std::swap(depthPyramid_, previousDepthPyramid_);
     stats_.visibilityDepthReady = sourceDepthSrv.ptr != 0 && width != 0 && height != 0;
     stats_.visibilityDepthSrv = sourceDepthSrv;
     DEPTH::DepthPyramidBuildDesc desc{};

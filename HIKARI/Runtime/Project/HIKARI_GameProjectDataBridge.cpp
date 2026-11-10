@@ -3,6 +3,7 @@
 
 #include <string>
 
+#include "Assets/Module/HIKARI_ModuleAssetStore.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Project/Paths/HIKARI_ProjectDataFiles.h"
@@ -26,6 +27,17 @@ ProjectDataReadCode MapFileCode(PROJECT_DATA::ProjectDataFileCode code) noexcept
     case PROJECT_DATA::ProjectDataFileCode::IoFailure: return ProjectDataReadCode::IoFailure;
     }
     return ProjectDataReadCode::IoFailure;
+}
+
+// World が持つモジュール資産の置き場から読む。読めない理由は、資産が無い・種類が違う・ファイルが読めないのどれか。
+std::shared_ptr<const ModuleAssetText> LoadModuleAsset(World& world, std::string_view assetGuid,
+                                                       std::string_view moduleAssetTypeId) {
+    const ModuleAssetStore* store = world.Services().Find<ModuleAssetStore>();
+    if (store == nullptr || assetGuid.empty()) {
+        return nullptr;
+    }
+    std::string error{};
+    return store->Load(AssetGuid{std::string(assetGuid)}, moduleAssetTypeId, error);
 }
 
 } // namespace
@@ -85,6 +97,47 @@ ProjectDataReadResult ProjectDataView::ReadText(std::string_view relativePath,
         return result;
     } catch (...) {
         return {ProjectDataReadCode::IoFailure, 0u};
+    }
+}
+
+ProjectDataReadResult ProjectDataView::ReadModuleAsset(std::string_view assetGuid, std::string_view moduleAssetTypeId,
+                                                       IProjectDataTextSink& sink) const noexcept {
+    RuntimeWorldAccessResult access{};
+    World* world = World::ResolveRuntimeWorld(world_.value, &access);
+    if (world == nullptr) {
+        return {access == RuntimeWorldAccessResult::WrongThread ? ProjectDataReadCode::WrongThread
+                                                                : ProjectDataReadCode::InvalidWorld,
+                0u};
+    }
+    if (PROJECT::INTERNAL::CurrentWorld(world) == nullptr || GameProjectSdkAccess::IsWorldClosing(*world)) {
+        return {ProjectDataReadCode::InvalidWorld, 0u};
+    }
+    try {
+        const std::shared_ptr<const ModuleAssetText> asset = LoadModuleAsset(*world, assetGuid, moduleAssetTypeId);
+        if (asset == nullptr) {
+            return {ProjectDataReadCode::NotFound, 0u};
+        }
+        const ProjectDataReadResult result{ProjectDataReadCode::Ok, asset->text.size()};
+        try {
+            sink.Receive(result, asset->text);
+        } catch (...) {
+            return {ProjectDataReadCode::CallbackFailed, result.byteCount};
+        }
+        return result;
+    } catch (...) {
+        return {ProjectDataReadCode::IoFailure, 0u};
+    }
+}
+
+uint64_t ProjectDataView::GetModuleAssetRevision(std::string_view assetGuid,
+                                                 std::string_view moduleAssetTypeId) const noexcept {
+    try {
+        World* world = PROJECT::INTERNAL::ResolveServiceWorld(world_);
+        const std::shared_ptr<const ModuleAssetText> asset =
+            world != nullptr ? LoadModuleAsset(*world, assetGuid, moduleAssetTypeId) : nullptr;
+        return asset != nullptr ? asset->revision : 0u;
+    } catch (...) {
+        return 0u;
     }
 }
 

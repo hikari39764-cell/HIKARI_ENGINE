@@ -20,6 +20,8 @@ struct AssetFieldOptions {
     bool allowCopyGuid = true;
     bool drawLabel = true;
     float width = 0.0f;
+    // 空でなければ、モジュールが清単に登記したその種類（typeId）の資産だけを選べる（requiredType は ModuleAsset）。
+    std::string_view moduleAssetTypeId{};
 };
 
 bool DrawAssetField(const AssetDatabase* assetDatabase, const AssetFieldOptions& options, std::string& inOutGuid,

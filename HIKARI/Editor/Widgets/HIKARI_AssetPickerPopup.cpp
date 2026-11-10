@@ -10,14 +10,18 @@
 
 #include "Assets/HIKARI_AssetDatabase.h"
 #include "Assets/HIKARI_AssetImportState.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 
 #include "imgui.h"
 
 namespace HIKARI::EDITOR {
 
-namespace {
-
-const char* ToAssetTypeText(AssetType type) {
+std::string AssetKindDisplayName(AssetType type, std::string_view moduleAssetTypeId) {
+    if (!moduleAssetTypeId.empty()) {
+        const ASSETS::SEMANTICS::ModuleAssetTypeDesc* module =
+            ASSETS::SEMANTICS::FindModuleAssetType(moduleAssetTypeId);
+        return module != nullptr && !module->displayName.empty() ? module->displayName : std::string(moduleAssetTypeId);
+    }
     switch (type) {
     case AssetType::Model: return "Model";
     case AssetType::Scene: return "Scene";
@@ -31,10 +35,11 @@ const char* ToAssetTypeText(AssetType type) {
     case AssetType::AnimationStateMachine: return "Animation State Machine";
     case AssetType::Dialogue: return "Dialogue";
     case AssetType::ModelMaterialBinding: return "Material Set";
-    case AssetType::Unknown:
     default: return "Asset";
     }
 }
+
+namespace {
 
 const char* ToAssetIcon(AssetType type) {
     switch (type) {
@@ -48,6 +53,7 @@ const char* ToAssetIcon(AssetType type) {
     case AssetType::AnimationStateMachine: return "[ASM]";
     case AssetType::Dialogue: return "[DLG]";
     case AssetType::ModelMaterialBinding: return "[Set]";
+    case AssetType::ModuleAsset: return "[Mod]";
     default: return "[?]";
     }
 }
@@ -72,13 +78,14 @@ PickerEntry BuildEntry(const AssetRecord& record) {
 } // namespace
 
 bool DrawAssetPickerPopup(const char* popupId, const AssetDatabase& assetDatabase, AssetType requiredType,
-                          std::string& inOutGuid, AssetPickerPopupState& state) {
+                          std::string& inOutGuid, AssetPickerPopupState& state, std::string_view moduleAssetTypeId) {
     bool changed = false;
     if (!ImGui::BeginPopup(popupId)) {
         return false;
     }
 
-    ImGui::Text(TEXT::Localize("editor.ui.select.s.95d86c").c_str(), ToAssetTypeText(requiredType));
+    ImGui::Text(TEXT::Localize("editor.ui.select.s.95d86c").c_str(),
+                AssetKindDisplayName(requiredType, moduleAssetTypeId).c_str());
     ImGui::SetNextItemWidth(-1.0f);
     ImGui::InputTextWithHint("##AssetPickerSearch", TEXT::Localize("editor.ui.search.name.path.guid.dc5276").c_str(),
                              state.searchBuffer.data(), state.searchBuffer.size());
@@ -97,7 +104,9 @@ bool DrawAssetPickerPopup(const char* popupId, const AssetDatabase& assetDatabas
     std::vector<std::string> folders{};
     entries.reserve(records.size());
     for (const AssetRecord* record : records) {
-        if (record && record->guid.IsValid()) {
+        if (record && record->guid.IsValid() &&
+            (moduleAssetTypeId.empty() ||
+             ASSETS::SEMANTICS::MatchesAssetType(record->type, record->sourcePath, requiredType, moduleAssetTypeId))) {
             entries.push_back(BuildEntry(*record));
             const std::string folder = record->sourcePath.parent_path().generic_string();
             if (!folder.empty()) {

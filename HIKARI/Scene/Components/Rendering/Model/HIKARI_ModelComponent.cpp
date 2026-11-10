@@ -273,6 +273,9 @@ void ModelComponent::SetRuntimeMaterialOverride(uint32_t slotIndex, std::unique_
         ClearRuntimeMaterialOverride(slotIndex);
         return;
     }
+    // 材質の原地変更（運行時の束縛など）も描画の変更として届ける。渲染同期は毎フレーム全物体を見ない。
+    material->SetRevisionListener(
+        [](void* owner) noexcept { static_cast<ModelComponent*>(owner)->NotifyRenderStateDirty(); }, this);
 
     for (RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
         if (slot.materialIndex == slotIndex) {

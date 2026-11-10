@@ -54,7 +54,6 @@
 #include "Scene/Vfx/HIKARI_VfxLightOutput.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Scene/Vfx/HIKARI_VfxScreenOutput.h"
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Scene/Capture/HIKARI_SceneCaptureReadability.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
@@ -258,8 +257,6 @@ void DocumentSceneBase::OnExit() {
     if (sessionOwner != nullptr) {
         sessionOwner->ExitScene(state_->runtime.world);
     }
-    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
-        uiSystem->ReleaseInputOwnership();
     SERVICES::GetActionTimeDilationService().ReleaseOwner(&state_->runtime.world);
     state_->camera.sequencePlayback.Reset();
     state_->camera.currentCameraSequenceHandle = {};
@@ -687,6 +684,7 @@ void DocumentSceneBase::Render() {
                 return static_cast<SystemScheduler*>(context)->ExecuteRenderPass(stableId, pass, &outCallbackEntered);
             },
             state_->runtime.world.GetRuntimeIdentity()};
+        primaryView.surfaceExtensions = state_->runtime.world.GetRenderSurfaceExtensions();
         VFX::VfxPlaybackService* playback = state_->runtime.world.Services().Find<VFX::VfxPlaybackService>();
         RENDER3D::PARTICLES::ParticleRenderFrameSource particleFrameSource{};
         if (playback != nullptr) {
@@ -730,7 +728,8 @@ void DocumentSceneBase::Render() {
     (void)RENDER3D::EDITORVIEW::RenderPending(
         activeEnvironment, sceneLighting, state_->identity.documentRevision, state_->lighting.sky,
         &state_->assets.Registry(), state_->runtime.materialExternalValueSnapshot.get(),
-        &RenderSubmissionSystem::GetWorldSpriteFrameSource(), &RenderSubmissionSystem::GetWorldTextFrameSource());
+        &RenderSubmissionSystem::GetWorldSpriteFrameSource(), &RenderSubmissionSystem::GetWorldTextFrameSource(),
+        state_->runtime.world.GetRenderSurfaceExtensions());
 #endif
 }
 const std::string& DocumentSceneBase::GetSceneId() const { return state_->identity.sceneId; }
@@ -791,6 +790,20 @@ bool DocumentSceneBase::AddBorrowedRuntimeExtension(IRuntimeExtension& extension
         return false;
     }
     return state_->runtime.extensionHost.AddBorrowed(extension);
+}
+
+void DocumentSceneBase::SetInstalledModules(const std::vector<InstalledModuleStatus>* modules) noexcept {
+    state_->runtime.installedModules = modules;
+}
+
+std::span<const InstalledModuleStatus> DocumentSceneBase::GetInstalledModules() const noexcept {
+    return state_->runtime.installedModules != nullptr
+               ? std::span<const InstalledModuleStatus>(*state_->runtime.installedModules)
+               : std::span<const InstalledModuleStatus>{};
+}
+
+std::vector<std::string> DocumentSceneBase::GetRuntimeExtensionFeatures(std::string_view extensionId) const {
+    return state_->runtime.extensionHost.GetRegisteredFeatures(extensionId);
 }
 bool DocumentSceneBase::IsRuntimeFeatureActive(std::string_view featureId) const noexcept {
     return state_->runtime.featureCatalog.IsFeatureActive(featureId);

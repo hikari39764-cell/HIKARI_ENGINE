@@ -1,4 +1,6 @@
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
+#include "HIKARI/Project/EditorModuleUi.h"
+#include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Core/Text/HIKARI_Localization.h"
@@ -7,10 +9,18 @@
 #include <span>
 #include <utility>
 
+#include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/HIKARI_Logger.h"
+#include "Editor/Assets/Browser/HIKARI_AssetBrowserPanel.h"
+#include "Editor/Assets/HIKARI_FarModelBakeOperation.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/History/HIKARI_CinematicsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneObjectsHistoryCommand.h"
+#include "Editor/Play/HIKARI_EditorPlaySession.h"
+#include "Project/HIKARI_ProjectSettings.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
+#include "Scene/HIKARI_World.h"
 #include "Scene/Lighting/HIKARI_SceneLightingSet.h"
 
 namespace HIKARI {
@@ -31,10 +41,6 @@ void DocumentSceneEditorController::SyncDocumentHistory(DocumentSceneBase& scene
 void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& scene) {
     using EDITOR::EditorCommandId;
     commandRouter_.BeginFrame();
-    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui) && uiWorkspaceController_.Animation().HasFocus()) {
-        uiWorkspaceController_.Animation().BindCommands(commandRouter_);
-        return;
-    }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Text)) {
         textWorkspaceController_.BindDocumentCommands(commandRouter_);
         return;
@@ -68,8 +74,19 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
                                 projectWorkspaceHost_->Registry().HasActiveWorkspace(),
                                 [this] { (void)projectWorkspaceHost_->Registry().RequestSaveActiveWorkspace(); });
         }
-        // 項目の工作区（レベル編集など）は場面の操作で場面を直接書き換えるので、Ctrl+Z と編集メニューは場面の履歴へ送る。
-        bindSceneHistory();
+        if (projectWorkspaceHost_ == nullptr || projectWorkspaceHost_->ActiveWorkspaceRequestsSceneViewport()) {
+            // 場景の視口を持つ項目の工作区（レベル編集、地形など）は場面を直接書き換えるので、
+            // Ctrl+Z と編集メニューは場面の履歴へ送る。
+            bindSceneHistory();
+            return;
+        }
+        // 自分の文書を編集する項目の工作区（節点図など）には、元に戻す・やり直しをそのまま渡す。
+        // 履歴は工作区の持ち物で、戻せるかどうかはここからは分からないので、工作区が開いていれば有効にする。
+        const bool active = projectWorkspaceHost_->Registry().HasActiveWorkspace();
+        commandRouter_.Bind(EditorCommandId::Undo, TEXT::Localize("menu.edit.undo"), active,
+                            [this] { projectWorkspaceHost_->RequestHistoryStep(false); });
+        commandRouter_.Bind(EditorCommandId::Redo, TEXT::Localize("menu.edit.redo"), active,
+                            [this] { projectWorkspaceHost_->RequestHistoryStep(true); });
         return;
     }
 
@@ -125,7 +142,6 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
 
     if (!workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev) &&
-        !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Ui) &&
         !workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Text)) {
         return;
     }
@@ -139,6 +155,48 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
     commandRouter_.Bind(EditorCommandId::FocusSelection, "Focus Selection",
                         context_.selection.GetSelectedObjectCount() != 0u,
                         [this, &scene]() { FocusSceneObjects(scene, context_.selection.GetSelectedObjectIds()); });
+    // LookDev は自分の「落とす」（外接箱を下の面へ積む）を持つので、地面へ置くのは場面の工作区だけ。
+    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene)) {
+        commandRouter_.BindOperation(EditorCommandId::DropSelectionToGround, TEXT::Localize("ui.command.dropToGround"),
+                                     context_.selection.GetSelectedObjectCount() != 0u && !scene.IsRuntimePlayActive(),
+                                     "scene.drop_to_ground");
+        commandRouter_.BindOperation(EditorCommandId::KeepPlayResults, TEXT::Localize("ui.command.keepPlayResults"),
+                                     context_.selection.GetSelectedObjectCount() != 0u && scene.IsRuntimePlayActive(),
+                                     "scene.keep_play_results");
+    }
+}
+
+void DocumentSceneEditorController::ApplyKeptPlayResults(DocumentSceneBase& scene) {
+    const bool playing = scene.IsRuntimePlayActive();
+    const bool stopped = playWasActive_ && !playing;
+    if (playing && !playWasActive_) {
+        context_.keptPlayPoses.clear(); // 前の Play で残したまま止めなかった分は捨てる。
+    }
+    playWasActive_ = playing;
+    if (!stopped || context_.keptPlayPoses.empty()) {
+        return;
+    }
+    if (context_.keptPlayScenePath != scene.GetScenePath()) {
+        HIKARI_LOG_WARN("Keep Play Results: Play ended in another scene; the kept poses were not written back.");
+        context_.keptPlayPoses.clear();
+        return;
+    }
+    // Play を止めると文書は Play 前へ戻っている。そこへ残した姿勢を書き、一つの撤销にする。
+    SceneDocument& document = scene.GetSceneDocument();
+    std::vector<SceneObjectData> before = document.objects;
+    for (const KeptPlayPose& pose : std::exchange(context_.keptPlayPoses, {})) {
+        if (SceneObjectData* object = FindSceneObjectData(document, pose.id);
+            object != nullptr && !object->parent.has_value()) {
+            object->transform = {pose.position, pose.rotationEulerDeg, pose.scale};
+        }
+    }
+    if (before == document.objects) {
+        return;
+    }
+    CommitSceneObjectAuthoringHistory(
+        scene, SceneObjectAuthoringHistoryRequest{
+                   "Keep Play Results", std::move(before), document.objects, document.camera, document.camera,
+                   context_.sceneDirty || scene.HasUnsavedSceneChanges(), true, true, 0u});
 }
 
 std::vector<EDITOR::EditorAssetDocument*> DocumentSceneEditorController::UnsavedAssetDocuments() {
@@ -211,13 +269,108 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSaveAll() {
     return EDITOR::OperationOk("Saved.", {{"saved", std::move(saved)}});
 }
 
+namespace {
+
+// モジュールの撤销の一件を場面の履歴へ載せる。場面の文書は変えない。
+class ModuleUndoCommand final : public EDITOR::IEditorDocumentCommand {
+public:
+    ModuleUndoCommand(std::string label, std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry)
+        : label_(std::move(label)), entry_(std::move(entry)) {}
+    const std::string& GetLabel() const noexcept override { return label_; }
+    EDITOR::EditorDocumentImpact GetImpact() const noexcept override { return EDITOR::EditorDocumentImpact::None; }
+    void Undo(SceneDocument&) const override { entry_->Undo(); }
+    void Redo(SceneDocument&) const override { entry_->Redo(); }
+    bool TryMergeApplied(const EDITOR::IEditorDocumentCommand&) override { return false; }
+
+private:
+    std::string label_;
+    std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry_;
+};
+
+// まだ一度も保存していない場面（新しい項目を開いた時の場面など）を、Assets/Scenes の新しい場面の資産として保存する。
+// 項目に開始の場面が無ければこの場面を開始の場面にする：開き直した時にこの場面が開き、Play と書き出しもここから始まる。
+bool SaveSceneAsNewAsset(DocumentSceneBase& scene) {
+    AssetDatabase& database = scene.GetAssetDatabase();
+    std::filesystem::path relativePath{};
+    std::string error{};
+    const AssetGuid guid = EDITOR::ASSET_BROWSER::CreateSceneAsset(database, {}, relativePath, error);
+    if (!guid.IsValid() || !scene.SaveCurrentSceneDocumentAs(guid)) {
+        HIKARI_LOG_WARN("[SceneAsset] could not save the scene as a new asset: " + error);
+        return false;
+    }
+    HIKARI_LOG_INFO("[SceneAsset] saved the scene as a new asset: " + relativePath.generic_string());
+    ProjectSettingsService settings{};
+    if (settings.Load(database.GetProjectRoot()) && !settings.GetSettings().startupSceneGuid.IsValid() &&
+        !(settings.SetStartupSceneGuid(guid) && settings.Save())) {
+        HIKARI_LOG_WARN("[SceneAsset] could not make it the startup scene: " + relativePath.generic_string());
+    }
+    return true;
+}
+
+} // namespace
+
+void DocumentSceneEditorController::SetProjectWorkspaceHost(EDITOR::GameProjectEditorWorkspaceHost* host) {
+    projectWorkspaceHost_ = host;
+    if (host == nullptr) {
+        return;
+    }
+    host->Extensions().SetUndoRecorder(
+        [this](std::string label, std::unique_ptr<EDITOR_PROJECT::IEditorUndoEntry> entry) {
+            documentHistory_.RecordApplied(std::make_unique<ModuleUndoCommand>(std::move(label), std::move(entry)));
+            context_.sceneDirty = true;
+            if (aiOperationScene_ != nullptr) {
+                aiOperationScene_->SetUnsavedSceneChanges(true);
+            }
+        });
+    host->Extensions().SetViewportCameraSetter(
+        [this](const GameProjectFloat3& position, const GameProjectFloat3& target) {
+            if (aiOperationScene_ != nullptr) {
+                // 視口の相機は毎フレーム操縦の状態から書き直されるので、操縦の状態も同じ姿勢にする。
+                aiOperationScene_->GetCamera().SetLookAt({position.x, position.y, position.z},
+                                                         {target.x, target.y, target.z});
+                aiOperationScene_->GetDebugCamera().ResetFromCamera(aiOperationScene_->GetCamera());
+            }
+        });
+    host->Extensions().SetSelectionReader([this]() {
+        EDITOR_PROJECT::EditorSceneSelection selection{};
+        selection.sceneObjectId = context_.selection.GetActiveObjectId().value;
+        selection.selectedCount = static_cast<uint32_t>(context_.selection.GetSelectedObjectCount());
+        const GameObject* object = context_.selection.selectedObject;
+        const World* world = object != nullptr ? object->GetWorld() : nullptr;
+        if (world != nullptr && object->GetRuntimeHandle().IsValid()) {
+            selection.object = {GameProjectWorldHandle{world->GetRuntimeIdentity()},
+                                object->GetRuntimeHandle().ToValue()};
+        }
+        return selection;
+    });
+    host->Extensions().SetPlayStateReader(
+        [this]() { return aiPlaySession_ != nullptr && aiPlaySession_->IsRunning(); });
+    host->Extensions().SetFarModelBaker([this](std::string_view modelAssetGuid) -> std::string {
+        if (aiOperationScene_ == nullptr) {
+            return {};
+        }
+        EDITOR::FarModelBakeOutcome outcome =
+            EDITOR::BakeFarModelAsset(aiOperationScene_->GetAssetDatabase(), modelAssetGuid, 0u);
+        if (!outcome.ok) {
+            HIKARI_LOG_ERROR("[FarModel] " + outcome.message);
+        }
+        return std::move(outcome.farModelGuid);
+    });
+}
+
+void DocumentSceneEditorController::DiscardModuleUndoEntries() { documentHistory_ = EDITOR::EditorDocumentHistory{}; }
+
 bool DocumentSceneEditorController::SaveSceneDocument(DocumentSceneBase& scene) {
-    if (scene.SaveCurrentSceneDocument()) {
+    const bool neverSaved = !scene.GetCurrentSceneAssetGuid().IsValid() && scene.GetScenePath().empty();
+    if (neverSaved ? SaveSceneAsNewAsset(scene) : scene.SaveCurrentSceneDocument()) {
         documentHistory_.MarkSaved();
         historyExternalDirty_ = false;
         context_.sceneDirty = false;
         scene.SetUnsavedSceneChanges(false);
         viewportDropMessage_ = "Scene saved";
+        if (projectWorkspaceHost_ != nullptr) {
+            projectWorkspaceHost_->Extensions().NotifySceneSaved(RuntimeSceneContext::GetCurrentSceneFilePath());
+        }
         return true;
     } else {
         viewportDropMessage_ = "Save failed; save the scene as an asset first";
@@ -289,6 +442,8 @@ void DocumentSceneEditorController::CommitAppliedDocumentCommand(
 
 void DocumentSceneEditorController::CommitSceneObjectAuthoringHistory(DocumentSceneBase& scene,
                                                                       SceneObjectAuthoringHistoryRequest history) {
+    // 地面に従う物体を動かした・足した編集は、置き直しまで含めて一つの撤销にする。
+    groundFollow_.ApplyToEdit(scene, history);
     EDITOR::EditorDocumentImpact impact =
         history.runtimeWorldAffected ? EDITOR::EditorDocumentImpact::RuntimeWorld : EDITOR::EditorDocumentImpact::None;
     const auto beforeLighting =

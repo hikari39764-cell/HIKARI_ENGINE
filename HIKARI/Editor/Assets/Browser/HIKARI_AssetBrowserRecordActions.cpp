@@ -49,7 +49,7 @@ void HandleRecordActivated(const AssetRecord& record, std::string& lastOperation
         lastOperationMessage = TEXT::Localize("ui.assetBrowser.assetSelected") + record.displayName;
         return;
     }
-    if (record.type == AssetType::TextStyle || record.type == AssetType::UiAnimation) {
+    if (record.type == AssetType::TextStyle) {
         activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
         return;
     }
@@ -83,7 +83,8 @@ void HandleRecordActivated(const AssetRecord& record, std::string& lastOperation
         lastOperationMessage = TEXT::Localize("ui.assetBrowser.collisionRequested") + record.displayName;
         return;
     }
-    if (record.type == AssetType::VfxEffect) {
+    if (record.type == AssetType::VfxEffect || record.type == AssetType::ModuleAsset) {
+        // モジュールの資産は、その種類を編集する項目の工作区があればそこで開く（無ければ選ぶだけ）。
         activatedAsset = AssetWorkspaceActivation{record.type, record.guid};
         lastOperationMessage = TEXT::Localize("ui.assetBrowser.assetSelected") + record.displayName;
         return;

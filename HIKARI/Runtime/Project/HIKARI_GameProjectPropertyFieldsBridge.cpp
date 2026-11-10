@@ -15,6 +15,7 @@
 #include "RenderContracts/Asset/HIKARI_AssetTypes.h"
 #include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Input/Runtime/HIKARI_InputTypes.h"
+#include "Runtime/Project/HIKARI_GameProjectAuthoringHost.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectBindingConversion.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
@@ -102,35 +103,6 @@ bool LoadFloat3(const nlohmann::json* stored, GameProjectFloat3& value) {
     return changed;
 }
 
-AssetType ToAssetType(GameProjectAssetKind kind) noexcept {
-    switch (kind) {
-    case GameProjectAssetKind::Scene: return AssetType::Scene;
-    case GameProjectAssetKind::Prefab: return AssetType::Prefab;
-    case GameProjectAssetKind::Model: return AssetType::Model;
-    case GameProjectAssetKind::ModelMaterialSet: return AssetType::ModelMaterialBinding;
-    case GameProjectAssetKind::Material: return AssetType::Material;
-    case GameProjectAssetKind::Texture: return AssetType::Texture;
-    case GameProjectAssetKind::Sky: return AssetType::Sky;
-    case GameProjectAssetKind::Sprite: return AssetType::Sprite;
-    case GameProjectAssetKind::SpriteMaterial: return AssetType::SpriteMaterial;
-    case GameProjectAssetKind::Animation: return AssetType::Animation;
-    case GameProjectAssetKind::AnimationStateMachine: return AssetType::AnimationStateMachine;
-    case GameProjectAssetKind::Sequence: return AssetType::Sequence;
-    case GameProjectAssetKind::Dialogue: return AssetType::Dialogue;
-    case GameProjectAssetKind::GameplayCamera: return AssetType::GameplayCamera;
-    case GameProjectAssetKind::VfxEffect: return AssetType::VfxEffect;
-    case GameProjectAssetKind::Shader: return AssetType::Shader;
-    case GameProjectAssetKind::PostEffect: return AssetType::PostEffect;
-    case GameProjectAssetKind::PostProfile: return AssetType::PostProfile;
-    case GameProjectAssetKind::Font: return AssetType::Font;
-    case GameProjectAssetKind::TextStyle: return AssetType::TextStyle;
-    case GameProjectAssetKind::UiAnimation: return AssetType::UiAnimation;
-    case GameProjectAssetKind::Environment: return AssetType::Environment;
-    case GameProjectAssetKind::Weather: return AssetType::Weather;
-    }
-    return AssetType::Unknown;
-}
-
 bool ToInputValueType(GameProjectInputValueType type, INPUT::InputActionValueType& outType) noexcept {
     switch (type) {
     case GameProjectInputValueType::Button: outType = INPUT::InputActionValueType::Button; return true;
@@ -161,6 +133,9 @@ bool InspectText(IInspectorBuilder& builder, const GameProjectTextFieldDesc& des
     case GameProjectTextFieldKind::Plain: return builder.String(field, editable);
     case GameProjectTextFieldKind::Asset:
     case GameProjectTextFieldKind::AssetId:
+        if (!desc.moduleAssetTypeId.empty()) {
+            return builder.ModuleAssetIdPicker(field, desc.moduleAssetTypeId, editable);
+        }
         return desc.assetKind == GameProjectAssetKind::Scene
                    ? builder.SceneIdPicker(field, editable)
                    : builder.AssetIdPicker(field, ToAssetType(desc.assetKind), editable);
@@ -267,6 +242,40 @@ PropertyFields GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode mode,
                                                         IInspectorBuilder* inspector) noexcept {
     void* archive = mode == PropertyFieldsMode::Load ? const_cast<nlohmann::json*>(loadArchive) : saveArchive;
     return PropertyFields(mode, archive, inspector);
+}
+
+void InspectPropertyFields(IPropertyFieldDeclaration& declaration, IInspectorBuilder& builder) {
+    PropertyFields fields =
+        GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Inspect, nullptr, nullptr, &builder);
+    declaration.Describe(fields);
+}
+
+bool LoadPropertyFields(std::string_view utf8Json, IPropertyFieldDeclaration& declaration) noexcept {
+    try {
+        const nlohmann::json root = nlohmann::json::parse(utf8Json.begin(), utf8Json.end(), nullptr, false);
+        if (!root.is_object()) {
+            return false;
+        }
+        PropertyFields fields =
+            GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Load, &root, nullptr, nullptr);
+        declaration.Describe(fields);
+        return true;
+    } catch (...) {
+        return false;
+    }
+}
+
+bool SavePropertyFields(IPropertyFieldDeclaration& declaration, IPropertyFieldsTextSink& sink) noexcept {
+    try {
+        nlohmann::json root = nlohmann::json::object();
+        PropertyFields fields =
+            GameProjectSdkAccess::MakePropertyFields(PropertyFieldsMode::Save, nullptr, &root, nullptr);
+        declaration.Describe(fields);
+        sink.Receive(root.dump());
+        return true;
+    } catch (...) {
+        return false;
+    }
 }
 
 bool PropertyFields::Bool(std::string_view id, std::string_view label, bool& value) {

@@ -7,6 +7,7 @@
 #include <vector>
 
 #include "Editor/Authoring/HIKARI_EditorObjectState.h"
+#include "Editor/Authoring/HIKARI_GroundPlacement.h"
 #include "Editor/Selection/HIKARI_EditorSelection.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
 #include "Scene/Components/HIKARI_CameraComponent.h"
@@ -15,15 +16,11 @@
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
+#include "Scene/HIKARI_SceneDocumentQueries.h"
 
 namespace HIKARI::EDITOR {
 namespace {
-enum class LightingComponentScaleTarget {
-    None,
-    ReflectionInfluenceBox,
-    ReflectionInfluenceSphere,
-    IrradianceVolume
-};
+enum class LightingComponentScaleTarget { None, ReflectionInfluenceBox, ReflectionInfluenceSphere, IrradianceVolume };
 
 struct LightingComponentScaleProxy {
     LightingComponentScaleTarget target = LightingComponentScaleTarget::None;
@@ -197,6 +194,43 @@ bool ApplyLocalTransform(GameObject& object, Transform3D transform) {
     return object.SetLocalTransform(transform);
 }
 
+// 移動の手柄で動かした根の物体を、真下の地面へ載せる。地面に従う物体はその置き方（傾きと下沉）で、それ以外は向きを
+// 変えずに高さだけ合わせる。子は親に従うので動かさない。
+void StickMovedObjectsToGround(DocumentSceneBase& scene, const std::vector<SceneObjectId>& ids) {
+    const std::unordered_map<uint64_t, ModelFootprint> footprints = CollectModelFootprints();
+    for (const SceneObjectId id : ids) {
+        GameObject* object = scene.GetWorld().FindObject(id);
+        const SceneObjectData* data = FindSceneObjectData(scene.GetSceneDocument(), id);
+        if (object == nullptr || data == nullptr || object->GetParent() != nullptr || IsCamera(*object)) {
+            continue;
+        }
+        const Transform3D& local = object->GetTransform();
+        const TransformData current{local.position, MATH::EulerXYZDegreesFromQuat(local.rotation), local.scale};
+        const auto footprint = footprints.find(id.value);
+        const ModelFootprint* bounds = footprint != footprints.end() ? &footprint->second : nullptr;
+        const bool anchored = data->FindComponent("GroundAnchorComponent") != nullptr;
+        TransformData placed{};
+        if (!(anchored ? PlaceOnGround(scene.GetWorld(), current, bounds, ResolveGroundPlacement(*data), placed)
+                       : RestOnGround(scene.GetWorld(), current, bounds, placed))) {
+            continue;
+        }
+        Transform3D next = local;
+        next.position = placed.position;
+        if (anchored) {
+            constexpr float kDegToRad = 0.01745329252f;
+            next.rotation =
+                MATH::Quat::FromEulerXYZ(placed.rotationEulerDeg.x * kDegToRad, placed.rotationEulerDeg.y * kDegToRad,
+                                         placed.rotationEulerDeg.z * kDegToRad);
+        }
+        (void)ApplyLocalTransform(*object, next);
+    }
+}
+
+SceneSelectionTransformResult DrawAndApplySelectionGizmo(DocumentSceneBase& scene, EditorSelection& selection,
+                                                         const EditorTransformGizmo& gizmo,
+                                                         const EditorTransformGizmoState& state,
+                                                         const EditorViewportRect& viewportRect);
+
 } // namespace
 
 bool HasSelectedAncestor(const GameObject& object, const std::unordered_set<uint64_t>& selectedIds) {
@@ -212,6 +246,18 @@ SceneSelectionTransformResult DrawSceneSelectionTransformGizmo(DocumentSceneBase
                                                                const EditorTransformGizmo& gizmo,
                                                                const EditorTransformGizmoState& state,
                                                                const EditorViewportRect& viewportRect) {
+    SceneSelectionTransformResult result = DrawAndApplySelectionGizmo(scene, selection, gizmo, state, viewportRect);
+    if (state.groundSnap && state.operation == EditorTransformGizmoOperation::Translate && result.gizmo.changed) {
+        StickMovedObjectsToGround(scene, result.changedObjectIds);
+    }
+    return result;
+}
+
+namespace {
+SceneSelectionTransformResult DrawAndApplySelectionGizmo(DocumentSceneBase& scene, EditorSelection& selection,
+                                                         const EditorTransformGizmo& gizmo,
+                                                         const EditorTransformGizmoState& state,
+                                                         const EditorViewportRect& viewportRect) {
     SceneSelectionTransformResult result{};
     GameObject* activeObject = selection.selectedObject;
     if (activeObject == nullptr || IsObjectEditorLocked(scene.GetSceneDocument(), activeObject->GetDocumentId()) ||
@@ -271,6 +317,7 @@ SceneSelectionTransformResult DrawSceneSelectionTransformGizmo(DocumentSceneBase
     }
     return result;
 }
+} // namespace
 
 void CommitSceneSelectionTransforms(DocumentSceneBase& scene, const SceneSelectionTransformResult& result) {
     for (SceneObjectId objectId : result.changedObjectIds) {

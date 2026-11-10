@@ -8,6 +8,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
+#include <Jolt/Physics/Collision/Shape/HeightFieldShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/ScaledShape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -128,6 +129,21 @@ JPH::ShapeRefC BuildLeafShape(const PhysicsShapeDesc& shape, uint64_t userData, 
         result = settings.Create();
         break;
     }
+    case PhysicsShapeType::HeightField: {
+        const size_t sampleCount = static_cast<size_t>(shape.heightSampleCount) * shape.heightSampleCount;
+        if (shape.heightSamples == nullptr || sampleCount == 0u || shape.heightSamples->size() != sampleCount) {
+            if (outError != nullptr) {
+                *outError = "height field samples are invalid";
+            }
+            return {};
+        }
+        JPH::HeightFieldShapeSettings settings(
+            shape.heightSamples->data(), JPH::Vec3::sZero(),
+            JPH::Vec3(shape.heightSampleSpacing, 1.0f, shape.heightSampleSpacing), shape.heightSampleCount);
+        settings.mUserData = userData;
+        result = settings.Create();
+        break;
+    }
     }
     JPH::ShapeRefC leaf = result.HasError() ? JPH::ShapeRefC{} : JPH::ShapeRefC(result.Get());
     if (!leaf && outError != nullptr && outError->empty()) {
@@ -170,9 +186,9 @@ JPH::ShapeRefC BuildCompoundShape(std::span<const PhysicsShapeDesc> shapes, std:
 }
 
 JPH::ShapeRefC BuildQueryShape(const PhysicsShapeDesc& shape, std::string* outError) {
-    if (shape.type == PhysicsShapeType::TriangleMesh) {
+    if (shape.type == PhysicsShapeType::TriangleMesh || shape.type == PhysicsShapeType::HeightField) {
         if (outError != nullptr) {
-            *outError = "triangle mesh query shapes are unsupported";
+            *outError = "triangle mesh and height field query shapes are unsupported";
         }
         return {};
     }

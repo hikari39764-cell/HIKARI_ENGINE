@@ -7,6 +7,19 @@ file(GLOB HIKARI_GAME_PROJECT_SDK_HEADERS CONFIGURE_DEPENDS
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/*.h"
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Runtime/*.h")
 
+# モジュールへ公開する引擎の共用の核（HIKARI::CoreShared）の一覧。
+include("${HIKARI_SOURCE_ROOT}/cmake/SDK/CoreSharedFiles.cmake")
+set(HIKARI_SDK_CMAKE_MODULES
+    "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
+    "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIModule.cmake"
+    "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIModuleTargets.cmake"
+    "${HIKARI_SOURCE_ROOT}/cmake/SyncDirectory.cmake")
+# HIKARIConfig.cmake が INTERFACE_SOURCES に使う路径（SDK の根は取り込み時に決まる）。
+set(HIKARI_SDK_CORE_SHARED_SOURCE_PATHS "")
+foreach(_source IN LISTS HIKARI_SDK_CORE_SHARED_SOURCES)
+    list(APPEND HIKARI_SDK_CORE_SHARED_SOURCE_PATHS "\${_HIKARI_SDK_ROOT}/shared/src/${_source}")
+endforeach()
+
 set(
     HIKARI_SDK_GENERATED_DIRECTORY
     "${CMAKE_BINARY_DIR}/generated/HIKARISdk")
@@ -98,11 +111,20 @@ function(hikari_configure_game_project_sdk host_target)
             PRIVATE
                 "/WHOLEARCHIVE:$<TARGET_FILE:hikari_runtime_game_project_sdk>")
     endif()
+    list(TRANSFORM HIKARI_SDK_CORE_SHARED_HEADERS PREPEND "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Public/"
+         OUTPUT_VARIABLE _core_shared_headers)
+    list(TRANSFORM HIKARI_SDK_CORE_SHARED_SOURCES PREPEND "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/"
+         OUTPUT_VARIABLE _core_shared_sources)
     set(
         _sdk_inputs
         ${HIKARI_GAME_PROJECT_SDK_HEADERS}
+        ${_core_shared_headers}
+        ${_core_shared_sources}
+        ${HIKARI_SDK_CMAKE_MODULES}
         "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIConfig.cmake.in"
-        "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
+        "${HIKARI_SOURCE_ROOT}/cmake/SDK/CoreSharedFiles.cmake"
+        "${HIKARI_SOURCE_ROOT}/cmake/SDK/StageCoreShared.cmake"
+        "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
         "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp"
         "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
         "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
@@ -132,11 +154,21 @@ function(hikari_configure_game_project_sdk host_target)
             "${_sdk_root}/lib/cmake/HIKARI"
             "${_sdk_root}/src"
             "${_sdk_root}/Tools"
+            "${_sdk_root}/third_party/nlohmann"
         COMMAND
             "${CMAKE_COMMAND}"
             "-DSOURCE=${HIKARI_SOURCE_ROOT}/include/HIKARI"
             "-DDESTINATION=${_sdk_root}/include/HIKARI"
             -P "${HIKARI_SOURCE_ROOT}/cmake/SyncDirectory.cmake"
+        COMMAND
+            "${CMAKE_COMMAND}"
+            "-DCORE_ROOT=${HIKARI_SOURCE_ROOT}/HIKARI/Core"
+            "-DDESTINATION=${_sdk_root}/shared"
+            -P "${HIKARI_SOURCE_ROOT}/cmake/SDK/StageCoreShared.cmake"
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different
+            "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
+            "${_sdk_root}/third_party/nlohmann/json.hpp"
         COMMAND
             "${CMAKE_COMMAND}" -E copy_if_different
             "$<TARGET_LINKER_FILE:${host_target}>"
@@ -146,7 +178,7 @@ function(hikari_configure_game_project_sdk host_target)
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
-            "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
+            ${HIKARI_SDK_CMAKE_MODULES}
             "${_sdk_root}/lib/cmake/HIKARI"
         COMMAND
             "${CMAKE_COMMAND}" -E copy_if_different
@@ -168,11 +200,6 @@ function(hikari_configure_game_project_sdk host_target)
                 "${_sdk_root}/Tools/CMake/bin"
                 "${_sdk_root}/Tools/CMake/share/${HIKARI_CMAKE_MODULE_DIRECTORY_NAME}"
                 "${_sdk_root}/Tools/CMake/licenses"
-                "${_sdk_root}/third_party/nlohmann"
-            COMMAND
-                "${CMAKE_COMMAND}" -E copy_if_different
-                "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
-                "${_sdk_root}/third_party/nlohmann/json.hpp"
             COMMAND
                 "${CMAKE_COMMAND}" -E copy_if_different
                 "${HIKARI_SOURCE_ROOT}/Tools/Build/Invoke-HikariProjectCodeWorker.ps1"
@@ -203,11 +230,21 @@ function(hikari_configure_game_project_sdk host_target)
     install(
         DIRECTORY "${HIKARI_SOURCE_ROOT}/include/HIKARI"
         DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/include")
+    # The upstream single header carries its MIT license. HIKARI::CoreShared reads JSON with it in every
+    # configuration; Editor project tools use the same bundled parser.
+    install(FILES "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/third_party/nlohmann")
+    foreach(_header IN LISTS HIKARI_SDK_CORE_SHARED_HEADERS)
+        get_filename_component(_directory "${_header}" DIRECTORY)
+        install(FILES "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Public/${_header}"
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/shared/include/${_directory}")
+    endforeach()
+    foreach(_source IN LISTS HIKARI_SDK_CORE_SHARED_SOURCES)
+        get_filename_component(_directory "${_source}" DIRECTORY)
+        install(FILES "${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/${_source}"
+            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/shared/src/${_directory}")
+    endforeach()
     if(HIKARI_WITH_EDITOR_BUILD)
-        # The upstream single header carries its MIT license. Project tools can
-        # use the bundled parser without including any private engine headers.
-        install(FILES "${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
-            DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/third_party/nlohmann")
         install(FILES "${HIKARI_SOURCE_ROOT}/Tools/Build/Invoke-HikariProjectCodeWorker.ps1"
             DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools")
     endif()
@@ -221,7 +258,7 @@ function(hikari_configure_game_project_sdk host_target)
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
             "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
-            "${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARIGameProject.cmake"
+            ${HIKARI_SDK_CMAKE_MODULES}
         DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/lib/cmake/HIKARI")
     install(
         FILES

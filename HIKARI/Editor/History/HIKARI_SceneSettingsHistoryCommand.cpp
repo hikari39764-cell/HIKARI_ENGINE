@@ -56,4 +56,11 @@ std::unique_ptr<IEditorDocumentCommand> MakeLightingBakeSettingsHistoryCommand(s
         std::move(label), before, after);
 }
 
+std::unique_ptr<IEditorDocumentCommand> MakePartitionSettingsHistoryCommand(std::string label,
+                                                                            ScenePartitionSettings before,
+                                                                            ScenePartitionSettings after) {
+    return std::make_unique<SceneSettingsHistoryCommand<&SceneDocument::partition, EditorDocumentImpact::None>>(
+        std::move(label), before, after);
+}
+
 } // namespace HIKARI::EDITOR

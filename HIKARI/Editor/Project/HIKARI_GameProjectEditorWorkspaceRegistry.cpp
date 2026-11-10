@@ -77,8 +77,10 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
         }
 
         EDITOR_PROJECT::EditorWorkspaceDescriptor descriptor{};
+        std::string assetTypeId{};
         try {
             descriptor = workspace->GetDescriptor();
+            assetTypeId = workspace->GetAssetTypeId();
         } catch (const std::exception& exception) {
             outMessage = "GameProject Editor workspace descriptor threw: " + ExceptionDetail(exception);
             return false;
@@ -138,6 +140,7 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
             {},
             (descriptor.options & kKnownOptions) != 0u,
             false,
+            std::move(assetTypeId),
         });
     }
 
@@ -223,6 +226,16 @@ void GameProjectEditorWorkspaceRegistry::DrawActive() noexcept {
     }
     EDITOR_PROJECT::EditorWorkspaceHostContext context = MakeContext(entry);
     try {
+        if (pendingAssetWorkspace_ && !navigation_.pending) {
+            // 切り替えが済んでいれば開かせる。切り替えを取り消された時は、頼みごと捨てる。
+            const std::string assetGuid = std::move(pendingAssetGuid_);
+            const bool arrived = *pendingAssetWorkspace_ == index;
+            pendingAssetWorkspace_.reset();
+            pendingAssetGuid_.clear();
+            if (arrived) {
+                entry.workspace->OpenAsset(context, assetGuid);
+            }
+        }
         entry.workspace->Draw(context);
     } catch (const std::exception& exception) {
         Disable(index, "Draw", ExceptionDetail(exception));
@@ -329,6 +342,33 @@ void GameProjectEditorWorkspaceRegistry::Shutdown(EDITOR_PROJECT::IEditorWorkspa
     EndFrame();
 }
 
+std::string_view GameProjectEditorWorkspaceRegistry::FindWorkspaceForAssetType(
+    std::string_view moduleAssetTypeId) const noexcept {
+    if (moduleAssetTypeId.empty()) {
+        return {};
+    }
+    for (const Entry& entry : entries_) {
+        if (!entry.disabled && entry.assetTypeId == moduleAssetTypeId) {
+            return entry.workspaceId;
+        }
+    }
+    return {};
+}
+
+void GameProjectEditorWorkspaceRegistry::SetPendingAsset(std::string_view workspaceId, std::string_view assetGuid) {
+    pendingAssetWorkspace_ = Find(workspaceId);
+    pendingAssetGuid_.assign(pendingAssetWorkspace_ ? assetGuid : std::string_view{});
+}
+
+std::string GameProjectEditorWorkspaceRegistry::TakePendingActivation() {
+    if (!navigation_.pending || !navigation_.target || *navigation_.target >= entries_.size()) {
+        return {};
+    }
+    std::string workspaceId = entries_[*navigation_.target].workspaceId;
+    navigation_ = {};
+    return workspaceId;
+}
+
 bool GameProjectEditorWorkspaceRegistry::RequestActivateWorkspace(std::string_view workspaceId) {
     const std::optional<size_t> target = Find(workspaceId);
     if (!target || entries_[*target].disabled || awaitingClose_) {
@@ -418,8 +458,7 @@ bool GameProjectEditorWorkspaceRegistry::Activate(size_t index) noexcept {
     try {
         entry.workspace->OnActivate(context);
         active_ = index;
-        PublishStatus(EDITOR_PROJECT::EditorWorkspaceStatusSeverity::Info,
-                      "Activated project workspace '" + entry.displayName + "'.");
+        ClearStatus();
         return true;
     } catch (const std::exception& exception) {
         Disable(index, "OnActivate", ExceptionDetail(exception));

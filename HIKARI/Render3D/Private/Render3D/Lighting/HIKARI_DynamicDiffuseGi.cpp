@@ -125,6 +125,20 @@ struct Constants {
 };
 static_assert(sizeof(Constants) == 576);
 
+// 前の格子に無かった probe の数（相機の移動で露出した端）。
+UINT CountExposedProbes(const Constants& constants) {
+    const auto& previous = constants.previous[constants.field[0]];
+    const float origin[]{constants.origin.x, constants.origin.y, constants.origin.z};
+    const float previousOrigin[]{previous.originSampling.x, previous.originSampling.y, previous.originSampling.z};
+    const float spacing[]{previous.spacingIntensity.x, previous.spacingIntensity.y, previous.spacingIntensity.z};
+    UINT kept = 1u;
+    for (UINT axis = 0; axis < 3; ++axis) {
+        const int shift = int(std::abs(std::round((origin[axis] - previousOrigin[axis]) / spacing[axis])));
+        kept *= UINT((std::max)(int(constants.counts[axis]) - shift, 0));
+    }
+    return constants.counts[3] - kept;
+}
+
 // 形状が動いた範囲を局所的に先行更新する。通常の巡回は残し、追加 ray は通常予算の二倍まで。
 UINT SchedulePriority(Constants& constants, MATH::Vec4 minimum, MATH::Vec4 maximum, UINT budget) {
     const float lo[]{minimum.x, minimum.y, minimum.z}, hi[]{maximum.x, maximum.y, maximum.z};
@@ -153,8 +167,8 @@ UINT SchedulePriority(Constants& constants, MATH::Vec4 minimum, MATH::Vec4 maxim
                     float(constants.counts[axis]) == previousCount[axis];
     if (count == 0 && sameGrid)
         return 0;
-    // GPU と同じ選択を数える。新規格子（相機の移動で露出した端）は追加予算とは別に即時初期化される。
-    UINT extra = 0;
+    // GPU と同じ選択を数える。新規格子（相機の移動で露出した端）は field[1] 個に 1 個を今回初期化する。
+    UINT extra = 0, exposed = 0;
     for (UINT i = 0; i < constants.counts[3]; ++i) {
         const UINT cell[]{i % constants.counts[0], (i / constants.counts[0]) % constants.counts[1],
                           i / (constants.counts[0] * constants.counts[1])};
@@ -176,9 +190,10 @@ UINT SchedulePriority(Constants& constants, MATH::Vec4 minimum, MATH::Vec4 maxim
             (linear + constants.counts[3] - constants.work[1]) % constants.counts[3] < constants.work[2];
         const bool priority =
             affected && (priorityRank + count - constants.prioritySize[3]) % count < constants.priorityOrigin[3];
-        extra += !scheduled && (newProbe || priority);
+        extra += !scheduled && priority;
+        exposed += !scheduled && !priority && newProbe;
     }
-    return extra;
+    return extra + exposed / (std::max)(constants.field[1], 1u);
 }
 
 struct ProbeSet {
@@ -265,6 +280,8 @@ struct Field {
     UINT published = 0, firstProbe = 0;
     // 履歴なしで始めた後、全 probe を更新する残りの回数。
     UINT fullUpdates = 0;
+    // 初回の更新を待っている新しい probe の数の見積もり。
+    float pendingFirstUpdates = 0.0f;
     uint64_t lastFrame = 0, lastUseFence = 0, legacyRetireFence = 0;
     bool history = false, active = false, carry = false;
     void Reset(const GFX::Context& graphics) {
@@ -273,6 +290,7 @@ struct Field {
         legacy.Reset(graphics);
         carry = false;
         fullUpdates = 0;
+        pendingFirstUpdates = 0.0f;
         layout = {};
         id.clear();
         fixedOrigin = {};
@@ -646,6 +664,16 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         // 面から間隔の 2 割以上離す。固定 ray の 1/4 超が裏面なら形状の中。移動は間隔の 45% まで（RTXGI）。
         // 間隔の 1.75 倍以内に形状が無い probe は非活性（描画側は支持に数えず、下位の層へ渡す）。
         constants.relocate = {0.2f * minimumSpacing, 0.25f, 0.45f, 1.75f * maximumSpacing};
+        // 新しく範囲へ入った probe の初回の更新は、一フレームに巡回の予算まで。残りは次のフレームへ回す。
+        field.pendingFirstUpdates = compatible && field.fullUpdates == 0
+                                        ? field.pendingFirstUpdates + float(CountExposedProbes(constants))
+                                        : 0.0f;
+        const float firstUpdates = (std::min)(field.pendingFirstUpdates, float(layout.budget));
+        constants.field[1] = firstUpdates > 0.0f ? UINT(std::ceil(field.pendingFirstUpdates / firstUpdates)) : 1u;
+        field.pendingFirstUpdates -= field.pendingFirstUpdates / float(constants.field[1]);
+        // 初回の更新が多いフレームは、その分だけ巡回を減らす（巡回は 1/4 を残す）。飛行中の合計を一定に保つ。
+        if (field.fullUpdates == 0)
+            constants.work[2] = (std::max)(budget / 4u, budget - UINT(firstUpdates));
         const UINT extraUpdates =
             compatible ? SchedulePriority(constants, state.changedMinimum, state.changedMaximum, layout.budget) : 0;
         std::memcpy(constantBuffers[index].cpuAddress, &constants, sizeof(constants));
@@ -672,7 +700,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         field.published = 1 - field.published;
         field.history = true;
         field.lastFrame = frameSerial;
-        field.firstProbe = (constants.work[1] + budget) % constants.counts[3];
+        field.firstProbe = (constants.work[1] + constants.work[2]) % constants.counts[3];
         if (field.fullUpdates > 0)
             --field.fullUpdates;
         if (field.carry)
@@ -680,7 +708,7 @@ Frame DynamicDiffuseGi::Prepare(const GFX::Context& graphics, const RAYTRACING::
         field.carry = false;
         field.lastUseFence = graphics.currentFrameRetireFenceValue;
         state.stats.probes += constants.counts[3];
-        state.stats.updatedProbes += budget + extraUpdates;
+        state.stats.updatedProbes += constants.work[2] + extraUpdates;
         state.stats.probeBytes += previous.bytes + target.bytes;
     }
     state.lastFence = graphics.currentFrameRetireFenceValue;

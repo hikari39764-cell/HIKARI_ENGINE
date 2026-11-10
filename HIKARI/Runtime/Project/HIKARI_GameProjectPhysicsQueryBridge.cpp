@@ -6,6 +6,7 @@
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
+#include "HIKARI/Project/WorldView.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
 #include <algorithm>
 #include <array>
@@ -232,4 +233,45 @@ uint32_t PhysicsQueryView::ReadTriggerEvents(GameProjectPhysicsTriggerEvent* out
         return 0u;
     }
 }
+uint64_t WorldView::AddStaticHeightField(GameProjectObjectHandle owner, float originX, float originZ,
+                                         float spacingMeters, uint32_t sampleCount,
+                                         std::span<const float> heights) const noexcept {
+    try {
+        const World* world = GameProjectSdkAccess::GetWorld(*this);
+        PHYSICS::PhysicsWorldService* service =
+            world != nullptr ? const_cast<World*>(world)->Services().Find<PHYSICS::PhysicsWorldService>() : nullptr;
+        if (service == nullptr || sampleCount < 3u || spacingMeters <= 0.0f ||
+            heights.size() != static_cast<size_t>(sampleCount) * sampleCount) {
+            return 0u;
+        }
+        PHYSICS::PhysicsBodyCreateInfo info{};
+        info.body.object = RuntimeObjectHandle::FromValue(owner.value);
+        info.body.motionType = PHYSICS::PhysicsMotionType::Static;
+        PHYSICS::PhysicsShapeDesc shape{};
+        shape.type = PHYSICS::PhysicsShapeType::HeightField;
+        shape.localCenter = {originX, 0.0f, originZ};
+        shape.heightSamples = std::make_shared<const std::vector<float>>(heights.begin(), heights.end());
+        shape.heightSampleCount = sampleCount;
+        shape.heightSampleSpacing = spacingMeters;
+        shape.material = PHYSICS::PhysicsMaterialDesc{0.8f, 0.0f, 1.0f};
+        info.shapes.push_back(std::move(shape));
+        const PHYSICS::PhysicsBodyCreateResult created = service->CreateBody(info);
+        return created.Succeeded() ? created.handle.ToValue() : 0u;
+    } catch (...) {
+        return 0u;
+    }
+}
+
+void WorldView::RemoveStaticHeightField(uint64_t body) const noexcept {
+    try {
+        const World* world = GameProjectSdkAccess::GetWorld(*this);
+        PHYSICS::PhysicsWorldService* service =
+            world != nullptr ? const_cast<World*>(world)->Services().Find<PHYSICS::PhysicsWorldService>() : nullptr;
+        if (service != nullptr && body != 0u) {
+            (void)service->DestroyBody(PHYSICS::PhysicsBodyHandle::FromValue(body));
+        }
+    } catch (...) {
+    }
+}
+
 } // namespace HIKARI

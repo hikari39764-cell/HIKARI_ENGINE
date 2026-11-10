@@ -24,6 +24,8 @@ enum class SceneObjectCommandId {
     Delete,
     Lock,
     Unlock,
+    KeepLoaded,
+    StoreWithCell,
     SaveAsPrefab,
     InstantiatePrefab,
     AddComponent,

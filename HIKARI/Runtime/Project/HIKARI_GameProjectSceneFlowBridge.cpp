@@ -74,6 +74,21 @@ bool SceneFlowView::CancelRequest(uint64_t requestId) const noexcept {
     }
 }
 
+bool SceneFlowView::GetCurrentSceneFilePath(char* outUtf8, uint32_t capacity, uint32_t& outLength) const noexcept {
+    outLength = 0u;
+    try {
+        if (CurrentWorld(world_) == nullptr) {
+            return false;
+        }
+        const std::string& path = RuntimeSceneContext::GetCurrentSceneFilePath();
+        outLength = static_cast<uint32_t>(path.size());
+        return !path.empty() && CopyStringToReference(path, outUtf8, capacity);
+    } catch (...) {
+        outLength = 0u;
+        return false;
+    }
+}
+
 bool SceneFlowView::GetCurrentSceneAssetGuid(char* outUtf8, uint32_t capacity, uint32_t& outLength) const noexcept {
     outLength = 0u;
     try {

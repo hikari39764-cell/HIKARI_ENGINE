@@ -100,6 +100,13 @@ constexpr bool CanTraceShadows(uint32_t excludedShadowCasters) noexcept {
     return (excludedShadowCasters & ~kRuntimeRayTracingShadowToleratedExclusions) == 0u;
 }
 
+// モジュールの幾何の不透明な粗い代理。BLAS の geometry ごとに surfaces が一つ（hit 記録の reserved に入る。
+// 下位 16 bit は色の平方根の R5G6B5、上位は法線の X, Z の snorm8）。BLAS と surfaces は持ち主が持つ。
+struct RuntimeRayTracingProxy {
+    D3D12_GPU_VIRTUAL_ADDRESS bottomLevel = 0;
+    std::span<const uint32_t> surfaces{};
+};
+
 // 地形の高さ場（HIKARI_TerrainSurfaceParams.hlsli の記録と float pool）。地形の面を世界空間へ変形して入れるのに使う。
 // 無ければ地形は入れない。floatVersion が変わった時だけ地形を変形し直す。
 struct RuntimeRayTracingSurfaceBindings {
@@ -109,16 +116,19 @@ struct RuntimeRayTracingSurfaceBindings {
     // 大量配置の描画の常駐記録（このフレームの MassGpuSceneSource と同じ中身。無ければ 0）。動いた個体の instance 記述を
     // GPU で書くのに使う。
     D3D12_GPU_VIRTUAL_ADDRESS massRecords = 0;
+    // モジュールの代理。版が変わると TLAS を組み直す。
+    std::span<const RuntimeRayTracingProxy> proxies{};
+    uint64_t proxyVersion = 0;
 };
 
 struct RuntimeRayTracingBudget {
-    uint64_t maximumBytes = 128ull * 1024 * 1024;
+    uint64_t maximumBytes = 384ull * 1024 * 1024;
     uint32_t trianglesPerChunk = 131072;
     uint32_t rangesPerChunk = 128;
     uint32_t chunksPerAsset = 1024;
     uint32_t buildsPerFrame = 2;
     uint32_t geometryUploadsPerFrame = 1;
-    uint32_t maximumInstances = 262144; // 大量配置（最大 131072 個体）を含む
+    uint32_t maximumInstances = 524288; // 大量配置を含む（一つの個体が一つ。超えると大量配置を外す）
     uint32_t maximumHitRecords = 262144;
 };
 
@@ -128,6 +138,15 @@ struct RuntimeRayTracingBudget {
 inline constexpr uint32_t kRuntimeRayTracingHitDeformed = 4u;
 // 透過する面（半透明）。光線を止めず、影の光線だけ透過率を掛けて先へ進む。
 inline constexpr uint32_t kRuntimeRayTracingHitTransmissive = 8u;
+// モジュールの代理。不透明で頂点を読まず、面の値は reserved から作る。
+inline constexpr uint32_t kRuntimeRayTracingHitProxy = 16u;
+// instance の mask。普通の光線は 0xff で全部に当たり、代理だけを見る長い影の光線は代理の bit だけを使う。
+inline constexpr uint8_t kRuntimeRayTracingSceneMask = 0xfeu;
+// 大量配置はこのビットだけで、遠景模型の面からの影の光線（HIKARI_RAY_SKIP_MASS）に当たらない。
+inline constexpr uint8_t kRuntimeRayTracingMassMask = 0x02u;
+inline constexpr uint8_t kRuntimeRayTracingProxyMask = 0x01u;
+// 代理だけを見る影の光線の長さ [m]。低い太陽の山の影が世界の端まで届く長さ。
+inline constexpr float kRuntimeRayTracingProxyShadowReach = 16000.0f;
 
 struct RuntimeRayTracingHitRecord {
     uint32_t geometryDescriptor = 0;

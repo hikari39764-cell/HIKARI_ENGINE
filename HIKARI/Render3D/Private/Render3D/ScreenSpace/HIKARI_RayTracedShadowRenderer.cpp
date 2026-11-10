@@ -87,7 +87,7 @@ bool RayTracedShadowRenderer::Render(const GFX::Context& graphics, const RayTrac
     const auto* temporal = inputs.temporal;
     const bool historyValid = temporal && temporal->camera.previousValid && !temporal->resetHistory &&
                               historyView_.Matches(temporal->view) && historyFrame_ + 1 == temporal->frameIndex;
-    constants.inputFlags = {historyValid ? 1.0f : 0.0f, 0.0f, 0.0f, 0.0f};
+    constants.inputFlags = {historyValid ? 1.0f : 0.0f, inputs.proxyReach, 0.0f, 0.0f};
     if (temporal) {
         constants.previousViewProj = temporal->camera.prevViewProj;
         constants.previousCamera = temporal->camera.prevCameraPos;

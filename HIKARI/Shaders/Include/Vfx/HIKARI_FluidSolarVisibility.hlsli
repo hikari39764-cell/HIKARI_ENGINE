@@ -1,8 +1,8 @@
 #ifndef HIKARI_FLUID_SOLAR_VISIBILITY_INCLUDED
 #define HIKARI_FLUID_SOLAR_VISIBILITY_INCLUDED
 
-// 流体の烟を場面へ落とす影の表（Render3D_FluidVolume.hlsl の SolarVisibilityCS）。域の表 gDomains・密度 gDensity0〜3・
-// 速度 gVelocity0〜3・gSolarTable・gSolarAtlas と ExtrapolatedSmoke は読み込む側の宣言を使う。
+// 流体の烟を場面へ落とす影の表（Render3D_FluidVolume.hlsl の SolarVisibilityCS）。域の表 gDomains・密度 gDensity0〜7・
+// 速度 gVelocity0〜7・HIKARI_FLUID_FOR_EACH_SLOT・gSolarTable・gSolarAtlas と ExtrapolatedSmoke は読み込む側の宣言を使う。
 
 // 域 1 つの消光 [1/m]（細部の模様なし）。描画の步进と同じく子步の後の時間だけ流れに沿って外推した密度を読む（影が烟から
 // 子步ぶん遅れて一顿一顿と跳ばない）。
@@ -18,14 +18,11 @@ float DomainsExtinction(float3 world)
 {
     const uint count = DomainCount();
     float sigma = 0.0f;
-    if (count > 0u)
-        sigma += DomainExtinction(gDomains[0], gDensity0, gVelocity0, world);
-    if (count > 1u)
-        sigma += DomainExtinction(gDomains[1], gDensity1, gVelocity1, world);
-    if (count > 2u)
-        sigma += DomainExtinction(gDomains[2], gDensity2, gVelocity2, world);
-    if (count > 3u)
-        sigma += DomainExtinction(gDomains[3], gDensity3, gVelocity3, world);
+#define HIKARI_FLUID_EXTINCTION(i) \
+    if (count > i##u) \
+        sigma += DomainExtinction(gDomains[i], gDensity##i, gVelocity##i, world);
+    HIKARI_FLUID_FOR_EACH_SLOT(HIKARI_FLUID_EXTINCTION)
+#undef HIKARI_FLUID_EXTINCTION
     return sigma;
 }
 

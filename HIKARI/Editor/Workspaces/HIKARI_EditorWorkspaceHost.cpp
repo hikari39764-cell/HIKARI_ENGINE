@@ -104,7 +104,6 @@ std::optional<EditorWorkspaceActivation> EditorWorkspaceHost::ApplyPending() {
     activation.sequenceAssetGuid = request.sequenceAssetGuid;
     activation.cameraProfileAssetGuid = request.cameraProfileAssetGuid;
     activation.textStyleAssetGuid = request.textStyleAssetGuid;
-    activation.uiAnimationAssetGuid = request.uiAnimationAssetGuid;
     activation.modelAssetGuid = request.modelAssetGuid;
     activation.materialAssetGuid = request.materialAssetGuid;
     activation.animationStateMachineAssetGuid = request.animationStateMachineAssetGuid;

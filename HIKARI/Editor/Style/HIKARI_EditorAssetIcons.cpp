@@ -26,11 +26,11 @@ EditorGlyph AssetTypeGlyph(AssetType type) noexcept {
     case AssetType::LightProfile: return EditorGlyph::Light;
     case AssetType::Sequence: return EditorGlyph::Sequence;
     case AssetType::AnimationStateMachine: return EditorGlyph::StateMachine;
-    case AssetType::UiAnimation: return EditorGlyph::Keyframe;
     case AssetType::Font:
     case AssetType::TextStyle: return EditorGlyph::List;
     case AssetType::Dialogue: return EditorGlyph::File;
     case AssetType::Audio: return EditorGlyph::Audio;
+    case AssetType::ModuleAsset: return EditorGlyph::More;
     case AssetType::Unknown:
     default: return EditorGlyph::File;
     }
@@ -58,6 +58,7 @@ ImVec4 AssetTypeIconColor(AssetType type) noexcept {
     case AssetType::AnimationStateMachine: return ImVec4(0.30f, 0.82f, 0.72f, 1.0f);
     case AssetType::Dialogue: return ImVec4(0.34f, 0.68f, 1.0f, 1.0f);
     case AssetType::Audio: return ImVec4(0.46f, 0.86f, 0.62f, 1.0f);
+    case AssetType::ModuleAsset: return ImVec4(0.72f, 0.72f, 0.86f, 1.0f);
     case AssetType::Unknown:
     default: return GetEditorThemePalette().textMuted;
     }

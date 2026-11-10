@@ -14,6 +14,7 @@
 
 #include "Assets/Cooking/HIKARI_CookedContentManifest.h"
 #include "Assets/HIKARI_AssetRegistryBuilder.h"
+#include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "RenderContracts/Shader/HIKARI_BuiltinShaderArtifactResolver.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -65,13 +66,17 @@ bool IsForbiddenGamePackagePath(const std::filesystem::path& relativePath) {
 
     const bool installedShaderHeader = extension == ".h" && StartsWith(path, "enginecontent/shaders/");
     const bool runtimeAudioPayload = StartsWith(path, "content/runtimepayload/assets/audio/");
+    // 場面の隣の格子フォルダ（Main.cells）の .bin は実行時に読むデータ（実例の格子、モジュールが添えた瓦片）。
+    const bool sceneCellData = StartsWith(path, "content/runtimepayload/assets/") &&
+                               ASSETS::SEMANTICS::IsSceneCellDirectoryName(
+                                   TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(relativePath.parent_path().filename())));
     if (extension == ".sln" || extension == ".bak" || extension == ".tmp" || extension == ".log" ||
         filename.ends_with("~") || extension == ".vcxproj" || extension == ".filters" || extension == ".cmake" ||
         extension == ".cpp" || extension == ".cxx" || extension == ".c" ||
         (extension == ".h" && !installedShaderHeader) || extension == ".hpp" || extension == ".pdb" ||
         extension == ".ilk" || extension == ".exp" || extension == ".lib" || extension == ".obj" ||
         extension == ".fbx" || extension == ".gltf" || extension == ".glb" || extension == ".obj" ||
-        extension == ".bin" ||
+        (extension == ".bin" && !sceneCellData) ||
         ((extension == ".wav" || extension == ".mp3" || extension == ".ogg" || extension == ".flac" ||
           extension == ".aac" || extension == ".m4a" || extension == ".wma" || extension == ".aif" ||
           extension == ".aiff") &&

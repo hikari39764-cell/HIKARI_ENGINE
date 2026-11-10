@@ -7,14 +7,18 @@
 #include "Assets/Lighting/HIKARI_IesProfileAsset.h"
 #include "Assets/Dialogue/HIKARI_DialogueAsset.h"
 #include "Assets/Sequence/HIKARI_SequenceAsset.h"
-#include "Assets/Ui/HIKARI_UiAnimationAsset.h"
 #include "Assets/Post/HIKARI_PostAsset.h"
 #include "Assets/RenderStyle/HIKARI_RenderStyleAsset.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Scene/Serialization/HIKARI_WorldInstanceFile.h"
+#include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Core/Text/HIKARI_UtfPath.h"
+#include "Project/Paths/HIKARI_ProjectPath.h"
 #include <array>
 #include <cstring>
 #include <fstream>
+#include <set>
 #include <unordered_set>
 
 namespace HIKARI {
@@ -38,7 +42,15 @@ public:
                               ? record.sourcePath
                               : (context.projectRoot / record.sourcePath).lexically_normal();
         try {
-            return import_(path, record.guid);
+            AssetImportResult result = import_(path, record.guid);
+            // 取り込み器は絶対パスで依存を返してよい。記録は project 相対にそろえる。
+            for (AssetDependencyDesc& dependency : result.dependencies) {
+                const std::filesystem::path dependencyPath = TEXT::PathFromUtf8(dependency.path);
+                if (dependencyPath.is_absolute())
+                    dependency.path =
+                        TEXT::PathToUtf8(PROJECT_PATHS::MakeProjectRelativePath(context.projectRoot, dependencyPath));
+            }
+            return result;
         } catch (const nlohmann::json::exception& error) {
             AssetImportResult result;
             result.message = std::string("Malformed asset: ") + error.what();
@@ -54,12 +66,87 @@ private:
 
 AssetImportResult ImportScene(const std::filesystem::path& path, const AssetGuid&) {
     SceneDocument document;
+    SceneCellFileState cells;
     AssetImportResult result;
-    result.success = SceneSerializer{}.LoadFromFile(path.string(), document);
-    result.message =
-        result.success ? "Scene asset validated" : "Scene asset validation failed: " + path.generic_string();
+    const bool loaded = SceneSerializer{}.LoadFromFile(path.string(), document, &cells);
+    result.success = loaded && cells.unreadableCells.empty();
+    // 分区場景の格子ファイルも入力：一つの格子だけが書き直されても取り込みは古くなる。
+    std::set<WorldCellCoord> cellFiles = cells.unreadableCells;
+    for (const auto& [cell, checksum] : cells.cellChecksums)
+        cellFiles.insert(cell);
+    for (WorldCellCoord cell : cellFiles)
+        result.dependencies.push_back(
+            {AssetGuid{}, TEXT::PathToUtf8(MakeSceneCellObjectsPath(path, cell)), "SourceCompanion"});
+    // モジュールが場面に添えた内容（地形の瓦片など）。物体の格子ファイル以外は全部入力にする。
+    std::error_code cellError{};
+    for (const auto& entry :
+         std::filesystem::directory_iterator(ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(path), cellError)) {
+        const std::string name = TEXT::PathToUtf8(entry.path().filename());
+        if (entry.is_regular_file(cellError) && !name.ends_with(kSceneCellObjectsSuffix)) {
+            result.dependencies.push_back({AssetGuid{}, TEXT::PathToUtf8(entry.path()), "SourceCompanion"});
+        }
+    }
+    // 実例集の模型は場面の物体から辿れない。依存に書いておけば、書き出しがここから模型を拾う。
+    std::vector<GameProjectWorldInstanceSetDesc> instanceSets;
+    std::string instanceError;
+    std::unordered_set<std::string> instanceModels;
+    const std::filesystem::path instanceSetsPath =
+        ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(path) / kWorldInstanceSetsFileName;
+    std::error_code instanceSetsError;
+    if (std::filesystem::is_regular_file(instanceSetsPath, instanceSetsError) &&
+        ReadWorldInstanceSetsFile(instanceSetsPath, instanceSets, instanceError)) {
+        for (const GameProjectWorldInstanceSetDesc& set : instanceSets) {
+            for (const char* model : {set.modelAssetGuid, set.farModelAssetGuid}) {
+                if (IsValidAssetGuid(model) && instanceModels.insert(model).second) {
+                    result.dependencies.push_back({AssetGuid{model}, {}, "Scene.WorldInstanceModel"});
+                }
+            }
+        }
+    }
+    result.message = result.success ? "Scene asset validated"
+                     : loaded       ? "Scene has " + std::to_string(cells.unreadableCells.size()) +
+                                    " unreadable cell file(s): " + path.generic_string()
+                              : "Scene asset validation failed: " + path.generic_string();
+    result.diagnosticsJson = nlohmann::json{
+        {"kind", "Scene"},
+        {"valid", result.success},
+        {"objectCount", document.objects.size()},
+        {"cellCount",
+         cellFiles.size()}}.dump();
+    return result;
+}
+
+// モジュールの資産：JSON として読めることを確かめ、値の中の GUID を依存として集める。
+void CollectJsonGuids(const nlohmann::json& node, std::unordered_set<std::string>& outGuids) {
+    if (node.is_string()) {
+        if (const std::string& text = node.get_ref<const std::string&>(); IsValidAssetGuid(text)) {
+            outGuids.insert(text);
+        }
+    } else if (node.is_structured()) {
+        for (const nlohmann::json& child : node) {
+            CollectJsonGuids(child, outGuids);
+        }
+    }
+}
+
+AssetImportResult ImportModuleAsset(const std::filesystem::path& path, const AssetGuid& guid) {
+    AssetImportResult result;
+    nlohmann::json document;
+    std::string error;
+    result.success = SERIALIZATION::JSON::ReadJsonFile(path, document, &error);
+    result.message = result.success ? "Module asset validated" : "Module asset is not readable JSON: " + error;
+    if (!result.success) {
+        return result;
+    }
+    std::unordered_set<std::string> guids;
+    CollectJsonGuids(document, guids);
+    guids.erase(guid.value);
+    for (const std::string& reference : guids) {
+        result.dependencies.push_back({AssetGuid{reference}, {}, "ModuleAsset.Reference"});
+    }
+    const auto* type = ASSETS::SEMANTICS::FindModuleAssetTypeForPath(path);
     result.diagnosticsJson =
-        nlohmann::json{{"kind", "Scene"}, {"valid", result.success}, {"objectCount", document.objects.size()}}.dump();
+        nlohmann::json{{"kind", "ModuleAsset"}, {"typeId", type != nullptr ? type->typeId : std::string{}}}.dump();
     return result;
 }
 
@@ -169,15 +256,6 @@ AssetImportResult ImportGameplayCamera(const std::filesystem::path& sourcePath, 
     if (result.success)
         result.message = "Gameplay camera profile validated";
     result.diagnosticsJson = nlohmann::json{{"valid", result.success}, {"modeCount", profile.modes.size()}}.dump();
-    return result;
-}
-
-AssetImportResult ImportUiAnimation(const std::filesystem::path& sourcePath, const AssetGuid&) {
-    AssetImportResult result;
-    UiAnimationAsset asset;
-    result.success = LoadUiAnimationAsset(sourcePath, asset, result.message);
-    if (result.success)
-        result.message = "UI animation validated";
     return result;
 }
 
@@ -296,11 +374,13 @@ AssetImportResult ImportAudio(const std::filesystem::path& sourcePath, const Ass
     std::error_code error;
     const auto bytes = std::filesystem::file_size(sourcePath, error);
     result.success = !format.empty() && !error && bytes > 0;
-    result.message = result.success ? "Audio file validated"
-                                    : "Audio file is not a readable wav, mp3, ogg or flac: " + sourcePath.generic_string();
-    result.diagnosticsJson =
-        nlohmann::json{{"valid", result.success}, {"format", format}, {"bytes", error ? 0 : static_cast<uint64_t>(bytes)}}
-            .dump();
+    result.message = result.success
+                         ? "Audio file validated"
+                         : "Audio file is not a readable wav, mp3, ogg or flac: " + sourcePath.generic_string();
+    result.diagnosticsJson = nlohmann::json{{"valid", result.success},
+                                            {"format", format},
+                                            {"bytes", error ? 0 : static_cast<uint64_t>(bytes)}}
+                                 .dump();
     return result;
 }
 } // namespace
@@ -314,7 +394,6 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::AnimationStateMachine, "AnimationStateMachineAssetStore", ImportAnimationStateMachine);
     add(ImporterKind::Dialogue, "DialogueAssetStore", ImportDialogue);
     add(ImporterKind::GameplayCamera, nullptr, ImportGameplayCamera);
-    add(ImporterKind::UiAnimation, nullptr, ImportUiAnimation);
     add(ImporterKind::PostEffect, nullptr, ImportPostEffect);
     add(ImporterKind::PostProfile, nullptr, ImportPostProfile);
     add(ImporterKind::Environment, nullptr, ImportEnvironment);
@@ -323,5 +402,6 @@ void RegisterStructuredAssetImporters(AssetImporterRegistry& registry) {
     add(ImporterKind::ColorLut, nullptr, ImportColorLut);
     add(ImporterKind::LightProfile, nullptr, ImportLightProfile);
     add(ImporterKind::Audio, nullptr, ImportAudio);
+    add(ImporterKind::ModuleAsset, nullptr, ImportModuleAsset);
 }
 } // namespace HIKARI

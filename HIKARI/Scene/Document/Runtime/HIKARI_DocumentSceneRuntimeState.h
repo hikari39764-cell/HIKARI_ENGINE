@@ -19,6 +19,7 @@
 #include "Physics/HIKARI_PhysicsProjectSettings.h"
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include "Runtime/Binding/HIKARI_RuntimeBindingStore.h"
 #include "Render3D/Material/Program/HIKARI_MaterialParameterProjection.h"
 #include "Scene/HIKARI_ComponentRegistry.h"
@@ -96,6 +97,7 @@ struct DocumentSceneRuntimeState {
     PresentationTransformService presentationTransformService{};
     RuntimeObjectActivityService runtimeObjectActivityService{};
     RuntimeExtensionHost extensionHost{};
+    const std::vector<InstalledModuleStatus>* installedModules = nullptr;
     RuntimeFeatureCatalog featureCatalog{};
     RuntimeFeatureInstallReport featureInstallReport{};
     ComponentSystemPolicy componentSystemPolicy{};

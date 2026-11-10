@@ -30,6 +30,7 @@ enum class PhysicsShapeType : uint8_t {
     Capsule,
     ConvexHull,
     TriangleMesh,
+    HeightField,
 };
 
 enum class PhysicsContactPhase : uint8_t {
@@ -142,6 +143,10 @@ struct PhysicsShapeDesc {
     uint32_t indexOffset = 0u;
     uint32_t indexCount = 0u;
     uint64_t geometryContentRevision = 0u;
+    // HeightField：sampleCount² の高さ（z 行優先）。localCenter が標本 (0, 0) の位置。
+    std::shared_ptr<const std::vector<float>> heightSamples{};
+    uint32_t heightSampleCount = 0u;
+    float heightSampleSpacing = 1.0f;
     bool isTrigger = false;
     PhysicsMaterialDesc material{};
     PhysicsCollisionFilter filter{};

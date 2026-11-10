@@ -2,6 +2,7 @@
 
 #include <optional>
 
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Core/HIKARI_TimeService.h"
 #include "Diagnostics/HIKARI_DebugLogBuffer.h"
 #include "Diagnostics/HIKARI_MetricRegistry.h"
@@ -264,6 +265,7 @@ void ShutdownOceanSpectrumRuntime() {
 void ShutdownWorldSpritePass() {
     gMeshRendererState.worldSpritePass.Shutdown();
     gMeshRendererState.worldSpriteFrameSource = nullptr;
+    RENDER3D::SURFACE_EXTENSIONS::Shutdown(nullptr);
 }
 
 void ShutdownWorldTextPass() {

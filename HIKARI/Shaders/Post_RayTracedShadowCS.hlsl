@@ -13,7 +13,7 @@ cbuffer RayTracedShadowCB : register(b0)
     float4 gScreenParams;   // xy 大きさ, zw 1/大きさ
     float4 gSunCone;        // xyz 太陽へ向かう単位ベクトル, w 円錐の半角 [rad]
     float4 gRayParams;      // x 最大距離 [m], y 標本数, z フレーム番号, w 法線方向の始点のずらし [m]
-    float4 gInputFlags;     // x 前フレームの可視率の履歴が使えれば 1
+    float4 gInputFlags;     // x 前フレームの可視率の履歴が使えれば 1, y 代理だけを見る光線の長さ [m]（無ければ 0）
     HikariRayLightingData gRayLighting;
     float4x4 gPreviousViewProj;
     float4 gPreviousCamera;
@@ -29,13 +29,15 @@ SamplerState gLinearClamp : register(s0);
 SamplerState gMaterialWrap : register(s1);
 SamplerState gPointClamp : register(s2);
 
+// これより遠い画素は影の光線を 1 本だけ飛ばす（m）。
+static const float HIKARI_SHADOW_SINGLE_RAY_METERS = 45.0f;
+
 // GeometryAux の面の記述にある着色の法線（法線地図・デカール込み）。不透明面の画素は必ず書かれている。
 // 深度の差分の法線は細い物や輪郭で奥の面を拾って向きを誤り、影の中に光が漏れたので使わない。
-float3 SurfaceNormal(uint2 pixel)
+float3 SurfaceNormal(uint2 pixel, out float metallic)
 {
     float3 normal;
     float roughness;
-    float metallic;
     HikariUnpackSceneSurface(gSceneSurface.Load(int3(pixel, 0)), normal, roughness, metallic);
     return normal;
 }
@@ -59,7 +61,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         gVisibility[pixel] = 1.0f;
         return;
     }
-    const float3 normal = SurfaceNormal(pixel);
+    float metallic;
+    const float3 normal = SurfaceNormal(pixel, metallic);
     const float3 toSun = gSunCone.xyz;
     const float cosine = dot(normal, toSun);
     // 光に背く面は影（Forward の N・L も同じ法線で 0 になる）。
@@ -72,7 +75,9 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     const float distanceToCamera = length(position - gCameraPosition.xyz);
     const float offset = gRayParams.w * (1.0f + distanceToCamera * 0.02f) * (2.0f - cosine);
     const float sinHalfAngle = sin(gSunCone.w);
-    const uint sampleCount = max((uint)gRayParams.y, 1u);
+    // 遠くの画素は 1 本で足りる。半影は画面で数画素しかなく、CSFilter の 7x7 の均しと時間の積分で埋まる。
+    // 森を見渡す画面では大半が遠くの画素で、光線の数がそのまま費用になる。
+    const uint sampleCount = distanceToCamera > HIKARI_SHADOW_SINGLE_RAY_METERS ? 1u : max((uint)gRayParams.y, 1u);
     const float frame = gRayParams.z;
     float lit = 0.0f;
     [loop] for (uint i = 0u; i < sampleCount; ++i)
@@ -86,8 +91,17 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         ray.TMin = 0.001f;
         ray.TMax = max(gRayParams.x, 0.1f);
         // 半透明（ガラスなど）は透過率の分だけ光を通す。
-        lit += HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
-            gRayLighting.time, gMaterialWrap);
+        float through = HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
+            gRayLighting.time, gMaterialWrap, HikariIsFarModelSurface(metallic));
+        // 影の距離より先は代理（地形）だけを見る。低い太陽の山の影は距離の設定に関わらず届く。
+        if (through > 0.0f && gInputFlags.y > ray.TMax)
+        {
+            ray.TMin = ray.TMax;
+            ray.TMax = gInputFlags.y;
+            if (HikariTraceRuntimeProxyOccluded(ray))
+                through = 0.0f;
+        }
+        lit += through;
     }
     gVisibility[pixel] = lit / float(sampleCount);
 }
@@ -142,7 +156,8 @@ void CSFilter(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint thr
     {
         return;
     }
-    const float3 normal = SurfaceNormal(pixel);
+    float metallic;
+    const float3 normal = SurfaceNormal(pixel, metallic);
     const float distanceToCamera = length(position - gCameraPosition.xyz);
     if (distanceToCamera >= 65000.0f) return;
     const float2 encodedNormal = HikariEncodeOctahedralDirection(normal);

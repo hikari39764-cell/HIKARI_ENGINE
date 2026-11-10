@@ -5,6 +5,8 @@
 #include <algorithm>
 #include <cctype>
 #include <string>
+#include <utility>
+#include <vector>
 
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_UtfPath.h"
@@ -26,6 +28,21 @@ std::filesystem::path MakeArtifactManifestPath(const std::filesystem::path& libr
         return {};
     }
     return (libraryRoot / "AssetDatabase" / "Artifacts" / (guid + ".artifact.json")).lexically_normal();
+}
+
+std::filesystem::path MakeSceneCellDirectoryPath(const std::filesystem::path& scenePath) {
+    std::string stem = TEXT::PathToUtf8(scenePath.filename());
+    constexpr std::string_view kSceneJsonSuffix = ".scene.json";
+    if (TEXT::ToLowerAsciiCopy(stem).ends_with(kSceneJsonSuffix)) {
+        stem.resize(stem.size() - kSceneJsonSuffix.size());
+    } else {
+        stem = TEXT::PathToUtf8(scenePath.stem());
+    }
+    return scenePath.parent_path() / TEXT::PathFromUtf8(stem + std::string(kSceneCellDirectorySuffix));
+}
+
+bool IsSceneCellDirectoryName(std::string_view lowerName) noexcept {
+    return lowerName.size() > kSceneCellDirectorySuffix.size() && lowerName.ends_with(kSceneCellDirectorySuffix);
 }
 
 std::string MakeAssetFileStem(std::string value, std::string_view fallback) {
@@ -76,7 +93,7 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
         AssetImporterKind::Scene,
         AssetType::Scene,
         "SceneAssetImporter",
-        2u,
+        3u,
         ".hscene, .scene.json, or JSON under Assets/Scenes",
     },
     {AssetImporterKind::Prefab, AssetType::Prefab, "PrefabAssetImporter", 1u, ".hprefab"},
@@ -133,7 +150,6 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::GameplayCamera, AssetType::GameplayCamera, "GameplayCameraAssetImporter", 1u, ".hcamera"},
     {AssetImporterKind::Font, AssetType::Font, "FontAssetImporter", 2u, ".ttf, .otf, .ttc"},
     {AssetImporterKind::TextStyle, AssetType::TextStyle, "TextStyleAssetImporter", 1u, ".htextstyle"},
-    {AssetImporterKind::UiAnimation, AssetType::UiAnimation, "UiAnimationAssetImporter", 1u, ".huianim"},
     {AssetImporterKind::PostEffect, AssetType::PostEffect, "PostEffectAssetImporter", 2u, ".hposteffect"},
     {AssetImporterKind::PostProfile, AssetType::PostProfile, "PostProfileAssetImporter", 2u, ".hpostprofile"},
     {AssetImporterKind::Environment, AssetType::Environment, "EnvironmentAssetImporter", 1u, ".henvironment"},
@@ -142,6 +158,8 @@ constexpr std::array<AssetImporterSemantics, static_cast<size_t>(AssetImporterKi
     {AssetImporterKind::ColorLut, AssetType::ColorLut, "ColorLutAssetImporter", 1u, ".cube"},
     {AssetImporterKind::LightProfile, AssetType::LightProfile, "LightProfileAssetImporter", 1u, ".ies"},
     {AssetImporterKind::Audio, AssetType::Audio, "AudioAssetImporter", 1u, ".wav, .mp3, .ogg, .flac"},
+    {AssetImporterKind::ModuleAsset, AssetType::ModuleAsset, "ModuleAssetImporter", 1u,
+     "extensions registered by a module"},
 }};
 
 static_assert(
@@ -204,7 +222,6 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::VfxEffect, "VfxEffect"},
     {AssetType::Font, "Font"},
     {AssetType::TextStyle, "TextStyle"},
-    {AssetType::UiAnimation, "UiAnimation"},
     {AssetType::PostEffect, "PostEffect"},
     {AssetType::PostProfile, "PostProfile"},
     {AssetType::Environment, "Environment"},
@@ -219,6 +236,7 @@ constexpr TEXT::EnumName<AssetType> kAssetTypeNames[] = {
     {AssetType::ModelMaterialBinding, "ModelMaterialBinding"},
     {AssetType::Shader, "Shader"},
     {AssetType::Audio, "Audio"},
+    {AssetType::ModuleAsset, "ModuleAsset"},
     {AssetType::Unknown, "Unknown"},
 };
 std::string_view ToString(AssetType type) noexcept { return TEXT::EnumToName(kAssetTypeNames, type, "Unknown"); }
@@ -268,8 +286,6 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::Font;
     } else if (IsAudioExtension(extension)) {
         kind = AssetImporterKind::Audio;
-    } else if (extension == ".huianim") {
-        kind = AssetImporterKind::UiAnimation;
     } else if (extension == ".htextstyle") {
         kind = AssetImporterKind::TextStyle;
     } else if (extension == ".hcamera") {
@@ -302,9 +318,84 @@ const AssetImporterSemantics* ResolveAssetSourceSemantics(const std::filesystem:
         kind = AssetImporterKind::VfxEffect;
     } else if (extension == ".hshader" && IsShaderSourcePath(genericPath)) {
         kind = AssetImporterKind::Shader;
+    } else if (FindModuleAssetTypeForPath(sourcePath) != nullptr) {
+        kind = AssetImporterKind::ModuleAsset;
     }
 
     return kind == AssetImporterKind::Count ? nullptr : &GetAssetImporterSemantics(kind);
+}
+
+namespace {
+std::vector<ModuleAssetTypeDesc>& ModuleAssetTypes() {
+    static std::vector<ModuleAssetTypeDesc> types{};
+    return types;
+}
+} // namespace
+
+static bool AddModuleAssetType(ModuleAssetTypeDesc desc, std::string& outError) {
+    desc.extension = TEXT::ToLowerAsciiCopy(desc.extension);
+    if (desc.typeId.empty() || desc.extension.size() < 2u || desc.extension.front() != '.') {
+        outError = "A module asset type needs a type id and an extension such as .hscatter.";
+        return false;
+    }
+    for (const ModuleAssetTypeDesc& existing : ModuleAssetTypes()) {
+        if (existing.extension != desc.extension && existing.typeId != desc.typeId) {
+            continue;
+        }
+        if (existing.extension == desc.extension && existing.typeId == desc.typeId) {
+            return true;
+        }
+        outError = "Module asset type " + desc.typeId + " conflicts with " + existing.typeId + " (" +
+                   existing.extension + ").";
+        return false;
+    }
+    // 引擎の資産の判定は登記表より先に走るので、重なる拡張子は黙って無視される前に断る。
+    const std::filesystem::path probe = std::filesystem::path("probe" + desc.extension);
+    if (ResolveAssetSourceSemantics(probe) != nullptr) {
+        outError = "Extension " + desc.extension + " already belongs to an engine asset type.";
+        return false;
+    }
+    ModuleAssetTypes().push_back(std::move(desc));
+    return true;
+}
+
+void ReplaceModuleAssetTypes(std::vector<ModuleAssetTypeDesc> types, std::vector<std::string>& outErrors) {
+    ModuleAssetTypes().clear();
+    for (ModuleAssetTypeDesc& type : types) {
+        std::string error{};
+        if (!AddModuleAssetType(std::move(type), error)) {
+            outErrors.push_back(std::move(error));
+        }
+    }
+}
+
+const ModuleAssetTypeDesc* FindModuleAssetTypeForPath(const std::filesystem::path& sourcePath) {
+    const std::string extension = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(sourcePath.extension()));
+    for (const ModuleAssetTypeDesc& type : ModuleAssetTypes()) {
+        if (type.extension == extension) {
+            return &type;
+        }
+    }
+    return nullptr;
+}
+
+const ModuleAssetTypeDesc* FindModuleAssetType(std::string_view typeId) {
+    for (const ModuleAssetTypeDesc& type : ModuleAssetTypes()) {
+        if (type.typeId == typeId) {
+            return &type;
+        }
+    }
+    return nullptr;
+}
+
+bool MatchesAssetType(AssetType recordType, const std::filesystem::path& sourcePath, AssetType requiredType,
+                      std::string_view moduleAssetTypeId) {
+    if (moduleAssetTypeId.empty()) {
+        return recordType == requiredType;
+    }
+    const ModuleAssetTypeDesc* type =
+        recordType == AssetType::ModuleAsset ? FindModuleAssetTypeForPath(sourcePath) : nullptr;
+    return type != nullptr && type->typeId == moduleAssetTypeId;
 }
 
 AssetType ClassifyAssetTypeFromPath(const std::filesystem::path& path) {

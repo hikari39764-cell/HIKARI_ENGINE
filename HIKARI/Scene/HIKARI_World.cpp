@@ -1,4 +1,5 @@
 #include "Scene/HIKARI_World.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 
 #include <algorithm>
 #include <exception>
@@ -518,6 +519,46 @@ const WorldEventStream& World::FrameEvents() const noexcept { return frameEvents
 WorldEventStream& World::FixedEvents() noexcept { return fixedEvents_; }
 
 const WorldEventStream& World::FixedEvents() const noexcept { return fixedEvents_; }
+
+void World::AddRenderSurfaceExtension(IRenderSurfaceExtension& extension) {
+    if (std::find(renderSurfaceExtensions_.begin(), renderSurfaceExtensions_.end(), &extension) ==
+        renderSurfaceExtensions_.end()) {
+        renderSurfaceExtensions_.push_back(&extension);
+    }
+}
+
+void World::AddNavigationGeometrySource(INavigationGeometrySource& source) {
+    if (std::find(navigationGeometrySources_.begin(), navigationGeometrySources_.end(), &source) ==
+        navigationGeometrySources_.end()) {
+        navigationGeometrySources_.push_back(&source);
+    }
+}
+
+void World::RemoveNavigationGeometrySource(INavigationGeometrySource& source) noexcept {
+    std::erase(navigationGeometrySources_, &source);
+}
+
+void World::AddWaterSource(IWaterSource& source) {
+    if (std::find(waterSources_.begin(), waterSources_.end(), &source) == waterSources_.end()) {
+        waterSources_.push_back(&source);
+    }
+}
+
+void World::RemoveWaterSource(IWaterSource& source) noexcept { std::erase(waterSources_, &source); }
+
+void World::AddGroundSource(IGroundSource& source) {
+    if (std::find(groundSources_.begin(), groundSources_.end(), &source) == groundSources_.end()) {
+        groundSources_.push_back(&source);
+    }
+}
+
+void World::RemoveGroundSource(IGroundSource& source) noexcept { std::erase(groundSources_, &source); }
+
+void World::RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept {
+    std::erase(renderSurfaceExtensions_, &extension);
+    // 描画側も前のフレームの一覧を持っているので、そこからも外す（外した直後に持ち主が破棄される）。
+    RENDER3D::SURFACE_EXTENSIONS::Forget(extension);
+}
 
 void World::BeginFrame(uint64_t frameIndex) noexcept {
     frameEvents_.BeginScope(frameIndex);

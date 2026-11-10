@@ -1,0 +1,110 @@
+#pragma once
+
+#include <memory>
+#include <string_view>
+
+#include "HIKARI/Project/EditorWorkspace.h"
+#include "HIKARI/Project/ValueTypes.h"
+
+namespace HIKARI::EDITOR_PROJECT {
+
+// 場景視口の中のポインタの状態。引擎が毎フレーム作って、有効な視口工具へ渡す。
+struct EditorViewportInput {
+    GameProjectFloat3 rayOrigin{};
+    GameProjectFloat3 rayDirection{};
+    // ポインタの光線と地平面（y = 0）の交点。地形などを持つモジュールは自分の面に当て直す。
+    GameProjectFloat3 groundPoint{};
+    bool hasGroundPoint = false;
+    bool pointerInViewport = false;
+    bool primaryPressed = false;
+    bool primaryDown = false;
+    bool primaryReleased = false;
+    bool shift = false;
+    bool control = false;
+    bool alt = false;
+    float wheel = 0.0f;
+    float deltaSeconds = 0.0f;
+    // ペンの筆圧（0..1）。マウスは常に 1。
+    float pressure = 1.0f;
+    // ポインタが視口にある間に打たれた文字（無ければ 0）。'[' や ']' は押し続けると繰り返す。
+    uint32_t typedCharacter = 0u;
+};
+
+// 視口工具が今のフレームに描く線と文字（筆の光標など）。座標は世界空間。
+class IEditorViewportCanvas {
+public:
+    virtual ~IEditorViewportCanvas() = default;
+    virtual void DrawLine(const GameProjectFloat3& from, const GameProjectFloat3& to, EditorWorkspaceColor color,
+                          float thickness = 1.5f) = 0;
+    // 水平な円（y が中心の高さの XZ 平面上）。
+    virtual void DrawCircle(const GameProjectFloat3& center, float radius, EditorWorkspaceColor color,
+                            float thickness = 1.5f) = 0;
+    // 視口の左上に出す一行の案内。
+    virtual void DrawHint(std::string_view utf8Text, EditorWorkspaceColor color) = 0;
+};
+
+// 場景視口でマウスを受け取る工具。有効な間は選択と変換の手柄より先にマウスを取る。一度に有効なのは一つ。
+class IEditorViewportTool {
+public:
+    virtual ~IEditorViewportTool() = default;
+    virtual const char* GetToolId() const noexcept = 0;
+    virtual const char* GetDisplayName() const noexcept = 0;
+    virtual void OnActivate() {}
+    virtual void OnDeactivate() {}
+    virtual void Update(const EditorViewportInput& input, IEditorViewportCanvas& canvas) = 0;
+};
+
+// 場景の作業区に出す窓。開閉は引擎が持ち、メニューと操作から切り替える。
+class IEditorPanel {
+public:
+    virtual ~IEditorPanel() = default;
+    virtual const char* GetPanelId() const noexcept = 0;
+    virtual const char* GetDisplayName() const noexcept = 0;
+    virtual void Draw(IEditorWorkspaceUi& ui) = 0;
+};
+
+// 場面の撤销に載せる一件（内容は適用済み）。Undo / Redo は編集器の所有スレッドで呼ばれる。
+class IEditorUndoEntry {
+public:
+    virtual ~IEditorUndoEntry() = default;
+    virtual void Undo() = 0;
+    virtual void Redo() = 0;
+};
+
+// 場面の主ファイルの保存が成功した後に呼ばれる。モジュールは場面に添えた内容をここで書く。
+class IEditorSceneListener {
+public:
+    virtual ~IEditorSceneListener() = default;
+    virtual void OnSceneSaved(std::string_view scenePathUtf8) = 0;
+    // 場景の視口を描くフレームごとに呼ばれる。
+    virtual void OnViewportCamera(const GameProjectFloat3& /*position*/) {}
+};
+
+// 場景で今選ばれている物体。
+struct EditorSceneSelection {
+    // 場面の文書での ID（主に選ばれている一つ）。何も選ばれていなければ 0。
+    uint64_t sceneObjectId = 0u;
+    // 今の World での同じ物体。Play の開始・終了や場面の読み直しで変わるので、覚えずに毎回聞く。
+    GameProjectObjectHandle object{};
+    // 選ばれている物体の数。
+    uint32_t selectedCount = 0u;
+    uint32_t reserved = 0u;
+};
+
+// モジュールが登録されている間有効。IEditorOperationRegistrar::SceneServices から受け取る。
+class IEditorSceneServices {
+public:
+    virtual ~IEditorSceneServices() = default;
+    virtual void RecordUndo(std::string_view label, std::unique_ptr<IEditorUndoEntry> entry) = 0;
+    virtual void SetSceneListener(IEditorSceneListener* listener) = 0;
+    virtual bool ActivateViewportTool(std::string_view toolId) = 0;
+    // 模型から遠景模型を焼いて導入を予約し、その GUID を outFarModelGuid へ書く（終端込み）。理由はログへ。
+    virtual bool BakeFarModel(std::string_view modelAssetGuid, char* outFarModelGuid, size_t capacity) = 0;
+    // 場景の視口の相機を動かす。
+    virtual void SetViewportCamera(const GameProjectFloat3& position, const GameProjectFloat3& target) = 0;
+    virtual EditorSceneSelection GetSelection() const = 0;
+    // 編集器の中で Play が動いているか（一時停止中も真）。
+    virtual bool IsPlayActive() const = 0;
+};
+
+} // namespace HIKARI::EDITOR_PROJECT

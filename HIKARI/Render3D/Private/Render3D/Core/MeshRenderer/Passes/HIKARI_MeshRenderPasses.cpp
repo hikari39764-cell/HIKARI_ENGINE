@@ -9,8 +9,15 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Gfx/HIKARI_GpuFrameProfiler.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDepthVisibilityLayer.h"
 #include "Render3D/Surface/HIKARI_SceneSurfaceBuffer.h"
+
+namespace HIKARI::MESHRENDERER {
+static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
+                                    const MeshPassResources& passResources, MeshDrawPassKind passKind,
+                                    bool featureMask);
+} // namespace HIKARI::MESHRENDERER
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
 namespace {
@@ -40,10 +47,11 @@ bool ExecuteMaterialScopedFeaturePasses(const GFX::Context& graphics, const Mesh
 } // namespace
 
 bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-                                   D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask) {
+                                   D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                                   const RENDER3D::DEPTH::DepthPyramidView* historyDepth) {
     const bool hasMeshes = HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque);
     auto& sprites = gMeshRendererState.worldSpritePass;
-    if (!hasMeshes && !sprites.HasOpaqueWork()) {
+    if (!hasMeshes && !sprites.HasOpaqueWork() && !RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
         return false;
     }
 
@@ -61,6 +69,12 @@ bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFA
     GFX::PIX::ScopedGpuEvent pixGeometry(graphics.cmdList, GFX::PIX::kColorRender, "SceneSurface");
     surfaceBuffer.BeginWrite(graphics.cmdList, sceneDsv);
     MeshPassResources passResources{};
+    if (historyDepth != nullptr)
+        passResources.geometryAuxHistoryDepth = *historyDepth;
+    // モジュールの面（地形）を先に描く。山の陰の物はこの深度で着色の前に落ちる。
+    const bool extensionsWritten = RecordSurfaceExtensions(
+        graphics, RenderSurfacePass::GeometrySurface, passResources,
+        writeFeatureMask ? MeshDrawPassKind::GeometryAuxFeatureMask : MeshDrawPassKind::GeometryAux, writeFeatureMask);
     const bool meshesWritten =
         !hasMeshes || ExecuteGeometryBackendPlan(
                           graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux, passResources,
@@ -72,14 +86,14 @@ bool RenderGeometryAuxPassInternal(const GFX::Context& graphics, RENDER3D::SURFA
         !sprites.HasOpaqueWork() ||
         sprites.ExecuteSurface(graphics, GetActiveMeshFrameResources().view.Bindings().camera, writeFeatureMask);
     surfaceBuffer.EndWrite(graphics.cmdList);
-    return meshesWritten && spritesWritten;
+    return meshesWritten && spritesWritten && extensionsWritten;
 }
 
 bool RenderDepthPrepassInternal(const GFX::Context& graphics, D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv,
                                 bool useCullingCamera) {
     const bool hasMeshes = HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass);
     auto& sprites = gMeshRendererState.worldSpritePass;
-    if (!hasMeshes && !sprites.HasOpaqueWork()) {
+    if (!hasMeshes && !sprites.HasOpaqueWork() && !RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
         return false;
     }
 
@@ -116,7 +130,10 @@ bool RenderDepthPrepassInternal(const GFX::Context& graphics, D3D12_CPU_DESCRIPT
     const auto cameraAddress =
         useCullingCamera ? overrides.cameraAddress : GetActiveMeshFrameResources().view.Bindings().camera;
     const bool spritesWritten = !sprites.HasOpaqueWork() || sprites.ExecuteDepth(graphics, cameraAddress);
-    return meshesWritten && spritesWritten;
+    const bool extensionsWritten =
+        useCullingCamera || RecordSurfaceExtensions(graphics, RenderSurfacePass::Depth, passResources,
+                                                    MeshDrawPassKind::DepthPrepass, false);
+    return meshesWritten && spritesWritten && extensionsWritten;
 }
 
 bool RenderWaterVisibilityDepthInternal(const GFX::Context& graphics, D3D12_CPU_DESCRIPTOR_HANDLE waterDsv,
@@ -271,8 +288,32 @@ namespace HIKARI::MESHRENDERER {
 
 using namespace INTERNAL;
 bool RenderGeometryAuxPass(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
-                           D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask) {
-    return RenderGeometryAuxPassInternal(graphics, surfaceBuffer, sceneDsv, writeFeatureMask);
+                           D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                           const RENDER3D::DEPTH::DepthPyramidView* historyDepth) {
+    return RenderGeometryAuxPassInternal(graphics, surfaceBuffer, sceneDsv, writeFeatureMask, historyDepth);
+}
+
+bool RenderGeometryAuxSecondPhase(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
+                                  D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask,
+                                  const RENDER3D::DEPTH::DepthPyramidView& historyDepth,
+                                  const RENDER3D::DEPTH::DepthPyramidView& currentDepth) {
+    if (!HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque))
+        return true;
+    GFX::PIX::ScopedGpuEvent pixGeometry(graphics.cmdList, GFX::PIX::kColorRender, "SceneSurface.SecondPhase");
+    surfaceBuffer.ResumeWrite(graphics.cmdList, sceneDsv);
+    MeshPassResources passResources{};
+    passResources.visibilityDepthPyramid = currentDepth;
+    passResources.geometryAuxHistoryDepth = historyDepth;
+    passResources.geometryAuxSecondPhase = true;
+    const bool written =
+        ExecuteGeometryBackendPlan(graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::GeometryAux, passResources,
+                                   writeFeatureMask ? MeshDrawPassKind::GeometryAuxFeatureMask
+                                                    : MeshDrawPassKind::GeometryAux,
+                                   writeFeatureMask ? RENDER3D::MESHLET::MeshletPipelineKind::GeometryAuxFeatureMask
+                                                    : RENDER3D::MESHLET::MeshletPipelineKind::GeometryAux)
+            .gpuBackendExecuted;
+    surfaceBuffer.EndWrite(graphics.cmdList);
+    return written;
 }
 
 bool HasStylizedFeatureMaskBackend() {
@@ -316,9 +357,47 @@ bool RenderVisibilityOverlayFeaturePass(const GFX::Context& graphics, const Mesh
                                               RENDER3D::MESHLET::MeshletPipelineKind::VisibilityOverlay);
 }
 
+// モジュールの面を今の描画先へ描く。場面の定数と光の束縛は通常の面と同じものを、モジュール用の root へ張る。
+static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
+                                    const MeshPassResources& passResources, MeshDrawPassKind passKind,
+                                    bool featureMask) {
+    if (!RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
+        return true;
+    }
+    const CameraCB* camera = GetCameraConstants();
+    ID3D12RootSignature* rootSignature = gMeshRendererState.pipelines.surfaceExtensionRootSig.Get();
+    if (camera == nullptr || rootSignature == nullptr) {
+        return false;
+    }
+    MeshBindingStateCache bindingCache{};
+    MeshDrawContext drawCtx = BuildDrawContext(graphics, false, passKind, passResources, nullptr);
+    drawCtx.binding.cache = &bindingCache;
+    drawCtx.staticRootSig = rootSignature;
+    BindSurfaceRecordFrameResources(drawCtx);
+    RENDER3D::SURFACE_EXTENSIONS::RecordInput input{};
+    input.pass = pass;
+    input.geometryFeatureMask = featureMask;
+    input.viewProjection = camera->viewProj;
+    input.cameraPosition = RENDER3D::SURFACE_EXTENSIONS::GetFrameCameraPosition();
+    return RENDER3D::SURFACE_EXTENSIONS::Record(graphics, rootSignature, input);
+}
+
+bool RenderSurfaceExtensionsForward(const GFX::Context& graphics, const MeshPassResources& passResources) {
+    if (!RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
+        return true;
+    }
+    GFX::GPU_PROFILE::ScopedGpuTimer timer(graphics.cmdList, GFX::GPU_PROFILE::Pass::ModuleSurfaces);
+    return RecordSurfaceExtensions(graphics, RenderSurfacePass::Forward, passResources, MeshDrawPassKind::Forward,
+                                   false);
+}
+
+ID3D12RootSignature* GetSurfaceExtensionRootSignature() {
+    return gMeshRendererState.pipelines.surfaceExtensionRootSig.Get();
+}
+
 bool HasDepthPrepassWork() {
     return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::DepthPrepass) ||
-           gMeshRendererState.worldSpritePass.HasOpaqueWork();
+           gMeshRendererState.worldSpritePass.HasOpaqueWork() || RENDER3D::SURFACE_EXTENSIONS::HasWork();
 }
 
 bool RenderDepthPrepass(const GFX::Context& graphics, D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool useCullingCamera) {
@@ -433,7 +512,8 @@ bool RenderVfxDistortionMaskPass(const GFX::Context& graphics, const MeshPassRes
 }
 
 bool HasDepthAwarePassWork() {
-    return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware);
+    return HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware) ||
+           RENDER3D::SURFACE_EXTENSIONS::HasDepthAwareWork();
 }
 
 bool HasForwardTransparentPassWork() {
@@ -444,13 +524,16 @@ bool HasForwardTransparentPassWork() {
 }
 
 bool RenderDepthAwarePass(const GFX::Context& graphics, const MeshPassResources& passResources) {
-    if (!HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware)) {
-        return true;
+    bool executed = true;
+    if (HasGpuDrivenPassSource(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware)) {
+        executed = ExecuteGeometryBackendPlan(graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware,
+                                              passResources, MeshDrawPassKind::Forward,
+                                              RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware)
+                       .gpuBackendExecuted;
     }
-    const GeometryBackendExecutionResult backendResult = ExecuteGeometryBackendPlan(
-        graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware, passResources, MeshDrawPassKind::Forward,
-        RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware);
-    return backendResult.gpuBackendExecuted;
+    return RecordSurfaceExtensions(graphics, RenderSurfacePass::DepthAware, passResources, MeshDrawPassKind::Forward,
+                                   false) &&
+           executed;
 }
 
 bool SetAmbientOcclusionRuntimeEnabled(bool enabled) {

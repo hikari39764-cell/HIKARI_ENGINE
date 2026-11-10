@@ -3,6 +3,7 @@
 #include "Assets/HIKARI_AssetRecord.h"
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
+#include "Editor/Export/HIKARI_GameExportModules.h"
 #include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
 #include "Editor/Projects/HIKARI_EditorChildProcess.h"
 #include "Core/Paths/HIKARI_ExecutablePath.h"
@@ -329,6 +330,9 @@ int GameExportJob::RunRequest(const std::filesystem::path& requestPath) {
             }
             return true;
         };
+        options.progress("Checking project modules", 0.0f);
+        if (!ValidateProjectModulesForExport(GetProjectContext().GetRoot(), result.message))
+            throw std::runtime_error(result.message);
         options.progress("Re-importing changed assets", 0.0f);
         int reimported = 0;
         if (!ReimportChangedAssets(GetProjectContext().GetRoot(), root, reimported, result.message))

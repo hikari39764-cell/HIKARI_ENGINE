@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <filesystem>
 #include <memory>
+#include <span>
 #include <string>
 #include <string_view>
 #include <vector>
@@ -58,6 +59,8 @@ class RasterLightingTransportBackend;
 struct MaterialAssetData;
 struct PbrMaterialAssetData;
 
+struct InstalledModuleStatus;
+
 class DocumentSceneBase : public IScene {
 public:
     explicit DocumentSceneBase(std::string sceneId);
@@ -106,6 +109,10 @@ public:
     const SystemScheduler& GetSystemScheduler() const noexcept;
     const RuntimeFeatureCatalog& GetRuntimeFeatureCatalog() const noexcept;
     bool AddBorrowedRuntimeExtension(IRuntimeExtension& extension);
+    // 項目に入れたモジュールの読み込み結果（持ち主は起動側）と、そのモジュールが登録した Feature。
+    void SetInstalledModules(const std::vector<InstalledModuleStatus>* modules) noexcept;
+    std::span<const InstalledModuleStatus> GetInstalledModules() const noexcept;
+    std::vector<std::string> GetRuntimeExtensionFeatures(std::string_view extensionId) const;
     bool IsRuntimeFeatureActive(std::string_view featureId) const noexcept;
     std::vector<SceneSystemData> CreateProjectDefaultSceneSystems() const;
     bool ReloadRuntimeFeaturesFromProjectSettings();

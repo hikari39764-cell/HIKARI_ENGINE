@@ -56,7 +56,6 @@ std::string ToAssetTypeText(AssetType type) {
     case AssetType::Sequence: return TEXT::Localize("ui.assetBrowser.typeSequence");
     case AssetType::AnimationStateMachine: return TEXT::Localize("ui.assetBrowser.typeAnimationStateMachine");
     case AssetType::Dialogue: return TEXT::Localize("ui.assetBrowser.typeDialogue");
-    case AssetType::UiAnimation: return TEXT::Localize("uianim.asset");
     case AssetType::Font: return TEXT::Localize("textstyle.font");
     case AssetType::TextStyle: return TEXT::Localize("textstyle.asset");
     case AssetType::PostEffect: return TEXT::Localize("post.effect.asset");
@@ -67,6 +66,7 @@ std::string ToAssetTypeText(AssetType type) {
     case AssetType::ColorLut: return TEXT::Localize("environment.colorLut.asset");
     case AssetType::LightProfile: return TEXT::Localize("light.profile.asset");
     case AssetType::Audio: return TEXT::Localize("cine.sound");
+    case AssetType::ModuleAsset: return TEXT::Localize("editor.asset.moduleAsset");
     case AssetType::Unknown:
     default: return ASSETS::SEMANTICS::ToString(type).data();
     }

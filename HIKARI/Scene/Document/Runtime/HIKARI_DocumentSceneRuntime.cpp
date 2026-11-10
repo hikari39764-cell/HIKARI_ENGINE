@@ -2,6 +2,8 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 #include "Scene/Document/Internal/HIKARI_DocumentSceneState.h"
 
+#include <algorithm>
+#include <chrono>
 #include <filesystem>
 #include <memory>
 #include <sstream>
@@ -31,12 +33,16 @@
 #include "Scene/Vfx/HIKARI_CombatAfterimageService.h"
 #include "Scene/Vfx/HIKARI_CombatPresentationService.h"
 #include "Scene/Vfx/HIKARI_VfxAttachmentResolver.h"
-#include "Scene/Ui/HIKARI_UiSceneSystem.h"
 #include "Vfx/Post/HIKARI_PostSystem.h"
 
 namespace HIKARI {
 
 namespace {
+std::string ElapsedMilliseconds(std::chrono::steady_clock::time_point started) {
+    return std::to_string(static_cast<int>(
+        std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - started).count() + 0.5));
+}
+
 class PhysicsWaterBathymetryProvider final : public WATER::IWaterBathymetryProvider {
 public:
     explicit PhysicsWaterBathymetryProvider(const PHYSICS::PhysicsWorldService& physics) noexcept
@@ -117,6 +123,7 @@ bool DocumentSceneBase::BeginRuntimePlay(std::string_view spawnPointId, uint64_t
         return false;
     }
 
+    const auto started = std::chrono::steady_clock::now();
     EndEditorCameraPreview();
     const bool preserveEditorState = SERVICES::IsEditorHost();
     if (preserveEditorState) {
@@ -219,7 +226,7 @@ bool DocumentSceneBase::BeginRuntimePlay(std::string_view spawnPointId, uint64_t
         (void)EndRuntimePlay();
         return false;
     }
-    HIKARI_LOG_INFO("Document scene entered runtime Play state.");
+    HIKARI_LOG_INFO("Document scene entered runtime Play state in " + ElapsedMilliseconds(started) + " ms.");
     return true;
 }
 bool DocumentSceneBase::EndRuntimePlay() {
@@ -227,12 +234,11 @@ bool DocumentSceneBase::EndRuntimePlay() {
         return true;
     }
 
+    const auto started = std::chrono::steady_clock::now();
     if (RUNTIME::GameProjectSessionRuntimeExtension* sessionOwner =
             state_->runtime.world.Services().Find<RUNTIME::GameProjectSessionRuntimeExtension>()) {
         sessionOwner->ExitScene(state_->runtime.world);
     }
-    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
-        uiSystem->ReleaseInputOwnership();
     SERVICES::GetInputService().ReleaseDeveloperInput();
     state_->runtime.debugService.Reset(state_->runtime.world);
     // 自由視点は Play の間だけ。速度も含めて次の Play へ持ち越さない。
@@ -297,7 +303,7 @@ bool DocumentSceneBase::EndRuntimePlay() {
         HIKARI_LOG_ERROR("Editor scene restoration after runtime Play failed.");
         return false;
     }
-    HIKARI_LOG_INFO("Document scene restored after runtime Play.");
+    HIKARI_LOG_INFO("Document scene restored after runtime Play in " + ElapsedMilliseconds(started) + " ms.");
     return true;
 }
 bool DocumentSceneBase::RegisterRuntimeFeatures() {
@@ -321,8 +327,13 @@ bool DocumentSceneBase::RegisterRuntimeFeatures() {
     RuntimeFeatureContext context =
         RuntimeFeatureContextAccess::Create(state_->runtime.componentRegistry, state_->runtime.massSchemaRegistry,
                                             state_->runtime.systemTypeRegistry, state_->runtime.componentSystemPolicy);
-    state_->runtime.featureInstallReport =
-        state_->runtime.featureCatalog.RegisterEnabled(context, projectSettings.GetSettings().enabledRuntimeFeatures);
+    std::vector<std::string> enabledFeatures = projectSettings.GetSettings().enabledRuntimeFeatures;
+    for (const std::string& featureId : state_->runtime.extensionHost.GetEnabledByExtensions()) {
+        if (std::find(enabledFeatures.begin(), enabledFeatures.end(), featureId) == enabledFeatures.end()) {
+            enabledFeatures.push_back(featureId);
+        }
+    }
+    state_->runtime.featureInstallReport = state_->runtime.featureCatalog.RegisterEnabled(context, enabledFeatures);
     state_->runtime.featureInstallReport.success = state_->runtime.featureInstallReport.success && extensionsRegistered;
 
     for (const std::string& issue : state_->runtime.featureInstallReport.resolution.issues) {
@@ -431,8 +442,6 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
             });
         state_->runtime.vfxPlaybackService.SetReliableRenderDeliveryEnabled(true);
     }
-    state_->runtime.sceneCaptureService.SetCanvasAssets(state_->assets.Database().GetProjectRoot(),
-                                                        &state_->assets.Database());
     state_->runtime.gameUiPresentationService.SetProjectRoot(state_->assets.Database().GetProjectRoot());
     state_->runtime.gameUiPresentationService.SetAssetDatabase(&state_->assets.Database());
     if (actionPresentationEnabled && !state_->runtime.combatPresentationService.Prewarm()) {
@@ -500,8 +509,8 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->assets.GameplayCameras()) && success;
     state_->assets.TextAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.TextAssets()) && success;
-    state_->assets.UiAnimations().Configure(&state_->assets.Database());
-    success = services.Register(state_->assets.UiAnimations()) && success;
+    state_->assets.ModuleAssets().Configure(&state_->assets.Database());
+    success = services.Register(state_->assets.ModuleAssets()) && success;
     state_->assets.SpriteAssets().Configure(&state_->assets.Database());
     success = services.Register(state_->assets.SpriteAssets()) && success;
     state_->assets.SpriteMaterials().Configure(&state_->assets.Database(), &state_->assets.Registry());
@@ -608,80 +617,56 @@ bool DocumentSceneBase::ReloadSceneDocument() {
     }
     return OpenStartupSceneAsset();
 }
-bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& changes) {
+bool DocumentSceneBase::ApplyRuntimeObjectChanges(const SceneObjectChanges& requested) {
     DocumentSceneRuntimeState& runtime = state_->runtime;
     const SceneDocument& document = state_->identity.document;
     if (!runtime.worldBuilt || runtime.playActive) {
         return RebuildRuntimeWorld();
     }
-
-    // 追加分と変更分は同じ経路で document から生成する（変更分は先に壊してから作り直す）。
-    std::vector<const SceneObjectData*> builtObjects{};
-    builtObjects.reserve(changes.added.size() + changes.changed.size());
+    const SceneObjectChanges changes = runtime.builder.ClassifyObjectChanges(document, requested, runtime.world);
     SceneDependencySet dependencies{};
     bool lightingChanged = false;
-    const auto admit = [&](SceneObjectId id, bool mustBeNew) {
-        const SceneObjectData* object = FindSceneObjectData(document, id);
-        if (object == nullptr || (mustBeNew && runtime.world.FindObject(id) != nullptr)) {
-            return false;
-        }
-        for (const SceneComponentData& component : object->components) {
-            if (runtime.componentSystemPolicy.NeedsSystemInstall(component.type, document, runtime.systemScheduler)) {
-                return false;
+    const auto noteWorldLighting = [&](SceneObjectId id) {
+        if (const GameObject* object = runtime.world.FindObject(id)) {
+            for (const auto& component : object->GetComponents()) {
+                lightingChanged = lightingChanged ||
+                                  (component && LIGHTING_AUTHORING::IsLightingComponentType(component->GetTypeName()));
             }
-            lightingChanged = lightingChanged || LIGHTING_AUTHORING::IsLightingComponentType(component.type);
         }
-        runtime.builder.CollectObjectDependencies(*object, &runtime.componentRegistry, dependencies);
-        builtObjects.push_back(object);
-        return true;
     };
-    for (SceneObjectId id : changes.added) {
-        if (!admit(id, true)) {
-            return RebuildRuntimeWorld();
-        }
-    }
-    for (SceneObjectId id : changes.changed) {
-        if (!admit(id, false)) {
-            return RebuildRuntimeWorld();
+    for (const std::vector<SceneObjectId>* ids : {&changes.added, &changes.changed}) {
+        for (SceneObjectId id : *ids) {
+            const SceneObjectData* object = FindSceneObjectData(document, id);
+            if (object == nullptr) {
+                return RebuildRuntimeWorld();
+            }
+            for (const SceneComponentData& component : object->components) {
+                if (runtime.componentSystemPolicy.NeedsSystemInstall(component.type, document,
+                                                                     runtime.systemScheduler)) {
+                    return RebuildRuntimeWorld();
+                }
+                lightingChanged = lightingChanged || LIGHTING_AUTHORING::IsLightingComponentType(component.type);
+            }
+            noteWorldLighting(id);
+            runtime.builder.CollectObjectDependencies(*object, &runtime.componentRegistry, dependencies);
         }
     }
     if (state_->assets.NeedsRuntimeDependencyRegistryRefresh(dependencies)) {
         return RebuildRuntimeWorld();
     }
-
-    const auto destroy = [&](SceneObjectId id) {
-        GameObject* object = runtime.world.FindObject(id);
-        if (object == nullptr) {
-            return true;
-        }
-        for (const auto& component : object->GetComponents()) {
-            lightingChanged =
-                lightingChanged || (component && LIGHTING_AUTHORING::IsLightingComponentType(component->GetTypeName()));
-        }
-        return runtime.world.DestroyObject(object) == WorldMutationResult::Success;
-    };
     for (SceneObjectId id : changes.removed) {
-        if (!destroy(id)) {
-            return RebuildRuntimeWorld();
-        }
+        noteWorldLighting(id);
     }
-    for (SceneObjectId id : changes.changed) {
-        if (!destroy(id)) {
-            return RebuildRuntimeWorld();
-        }
-    }
-
-    if (!builtObjects.empty()) {
+    if (!changes.added.empty() || !changes.changed.empty()) {
         // 照明は下の RefreshLightingRuntime がまとめて読み直すので、ここでは資産だけを先読みする。
         (void)runtime.builder.PreloadDependencies(dependencies, state_->assets.Registry(), state_->assets.Models(),
                                                   state_->lighting.sky, state_->assets.Database().GetProjectRoot(),
                                                   state_->identity.currentSceneAssetGuid.value, false,
                                                   &state_->assets.SpriteAssets());
-        if (!runtime.builder.AddObjectsFromDocument(builtObjects, runtime.world, state_->assets.Registry(),
-                                                    runtime.componentRegistry, state_->assets.Models())) {
-            return RebuildRuntimeWorld();
-        }
-        runtime.builder.ReattachChildrenFromDocument(document, changes.changed, runtime.world);
+    }
+    if (!runtime.builder.ApplyObjectChanges(document, changes, runtime.world, state_->assets.Registry(),
+                                            runtime.componentRegistry, state_->assets.Models())) {
+        return RebuildRuntimeWorld();
     }
     if (lightingChanged) {
         (void)RefreshLightingRuntime();
@@ -729,8 +714,6 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     if (state_->runtime.playActive && sessionOwner != nullptr) {
         sessionOwner->ExitScene(state_->runtime.world);
     }
-    if (UiSceneSystem* uiSystem = state_->runtime.world.Services().Find<UiSceneSystem>())
-        uiSystem->ReleaseInputOwnership();
     SERVICES::GetActionTimeDilationService().ReleaseOwner(&state_->runtime.world);
     state_->runtime.gameUiPresentationService.Reset();
     state_->runtime.sceneCaptureService.Reset();
@@ -742,6 +725,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     // Service-owned snapshots are cleared only after every old object
     // has released its borrowed service references.
     state_->runtime.world.Clear();
+    state_->runtime.world.BindInstanceStore(&state_->identity.instances);
     state_->runtime.worldBuilt = false;
     if (state_->runtime.stopGameProjectSessionAfterWorldDetach) {
         if (sessionOwner != nullptr) {
@@ -802,6 +786,7 @@ bool DocumentSceneBase::RebuildRuntimeWorld(bool reconfigureWorldServices, bool 
     }
 
     RuntimeSceneContext::SetCurrentWorld(&state_->runtime.world, state_->identity.sceneId);
+    RuntimeSceneContext::SetCurrentSceneFilePath(state_->identity.scenePath);
     RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
     BuildSystemScheduleFromDocument();
     state_->runtime.systemScheduler.AttachWorld(state_->runtime.world);

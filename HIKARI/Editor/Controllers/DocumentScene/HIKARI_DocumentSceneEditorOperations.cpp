@@ -2,6 +2,7 @@
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentSceneEditorController.h"
 
 #include "Editor/Assets/HIKARI_AssetQueryOperation.h"
+#include "Editor/Assets/HIKARI_FarModelBakeOperation.h"
 #include "Editor/Assets/HIKARI_AssetImportSettingsService.h"
 #include "Editor/Authoring/HIKARI_ComponentAuthoringOperations.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
@@ -82,7 +83,10 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
          "Set one object's transform by stable objectId: position, rotation and scale are [x, y, z]; omitted ones "
          "keep their value. Exact name is a discovery fallback and must be unique.",
          "scene", EDITOR::SetSceneObjectTransform,
-         Concat({ObjectTargetParameters(), PositionParameters(), ScaleParameters(), RotationParameters(),
+         Concat({ObjectTargetParameters(),
+                 PositionParameters(),
+                 ScaleParameters(),
+                 RotationParameters(),
                  {{"mergeGroup", EditorOperationParameterType::Int, false,
                    "0 以外：同じ値で続けた変更を一つの取り消しにまとめる（機位の操縦など）"}}})},
         {"scene.create_object", "Create a model object in the scene by asset id or path fragment.", "scene",
@@ -135,9 +139,51 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
          EDITOR::DeleteSceneObjects, ObjectTargetParameters()},
         {"scene.duplicate_object", "Duplicate the selected object, or target one object by stable objectId.", "scene",
          EDITOR::DuplicateSceneObjects, ObjectTargetParameters()},
-        {"scene.create_empty_object", "Create an empty scene object.", "scene", EDITOR::CreateSceneEmptyObject,
-         Concat({NameParameter("物体名称，缺省为 AI Object"), PositionParameters(), RotationParameters(),
-                 ScaleParameters()})},
+        {"scene.create_empty_object",
+         "Create a scene object: empty, or with components and their starting values when components is given "
+         "(component types from component.types.query, property ids from component.type.describe). Components "
+         "that a listed component requires are added too. One undo step; when a component or a value is refused, "
+         "nothing is created.",
+         "scene", EDITOR::CreateSceneEmptyObject,
+         Concat({NameParameter("物体名称，缺省为 AI Object"),
+                 PositionParameters(),
+                 RotationParameters(),
+                 ScaleParameters(),
+                 {{"components",
+                   EditorOperationParameterType::Json,
+                   false,
+                   "Components to add: [{type, properties}], properties being {propertyId: value}",
+                   {{"type", "array"},
+                    {"items",
+                     {{"type", "object"},
+                      {"required", nlohmann::json::array({"type"})},
+                      {"properties", {{"type", {{"type", "string"}}}, {"properties", {{"type", "object"}}}}}}}}}}})},
+        {"scene.drop_to_ground",
+         "Place the bottom of each object's model on the ground below it and tilt it to the slope, keeping its "
+         "facing (objects without a model are placed by their pivot). "
+         "Uses the selection when objectIds is omitted, and each object's GroundAnchorComponent settings when present. "
+         "One undo step.",
+         "scene",
+         EDITOR::DropSceneObjectsToGround,
+         {{"objectIds", EditorOperationParameterType::Json, false, "Stable SceneObjectIds; default is the selection"},
+          {"alignToGround", EditorOperationParameterType::Float, false, "0 keeps upright, 1 follows the slope"},
+          {"maxTiltDegrees", EditorOperationParameterType::Float, false, "Largest tilt from upright in degrees"},
+          {"sinkMeters", EditorOperationParameterType::Float, false, "Depth pushed into the ground in meters"}}},
+        {"scene.keep_play_results",
+         "During Play, remember the current pose of objects (for example rocks that fell with physics) and write "
+         "it into the scene when Play stops, as one undo step. Uses the selection when objectIds is omitted.",
+         "scene",
+         EDITOR::KeepPlayResults,
+         {{"objectIds", EditorOperationParameterType::Json, false, "Stable SceneObjectIds; default is the selection"}}},
+        {"scene.create_water",
+         "Create a water surface. camera_centered_ocean makes a sea that follows the camera at position y.", "scene",
+         EDITOR::CreateSceneWaterObject,
+         Concat({NameParameter("Object name"),
+                 PositionParameters(),
+                 RotationParameters(),
+                 ScaleParameters(),
+                 {{"geometryMode", EditorOperationParameterType::String, false,
+                   "finite_authored (default) or camera_centered_ocean"}}})},
     };
 }
 
@@ -162,7 +208,6 @@ Parameters ProceduralTerrainParameters() {
 } // namespace
 
 void DocumentSceneEditorController::RegisterEditorOperations() {
-    RegisterUiOperations();
     RegisterSceneFolderOperations();
     RegisterSceneLayoutOperations();
     RegisterLookDevOperations();
@@ -415,6 +460,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
     EDITOR::RegisterRenderStyleOperations(operationRegistry_, environmentPanel_.Style(),
                                           [this] { return aiOperationScene_; });
     EDITOR::RegisterAssetQueryOperation(operationRegistry_, [this] { return aiOperationScene_; });
+    EDITOR::RegisterFarModelBakeOperation(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterPerformanceOperations(operationRegistry_, [this] { return aiOperationScene_; });
     EDITOR::RegisterShaderPlaygroundOperations(operationRegistry_);
     EDITOR::RegisterModelCollisionOperations(operationRegistry_, ModelCollisionWorkspace(),

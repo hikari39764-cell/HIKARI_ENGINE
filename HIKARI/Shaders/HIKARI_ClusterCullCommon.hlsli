@@ -41,6 +41,8 @@ float HikariClusterCullProjectedScreenRadius(float4 boundsCenterRadius)
         boundsCenterRadius.w);
 }
 
+#include "Include/Cluster/HIKARI_ClusterMassInstanceVisibility.hlsli"
+
 void HikariClusterCullAddDebugCounter(uint byteOffset, uint value)
 {
     if (gClusterCullEnableDebugCounters != 0u)

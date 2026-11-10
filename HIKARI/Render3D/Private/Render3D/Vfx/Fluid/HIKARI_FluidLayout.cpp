@@ -10,9 +10,9 @@ namespace HIKARI::RENDER3D::FLUID {
 FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept {
     switch (quality) {
     case FluidSmokeQuality::Low: return {0.75f, 1u, 48u, 2u, 2.0f, 3.0f, 1.6f};
-    case FluidSmokeQuality::High: return {1.0f, 3u, 96u, 4u, 0.5f, 12.0f, 0.8f};
+    case FluidSmokeQuality::High: return {1.0f, 3u, 96u, 8u, 0.5f, 12.0f, 0.8f};
     case FluidSmokeQuality::Balanced:
-    default: return {1.0f, 2u, 64u, 4u, 1.0f, 6.0f, 1.2f};
+    default: return {1.0f, 2u, 64u, 6u, 1.0f, 6.0f, 1.2f};
     }
 }
 

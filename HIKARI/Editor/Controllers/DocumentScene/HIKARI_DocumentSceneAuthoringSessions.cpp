@@ -32,7 +32,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePre
         case EditorWorkspaceId::Scene:
         case EditorWorkspaceId::LookDev:
         case EditorWorkspaceId::TerrainSurface:
-        case EditorWorkspaceId::Ui:
         case EditorWorkspaceId::Cinematics: view = RENDER3D::kPrimaryRenderViewId; break;
         case EditorWorkspaceId::GameplayCamera:
             view = aiOperationScene_->IsRuntimePlayActive()

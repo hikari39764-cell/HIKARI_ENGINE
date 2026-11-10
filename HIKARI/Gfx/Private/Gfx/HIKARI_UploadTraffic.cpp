@@ -41,6 +41,7 @@ constexpr OwnerInfo kOwners[] = {
     {"lightProbes", Kind::SceneData, "Baked light probe volume uploads."},
     {"colorGrading", Kind::SceneData, "Color grading LUT uploads."},
     {"water", Kind::SceneData, "Ocean spectrum initial data."},
+    {"surfaceExtensions", Kind::PerFrame, "Module surfaces: per-view instance data and edited tile contents."},
 };
 static_assert(std::size(kOwners) == kOwnerCount, "every Owner needs a row");
 

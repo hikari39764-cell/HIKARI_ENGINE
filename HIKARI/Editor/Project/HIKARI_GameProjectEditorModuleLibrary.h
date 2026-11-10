@@ -11,6 +11,8 @@
 namespace HIKARI::EDITOR_PROJECT {
 
 class IEditorDocumentService;
+class IGameExportFiles;
+class IEditorSceneServices;
 class IEditorWorkspace;
 
 } // namespace HIKARI::EDITOR_PROJECT
@@ -31,20 +33,27 @@ public:
     // The Editor companion is optional. Absence of the explicit launch
     // argument succeeds without loading or probing a default DLL.
     bool LoadForLaunch(std::string& outMessage);
+    // 項目に入れた追加モジュールの編集器 DLL を読む。
+    bool Load(const std::filesystem::path& modulePath, std::string& outMessage);
     void Reset() noexcept;
 
     bool IsLoaded() const noexcept;
     std::string_view GetModuleId() const noexcept;
     size_t GetWorkspaceCount() const noexcept;
     EDITOR_PROJECT::IEditorWorkspace* GetWorkspace(size_t index) const noexcept;
+    size_t GetViewportToolCount() const noexcept;
+    EDITOR_PROJECT::IEditorViewportTool* GetViewportTool(size_t index) const noexcept;
+    size_t GetPanelCount() const noexcept;
+    EDITOR_PROJECT::IEditorPanel* GetPanel(size_t index) const noexcept;
     bool RegisterEditorOperations(EditorOperationRegistry& registry, uint64_t ownerToken,
-                                  EDITOR_PROJECT::IEditorDocumentService* documents, std::string& outMessage,
+                                  EDITOR_PROJECT::IEditorDocumentService* documents,
+                                  EDITOR_PROJECT::IEditorSceneServices* sceneServices, std::string& outMessage,
                                   GameProjectEditorWorkspaceRegistry* commands = nullptr) const;
+    // ゲームの書き出し：モジュールが包へ足すファイルを files へ申し出させる。モジュールの中で例外が出たら false。
+    bool CollectGameExportFiles(EDITOR_PROJECT::IGameExportFiles& files) const noexcept;
     const std::filesystem::path& GetModulePath() const noexcept;
 
 private:
-    bool Load(const std::filesystem::path& modulePath, std::string& outMessage);
-
     void* libraryHandle_ = nullptr;
     const EDITOR_PROJECT::GameProjectEditorModuleApi* api_ = nullptr;
     void* instance_ = nullptr;

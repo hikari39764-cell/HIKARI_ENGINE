@@ -331,6 +331,21 @@ bool ImGuiInspectorBuilder::Vec3(const AuthoringFieldDescriptor& field, float& x
     return true;
 }
 
+bool ImGuiInspectorBuilder::ModuleAssetIdPicker(const AuthoringFieldDescriptor& field,
+                                                std::string_view moduleAssetTypeId, std::string& value) {
+    if (context_.assetDatabase == nullptr) {
+        return String(field, value);
+    }
+    const FieldIdScope scope(field);
+    const auto row = FieldRow(field);
+    if (!row.IsVisible()) {
+        return false;
+    }
+    EDITOR::AssetFieldOptions options{"##Value", AssetType::ModuleAsset, true, false, true, false};
+    options.moduleAssetTypeId = moduleAssetTypeId;
+    return EDITOR::DrawAssetField(context_.assetDatabase, options, value);
+}
+
 bool ImGuiInspectorBuilder::AssetIdPicker(const AuthoringFieldDescriptor& field, AssetType assetType,
                                           std::string& value) {
     const FieldIdScope scope(field);

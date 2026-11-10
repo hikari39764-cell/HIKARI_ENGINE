@@ -278,6 +278,9 @@ float3 HikariSampleEnvironmentReflection(float3 worldPos, float3 r, float roughn
     return radiance;
 }
 
+// 面の環境光の合成は PS だけが使う（mesh shader は探針を読むだけで、面の光の定数を束縛しない）。
+#ifndef HIKARI_SKY_ENVIRONMENT_PROBES_ONLY
 #include "Forward/HIKARI_AmbientIblCommon.hlsli"
+#endif
 
 #endif

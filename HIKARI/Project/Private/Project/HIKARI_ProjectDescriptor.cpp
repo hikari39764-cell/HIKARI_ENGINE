@@ -1,6 +1,7 @@
 #include "Project/HIKARI_ProjectDescriptor.h"
 #include "Core/IO/HIKARI_PathNormalization.h"
 #include "Core/Text/HIKARI_OutMessage.h"
+#include "Core/Text/HIKARI_UtfPath.h"
 
 #include <limits>
 #include <system_error>
@@ -119,9 +120,28 @@ bool LoadProjectDescriptor(const std::filesystem::path& descriptorPath, ProjectD
         return false;
     }
 
+    std::vector<ProjectModuleReference> modules{};
+    if (const auto moduleList = root.find("modules"); moduleList != root.end()) {
+        if (!moduleList->is_array()) {
+            SetMessage(outMessage, "Project.hikari modules must be an array");
+            return false;
+        }
+        for (const nlohmann::json& entry : *moduleList) {
+            if (!entry.is_object() || !entry.contains("id") || !entry["id"].is_string() ||
+                entry["id"].get<std::string>().empty() ||
+                (entry.contains("manifest") && !entry["manifest"].is_string())) {
+                SetMessage(outMessage, "Project.hikari modules entries need an id and an optional manifest path");
+                return false;
+            }
+            modules.push_back(
+                {entry["id"].get<std::string>(), TEXT::PathFromUtf8(entry.value("manifest", std::string{}))});
+        }
+    }
+
     outDescriptor.formatVersion = formatVersion;
     outDescriptor.name = std::move(name);
     outDescriptor.gameProjectManifest = std::move(gameProjectManifest);
+    outDescriptor.modules = std::move(modules);
     SetMessage(outMessage, {});
     return true;
 }
@@ -142,11 +162,22 @@ bool SaveProjectDescriptor(const std::filesystem::path& descriptorPath, const Pr
         return false;
     }
 
-    const nlohmann::json root{
+    nlohmann::json root{
         {"formatVersion", descriptor.formatVersion},
         {"gameProjectManifest", descriptor.gameProjectManifest.generic_string()},
         {"name", descriptor.name},
     };
+    if (!descriptor.modules.empty()) {
+        nlohmann::json modules = nlohmann::json::array();
+        for (const ProjectModuleReference& module : descriptor.modules) {
+            nlohmann::json entry{{"id", module.id}};
+            if (!module.manifest.empty()) {
+                entry["manifest"] = TEXT::PathToUtf8(module.manifest);
+            }
+            modules.push_back(std::move(entry));
+        }
+        root["modules"] = std::move(modules);
+    }
     return SERIALIZATION::JSON::WriteJsonFile(descriptorPath, root, outMessage);
 }
 

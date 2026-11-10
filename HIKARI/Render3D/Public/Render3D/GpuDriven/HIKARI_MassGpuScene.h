@@ -21,7 +21,7 @@ class RenderModelCache;
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
 inline constexpr size_t kMassGpuSceneDirtyHistoryCapacity = 8u;
-inline constexpr size_t kMassGpuSceneMaximumSourceInstanceCount = 131072u;
+inline constexpr size_t kMassGpuSceneMaximumSourceInstanceCount = 524288u;
 
 struct MassRenderProxyTemplateRequest {
     uint64_t typeId = 0u;
@@ -30,7 +30,11 @@ struct MassRenderProxyTemplateRequest {
     uint32_t primitiveIndex = 0u;
     uint32_t materialIndex = 0u;
     bool receiveShadow = true;
+    bool rayTraced = true;
     std::string clusteredGeometryPath{};
+    // 遠景模型との切り替え（画面上の大きさ）。正なら近い模型でこれより小さい個体を描かず、負なら遠い模型でこれ以上の
+    // 個体を描かない。0 は切り替えなし。
+    float screenSwitch = 0.0f;
 };
 
 struct MassGpuSceneStoreInput {
@@ -55,6 +59,9 @@ struct MassGpuSceneShape {
     uint32_t meshIndex = RUNTIME::kInvalidRenderSurfaceIndex;
     uint32_t primitiveIndex = RUNTIME::kInvalidRenderSurfaceIndex;
     bool doubleSided = false;
+    bool rayTraced = true; // false の種類は光線追跡の場景へ入れない
+    // 同じ個体の列を共有する種類（一つの模型の部品）を見分ける値。光追はそれらを一つの instance にまとめる。
+    uint64_t instanceColumn = 0u;
 };
 
 struct MassGpuSceneSource {
@@ -97,6 +104,8 @@ public:
     void Clear();
     void BeginSync(uint64_t worldIdentity, uint64_t publicationFrameIndex, uint64_t publicationGeneration);
     bool AddStore(const MassGpuSceneStoreInput& input);
+    // あと instanceCount 個（部品ごとに数える）足せるか。
+    bool CanAdd(size_t instanceCount) const noexcept;
     bool EndSync(RUNTIME::RenderModelCache& renderModelCache);
 
     const MassGpuSceneSource& GetSource() const noexcept;

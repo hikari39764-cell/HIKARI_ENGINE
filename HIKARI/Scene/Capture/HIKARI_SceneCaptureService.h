@@ -1,8 +1,6 @@
 #pragma once
 
-#include "HIKARI/Project/UiCanvasTypes.h"
 #include "Core/Numeric/HIKARI_NonZero.h"
-#include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 
 #include <algorithm>
 #include <array>
@@ -31,10 +29,6 @@ struct SceneCaptureRequest {
     // Stable renderer resource slot owned by this World service. This is
     // intentionally not part of the public GameProject ABI.
     uint32_t renderSlot = 0u;
-    bool uiCanvas = false;
-    GameProjectUiColor clearColor{0, 0, 0, 1};
-    const GAME_UI::GameUiFrameSource* uiFrame = nullptr;
-    uint64_t contentRevision = 0;
     GameProjectSceneCaptureStyleDesc style{};
     // 空でなければ、カメラ物体の代わりにこれらの視点で描く（SetViews。検査済み）。
     std::vector<GameProjectSceneCaptureViewDesc> views{};
@@ -111,81 +105,6 @@ public:
         return handle;
     }
 
-    struct CanvasContent {
-        GAME_UI::GameUiPresentationService ui;
-        uint64_t revision{}, pendingRevision{}, serial{};
-        uint32_t drawCount{};
-        bool updating{}, failed{};
-    };
-
-    void SetCanvasAssets(const std::filesystem::path& root, const AssetDatabase* assets) {
-        canvasProjectRoot_ = root;
-        canvasAssets_ = assets;
-    }
-
-    GameProjectSceneCaptureHandle CreateCanvas(const GameProjectUiCanvasDesc& desc) {
-        for (uint32_t slot = kGameProjectSceneCaptureMaximumActiveCount; slot < captures_.size(); ++slot) {
-            auto& item = captures_[slot];
-            if (item)
-                continue;
-            item.emplace();
-            auto& state = *item;
-            state.canvas.emplace();
-            state.canvas->ui.SetProjectRoot(canvasProjectRoot_);
-            state.canvas->ui.SetAssetDatabase(canvasAssets_);
-            state.request.handle = {nextHandleValue_++, epoch_};
-            state.request.width = desc.width;
-            state.request.height = desc.height;
-            state.request.flags = GameProjectSceneCaptureFlags(GameProjectSceneCaptureFlag::Enabled);
-            state.request.renderSlot = slot;
-            state.request.uiCanvas = true;
-            state.request.clearColor = desc.clearColor;
-            state.request.uiFrame = &state.canvas->ui.GetFrameSource();
-            state.snapshot.capture = state.request.handle;
-            state.snapshot.status = GameProjectSceneCaptureStatus::Pending;
-            state.targetRebuildPending = true;
-            return state.request.handle;
-        }
-        return {};
-    }
-
-    CanvasContent* Canvas(GameProjectSceneCaptureHandle handle) noexcept {
-        auto* state = Find(handle);
-        return state && state->canvas ? &*state->canvas : nullptr;
-    }
-
-    bool BeginCanvasUpdate(GameProjectSceneCaptureHandle handle, uint64_t revision) {
-        auto* content = Canvas(handle);
-        if (!content || !revision || content->updating)
-            return false;
-        content->ui.DiscardPending();
-        content->pendingRevision = revision;
-        content->drawCount = 0;
-        content->failed = false;
-        content->updating = true;
-        return true;
-    }
-
-    bool EndCanvasUpdate(GameProjectSceneCaptureHandle handle, bool commit) {
-        auto* state = Find(handle);
-        if (!state || !state->canvas || !state->canvas->updating)
-            return false;
-        auto& content = *state->canvas;
-        content.updating = false;
-        if (!commit || content.failed) {
-            content.ui.DiscardPending();
-            return !commit;
-        }
-        content.revision = content.pendingRevision;
-        if (content.ui.PendingMatchesFrame()) {
-            content.ui.DiscardPending();
-            return true;
-        }
-        content.ui.Tick(++content.serial);
-        state->request.contentRevision = content.revision;
-        return true;
-    }
-
     bool Update(GameProjectSceneCaptureHandle capture, RuntimeObjectHandle cameraObject,
                 const GameProjectSceneCaptureDesc& desc) noexcept {
         CaptureState* state = Find(capture);
@@ -217,7 +136,7 @@ public:
 
     bool SetStyle(GameProjectSceneCaptureHandle capture, const GameProjectSceneCaptureStyleDesc& style) noexcept {
         CaptureState* state = Find(capture);
-        if (state == nullptr || state->request.uiCanvas) {
+        if (state == nullptr) {
             return false;
         }
         state->request.style = style;
@@ -225,10 +144,9 @@ public:
     }
 
     // 視点の矩形がキャプチャに収まる時だけ写す（count 0 で視点を外す）。
-    bool SetViews(GameProjectSceneCaptureHandle capture, const GameProjectSceneCaptureViewDesc* views,
-                  uint32_t count) {
+    bool SetViews(GameProjectSceneCaptureHandle capture, const GameProjectSceneCaptureViewDesc* views, uint32_t count) {
         CaptureState* state = Find(capture);
-        if (state == nullptr || state->request.uiCanvas) {
+        if (state == nullptr) {
             return false;
         }
         for (uint32_t index = 0u; index < count; ++index) {
@@ -404,7 +322,6 @@ private:
         RENDER3D::TextureResourceHandle outputTexture{};
         GameProjectSceneCaptureSnapshot snapshot{};
         bool targetRebuildPending = false;
-        std::optional<CanvasContent> canvas{};
     };
 
     CaptureState* Find(GameProjectSceneCaptureHandle capture) noexcept {
@@ -444,16 +361,12 @@ private:
         }
     }
 
-    std::array<std::optional<CaptureState>,
-               kGameProjectSceneCaptureMaximumActiveCount + kGameProjectUiCanvasMaximumCount>
-        captures_{};
+    std::array<std::optional<CaptureState>, kGameProjectSceneCaptureMaximumActiveCount> captures_{};
     std::vector<SceneCaptureMaterialBinding> bindings_{};
     std::vector<SceneCaptureMaterialBinding> retiredBindings_{};
     std::vector<uint32_t> retiredCaptureTargetSlots_{};
     uint64_t epoch_ = 1u;
     uint64_t nextHandleValue_ = 1u;
-    std::filesystem::path canvasProjectRoot_;
-    const AssetDatabase* canvasAssets_ = nullptr;
 };
 
 } // namespace HIKARI::SCENE_CAPTURE

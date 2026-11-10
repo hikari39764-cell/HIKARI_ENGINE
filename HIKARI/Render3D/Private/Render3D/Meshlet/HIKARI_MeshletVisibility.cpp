@@ -10,23 +10,29 @@
 namespace HIKARI::RENDER3D::MESHLET {
 namespace {
 constexpr uint32_t kSampleBit = 0x80000000u;
-bool AllocateViews(std::array<RenderResourceView, 3>& views) {
+constexpr uint32_t kSecondPhaseBit = 0x40000000u;
+bool AllocateViews(std::array<RenderResourceView, 4>& views) {
     if (views[0].IsValid())
         return true;
-    auto allocated = AllocateRenderResourceDescriptorRange(3);
-    if (allocated.size() != 3)
+    auto allocated = AllocateRenderResourceDescriptorRange(4);
+    if (allocated.size() != 4)
         return false;
-    views = {allocated[0], allocated[1], allocated[2]};
+    views = {allocated[0], allocated[1], allocated[2], allocated[3]};
     return true;
 }
-void WriteViews(ID3D12Device* device, const std::array<RenderResourceView, 3>& views, ID3D12Resource* depth,
-                uint32_t mips, ID3D12Resource* counters, uint32_t index, D3D12_GPU_VIRTUAL_ADDRESS queryAddress) {
+void WriteDepthView(ID3D12Device* device, const RenderResourceView& view, ID3D12Resource* depth, uint32_t mips) {
     D3D12_SHADER_RESOURCE_VIEW_DESC srv{};
     srv.Format = DXGI_FORMAT_R32_FLOAT;
     srv.ViewDimension = D3D12_SRV_DIMENSION_TEXTURE2D;
     srv.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
     srv.Texture2D.MipLevels = mips ? mips : 1u;
-    device->CreateShaderResourceView(depth, &srv, views[0].cpu);
+    device->CreateShaderResourceView(depth, &srv, view.cpu);
+}
+void WriteViews(ID3D12Device* device, const std::array<RenderResourceView, 4>& views, ID3D12Resource* depth,
+                uint32_t mips, ID3D12Resource* counters, uint32_t index, D3D12_GPU_VIRTUAL_ADDRESS queryAddress,
+                ID3D12Resource* history = nullptr, uint32_t historyMips = 0) {
+    WriteDepthView(device, views[0], depth, mips);
+    WriteDepthView(device, views[3], history, historyMips);
     D3D12_UNORDERED_ACCESS_VIEW_DESC uav{};
     uav.Format = DXGI_FORMAT_R32_TYPELESS;
     uav.ViewDimension = D3D12_UAV_DIMENSION_BUFFER;
@@ -86,9 +92,10 @@ void MeshletVisibility::Collect(Frame& frame) {
     const auto* values = static_cast<const MeshletVisibilityCounters*>(mapped);
     for (uint32_t i = 0; i < frame.count; ++i) {
         const auto& entry = frame.entries[i];
-        if (!entry.sampled || entry.phase >= stats_.samples.size())
+        const auto phase = static_cast<size_t>(entry.phase);
+        if (!entry.sampled || phase >= stats_.samples.size())
             continue;
-        auto& sample = stats_.samples[entry.phase];
+        auto& sample = stats_.samples[phase];
         if (sample.valid && sample.retireFence >= frame.fence)
             continue;
         sample = {values[i], frame.fence, true};
@@ -99,7 +106,8 @@ void MeshletVisibility::Collect(Frame& frame) {
 }
 
 MeshletVisibilityBinding MeshletVisibility::Begin(const GFX::Context& graphics, const DEPTH::DepthPyramidView* depth,
-                                                  uint32_t phase) {
+                                                  MeshletVisibilityPhase phase,
+                                                  const DEPTH::DepthPyramidView* history) {
     active_ = nullptr;
     if (!graphics.device || !graphics.cmdList)
         return {};
@@ -125,12 +133,15 @@ MeshletVisibilityBinding MeshletVisibility::Begin(const GFX::Context& graphics, 
         WriteViews(graphics.device, nullViews_, nullptr, 0, nullptr, 0, zeroUpload_->GetGPUVirtualAddress());
     }
     const bool hasDepth = depth && depth->valid && depth->resource && depth->mipCount;
-    if (phase == 1) {
+    const bool hasHistory = history && history->valid && history->resource && history->mipCount;
+    const bool secondPhase = phase == MeshletVisibilityPhase::GeometryAuxSecond;
+    if (phase == MeshletVisibilityPhase::Forward) {
         stats_.forwardHzbBound = false;
         stats_.width = stats_.height = stats_.mipCount = 0;
     }
     const MeshletVisibilityBinding disabled{nullViews_[0].gpu, 0};
-    if (phase >= 2 && !hasDepth)
+    // 二段目が使えない時は、遮蔽の判定なしで全部を描き直す（一段目が落とした簇を欠かさない）。
+    if ((phase == MeshletVisibilityPhase::Other && !hasDepth) || (secondPhase && (!hasDepth || !hasHistory)))
         return disabled;
     auto& frame = frames_[graphics.frameIndex % frames_.size()];
     const uint64_t retire = graphics.currentFrameRetireFenceValue;
@@ -161,12 +172,16 @@ MeshletVisibilityBinding MeshletVisibility::Begin(const GFX::Context& graphics, 
     MeshletOcclusionGpuData query{};
     if (hasDepth)
         query.viewProj = depth->viewProj;
-    query.control = (hasDepth ? depth->mipCount : 0u) | (sampled ? kSampleBit : 0u);
+    if (secondPhase)
+        query.historyViewProj = history->viewProj;
+    query.control = (hasDepth ? depth->mipCount : 0u) |
+                    (secondPhase ? (history->mipCount << 8u) | kSecondPhaseBit : 0u) | (sampled ? kSampleBit : 0u);
     std::memcpy(allocation.cpuAddress, &query, sizeof(query));
     entry.phase = phase;
     entry.sampled = sampled;
     WriteViews(graphics.device, entry.views, hasDepth ? depth->resource : nullptr, hasDepth ? depth->mipCount : 0,
-               sampled ? frame.counters.Get() : nullptr, sampled ? frame.count : 0, allocation.gpuAddress);
+               sampled ? frame.counters.Get() : nullptr, sampled ? frame.count : 0, allocation.gpuAddress,
+               secondPhase ? history->resource : nullptr, secondPhase ? history->mipCount : 0);
     if (sampled) {
         const auto toCopy = CD3DX12_RESOURCE_BARRIER::Transition(
             frame.counters.Get(), D3D12_RESOURCE_STATE_UNORDERED_ACCESS, D3D12_RESOURCE_STATE_COPY_DEST);
@@ -180,7 +195,7 @@ MeshletVisibilityBinding MeshletVisibility::Begin(const GFX::Context& graphics, 
         activeIndex_ = frame.count;
     }
     ++frame.count;
-    if (phase == 1 && hasDepth) {
+    if (phase == MeshletVisibilityPhase::Forward && hasDepth) {
         stats_.forwardHzbBound = true;
         stats_.width = depth->width;
         stats_.height = depth->height;

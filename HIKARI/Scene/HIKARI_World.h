@@ -24,11 +24,17 @@
 namespace HIKARI {
 
 class ComponentRegistry;
+class WorldInstanceStore;
 class PrefabView;
 class SystemScheduler;
 struct GameProjectSdkAccess;
 
 enum class RuntimeWorldAccessResult : uint8_t { Success, InvalidWorld, WrongThread };
+
+class INavigationGeometrySource;
+class IRenderSurfaceExtension;
+class IWaterSource;
+class IGroundSource;
 
 class World {
 public:
@@ -150,6 +156,9 @@ public:
                                   WorldMassStore::RenderPublicationVisitorFn visitor,
                                   WorldMassRenderPublicationReceipt& outReceipt) noexcept;
     bool AcknowledgeMassRenderProxies(const WorldMassRenderPublicationReceipt& receipt) noexcept;
+    // 場景の実例集（場景の文書が持つ。世界より長生きする）。描画の発布に含め、SDK からも読み書きできる。
+    void BindInstanceStore(WorldInstanceStore* store) noexcept { instanceStore_ = store; }
+    WorldInstanceStore* GetInstanceStore() const noexcept { return instanceStore_; }
 
     WorldServiceRegistry& Services() noexcept;
     const WorldServiceRegistry& Services() const noexcept;
@@ -160,6 +169,25 @@ public:
     void BeginFrame(uint64_t frameIndex) noexcept;
     void BeginFixedStep(uint64_t fixedTickIndex) noexcept;
     uint64_t GetRuntimeIdentity() const noexcept { return runtimeIdentity_; }
+    // モジュールの面。世界は持ち主にならず、登録した側が外す。
+    std::span<IRenderSurfaceExtension* const> GetRenderSurfaceExtensions() const noexcept {
+        return renderSurfaceExtensions_;
+    }
+    void AddRenderSurfaceExtension(IRenderSurfaceExtension& extension);
+    std::span<INavigationGeometrySource* const> GetNavigationGeometrySources() const noexcept {
+        return navigationGeometrySources_;
+    }
+    void AddNavigationGeometrySource(INavigationGeometrySource& source);
+    void RemoveNavigationGeometrySource(INavigationGeometrySource& source) noexcept;
+    // モジュールの水。世界は持ち主にならず、登録した側が外す。
+    std::span<IWaterSource* const> GetWaterSources() const noexcept { return waterSources_; }
+    void AddWaterSource(IWaterSource& source);
+    void RemoveWaterSource(IWaterSource& source) noexcept;
+    // モジュールの地面。世界は持ち主にならず、登録した側が外す。
+    std::span<IGroundSource* const> GetGroundSources() const noexcept { return groundSources_; }
+    void AddGroundSource(IGroundSource& source);
+    void RemoveGroundSource(IGroundSource& source) noexcept;
+    void RemoveRenderSurfaceExtension(IRenderSurfaceExtension& extension) noexcept;
     bool IsOwnerThread() const noexcept { return std::this_thread::get_id() == ownerThread_; }
     static World* ResolveRuntimeWorld(uint64_t identity, RuntimeWorldAccessResult* outAccess = nullptr) noexcept;
     bool CanMutateStructure() const noexcept {
@@ -414,6 +442,8 @@ private:
 
     std::vector<std::unique_ptr<GameObject>> objects_;
     WorldMassStore massStore_{};
+    WorldInstanceStore* instanceStore_ = nullptr;
+    std::vector<WorldMassRenderStoreView> instanceRenderViews_{};
     std::vector<ObjectSlot> objectSlots_{};
     std::vector<uint32_t> freeObjectSlots_{};
     uint32_t firstLiveObjectSlot_ = kInvalidLiveObjectSlot;
@@ -442,6 +472,10 @@ private:
     std::vector<ReservedStateJournalEntry> reservationStateJournal_{};
     std::thread::id ownerThread_{};
     uint64_t runtimeIdentity_ = 0u;
+    std::vector<IRenderSurfaceExtension*> renderSurfaceExtensions_{};
+    std::vector<INavigationGeometrySource*> navigationGeometrySources_{};
+    std::vector<IWaterSource*> waterSources_{};
+    std::vector<IGroundSource*> groundSources_{};
     uint64_t nextPrefabRequestId_ = 1u;
     uint64_t nextPrefabInstanceId_ = 1u;
     uint64_t nextDynamicSceneObjectId_ = 1u;

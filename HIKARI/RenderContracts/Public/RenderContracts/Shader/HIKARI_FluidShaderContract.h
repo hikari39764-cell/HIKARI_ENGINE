@@ -88,32 +88,33 @@ inline ShaderAssetResolveResult ResolveFluidSimulationShaderEntry(
 // 同じ根を使う。
 inline constexpr std::string_view kFluidVolumeShaderProgram = "HIKARI.EngineShader.Render3D_FluidVolume";
 inline constexpr std::string_view kFluidVolumeShaderRootCanonical =
-    "HIKARI.FluidVolume.Root.v4|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..18:SRVTable(t0..t16,count1,All)|"
-    "19:UAVTable(u0,count1,All)|20:UAVTable(u1,count1,All)|21..24:SRV(t17..t20,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
+    "HIKARI.FluidVolume.Root.v5|0:CBV(b0,All)|1:RootConstants(b1,space0,4,All)|2..30:SRVTable(t0..t28,count1,All)|"
+    "31:UAVTable(u0,count1,All)|32:UAVTable(u1,count1,All)|33..40:SRV(t29..t36,All)|StaticSampler(s0,LinearClamp)|StaticSampler(s1,LinearBorderTransparentBlack)|"
     "StaticSampler(s2,LinearWrap)|StaticSampler(s3,PointClamp)|StaticSampler(s4,ComparisonLinearBorderWhite)|"
     "Flags(None)";
 inline constexpr std::string_view kFluidVolumeShaderInterfaceCanonical =
-    "FluidRenderCB:1200;mat4 inverseViewProj camera-relative(camera at origin);float4 camera(xyz,march step cells),forward(xyz,steps),size(half,"
+    "FluidRenderCB:1840;mat4 inverseViewProj camera-relative(camera at origin);float4 camera(xyz,march step cells),forward(xyz,steps),size(half,"
     "render),sun(direction,shadowed),sunRadiance,ambient(rgb,domains);cameraVolume(near,logRange,slices,samples);mat4 lightViewProj[4];float4 splits,shadowParams,"
-    "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[4]:160 toGrid[3],cells,look,emission(ignition),emissionHot(hot temperature),optics,detail,sun(w cell color);"
-    "t0..t3 density(x,yzw density*color),t4..t7 velocity,t8..t11 light RGBA16F half(x sun optical depth,y sky "
+    "shadowSampling,shadowBias;solarTable(origin,right extent,up resolution,toSun steps);FluidDomain[8]:160 toGrid[3],cells,look,emission(ignition),emissionHot(hot temperature),optics,detail,sun(w cell color);"
+    "t0..t7 density(x,yzw density*color),t8..t15 velocity,t16..t23 light RGBA16F half(x sun optical depth,y sky "
     "optical depth from up cone and horizontal ring transmittance,z local occlusion),sun optical depth near 3 cells "
-    "from density then light when the light texel spans >=2 px and light depth <4 (else light only),t12 scene depth,t13/t14 march color RGBA16F/march "
-    "distances RG32F (stopped opaque, opacity-weighted smoke mean),t15 noise R8 64^3,t16 shadow atlas;"
+    "from density then light when the light texel spans >=2 px and light depth <4 (else light only),t24 scene depth,t25/t26 march color RGBA16F/march "
+    "distances RG32F (stopped opaque, opacity-weighted smoke mean),t27 noise R8 64^3,t28 shadow atlas;"
     "premultiplied pre-exposed scattering and "
     "transmittance;composite ONE/INV_SRC_ALPHA;camera volume log slices;u1 solar atlas RG32F cloud-solar layout "
     "tile0 near/far,tiles 1..steps far->near transmittance;CoveragePS full-res RG16F smoke mean distance m and "
-    "opacity for the volumetric fog composite;t17..t20 solver stats per domain: u32 activity per 8^3 brick at "
+    "opacity for the volumetric fog composite;t29..t36 solver stats per domain: u32 activity per 8^3 brick at "
     "bricks*12 bytes, march and camera volume skip bricks inactive in every domain at t (DDA to the brick exit); "
-    "domain step min(span/steps,max(camera.w h,pixel footprint at entry)), 512 steps+skips per piece";
+    "domain step min(span/steps,max(camera.w h,pixel footprint at entry)), 512 steps+skips per piece;"
+    "MarchPS reads domain slots 0..3 (<=4 domains), MarchWidePS all 8 slots";
 
 inline ShaderAssetContractExpectation MakeFluidVolumeShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidVolume";
-    contract.engineInterfaceVersion = 10u;
+    contract.engineInterfaceVersion = 11u;
     contract.rootLayoutId = "HIKARI.FluidVolume.Root";
-    contract.rootLayoutVersion = 4u;
+    contract.rootLayoutVersion = 5u;
     contract.availableDeviceCaps = availableCaps;
     if (!HASH::ComputeSha256(kFluidVolumeShaderInterfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(kFluidVolumeShaderRootCanonical, contract.rootLayoutHash)) {
@@ -129,7 +130,7 @@ inline bool IsFluidVolumeBindingAllowed(const ShaderResourceBinding& binding) no
     }
     switch (binding.kind) {
     case Kind::ConstantBuffer: return binding.registerIndex <= 1u;
-    case Kind::ShaderResource: return binding.registerIndex <= 20u;
+    case Kind::ShaderResource: return binding.registerIndex <= 36u;
     case Kind::UnorderedAccess: return binding.registerIndex <= 1u;
     case Kind::Sampler: return binding.registerIndex <= 4u;
     }

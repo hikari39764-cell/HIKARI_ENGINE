@@ -19,6 +19,7 @@
 #include "Gfx/HIKARI_DXCheck.h"
 #include "Gfx/HIKARI_ShaderDeviceCapabilities.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshInputLayouts.h"
+#include "HIKARI/Project/RenderSurface.h"
 #include "Render3D/Core/MeshRenderer/Pipeline/HIKARI_MeshRootParameters.h"
 
 namespace HIKARI::MESHRENDERER {
@@ -127,10 +128,11 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     const CD3DX12_DESCRIPTOR_RANGE screenSpacePackedSurfaceRange = srvRange(1, 3, 7);
     const CD3DX12_DESCRIPTOR_RANGE oceanSpectrumRange = srvRange(6u, 5u, 7u);
     const CD3DX12_DESCRIPTOR_RANGE rayTracedShadowRange = srvRange(1u, 11u, 7u);
-    CD3DX12_DESCRIPTOR_RANGE meshletOcclusionRanges[3]{};
+    CD3DX12_DESCRIPTOR_RANGE meshletOcclusionRanges[4]{};
     meshletOcclusionRanges[0].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1u, 19u, 0u, 0u);
     meshletOcclusionRanges[1].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1u, 0u, 8u, 1u);
     meshletOcclusionRanges[2].Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1u, 12u, 0u, 2u);
+    meshletOcclusionRanges[3].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1u, 3u, 8u, 3u);
 
     constexpr D3D12_SHADER_VISIBILITY kAll = D3D12_SHADER_VISIBILITY_ALL;
     constexpr D3D12_SHADER_VISIBILITY kPixel = D3D12_SHADER_VISIBILITY_PIXEL;
@@ -139,34 +141,35 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     params[ROOT_PARAM::Camera].InitAsConstantBufferView(0, 0, kAll);
     params[ROOT_PARAM::CullingCamera].InitAsConstantBufferView(9, 0, kAll);
     params[ROOT_PARAM::Object].InitAsConstantBufferView(1, 0, kAll);
-    params[ROOT_PARAM::Light].InitAsConstantBufferView(2, 0, kPixel);
+    params[ROOT_PARAM::Light].InitAsConstantBufferView(2, 0, kAll);
     params[ROOT_PARAM::ShadowMap].InitAsDescriptorTable(1, &shadowTextureRange, kPixel);
     params[ROOT_PARAM::ShadowCB].InitAsConstantBufferView(4, 0, kPixel);
-    params[ROOT_PARAM::SkyEnvironment].InitAsConstantBufferView(5, 0, kPixel);
+    // 環境と探針は大量配置と草の mesh shader も読む（光は頂点か meshlet ごとに決める）。
+    params[ROOT_PARAM::SkyEnvironment].InitAsConstantBufferView(5, 0, kAll);
     params[ROOT_PARAM::SkyCube].InitAsDescriptorTable(1, &skyCubeTextureRange, kPixel);
     params[ROOT_PARAM::SceneDepth].InitAsDescriptorTable(1, &sceneDepthTextureRange, kPixel);
     params[ROOT_PARAM::SceneColor].InitAsDescriptorTable(1, &sceneColorTextureRange, kPixel);
-    params[ROOT_PARAM::IblIrradiance].InitAsDescriptorTable(1, &iblIrradianceRange, kPixel);
+    params[ROOT_PARAM::IblIrradiance].InitAsDescriptorTable(1, &iblIrradianceRange, kAll);
     params[ROOT_PARAM::IblPrefiltered].InitAsDescriptorTable(1, &iblPrefilteredRange, kPixel);
     params[ROOT_PARAM::IblBrdfLut].InitAsDescriptorTable(1, &iblBrdfLutRange, kPixel);
     params[ROOT_PARAM::ReflectionProbePrefiltered].InitAsDescriptorTable(1, &reflectionProbePrefilteredRange, kPixel);
     params[ROOT_PARAM::Ssao].InitAsDescriptorTable(1, &ssaoRange, kPixel);
-    params[ROOT_PARAM::LightProbeSh].InitAsDescriptorTable(1, &lightProbeShRange, kPixel);
+    params[ROOT_PARAM::LightProbeSh].InitAsDescriptorTable(1, &lightProbeShRange, kAll);
     params[ROOT_PARAM::ReflectionProbePrefilteredSecondary].InitAsDescriptorTable(
         1, &reflectionProbePrefilteredSecondaryRange, kPixel);
-    params[ROOT_PARAM::LightProbeShSecondary].InitAsDescriptorTable(1, &lightProbeShSecondaryRange, kPixel);
+    params[ROOT_PARAM::LightProbeShSecondary].InitAsDescriptorTable(1, &lightProbeShSecondaryRange, kAll);
     params[ROOT_PARAM::ObjectData].InitAsDescriptorTable(1, &objectDataRange, kAll);
     params[ROOT_PARAM::ObjectIndex].InitAsConstants(1, 6, 0, kAll);
     params[ROOT_PARAM::MaterialData].InitAsDescriptorTable(1, &materialDataRange, kAll);
     params[ROOT_PARAM::MaterialIndex].InitAsConstants(1, 7, 0, kAll);
-    params[ROOT_PARAM::TexturePool].InitAsDescriptorTable(1, &materialTexturePoolRange, kPixel);
+    params[ROOT_PARAM::TexturePool].InitAsDescriptorTable(1, &materialTexturePoolRange, kAll);
     params[ROOT_PARAM::JointPalette].InitAsShaderResourceView(0, 3, kAll);
     params[ROOT_PARAM::SurfaceGpuScene].InitAsDescriptorTable(static_cast<UINT>(std::size(surfaceGpuSceneRanges)),
                                                               surfaceGpuSceneRanges, kAll);
     params[ROOT_PARAM::SurfaceGpuSceneControl].InitAsConstants(4, 8, 0, kAll);
     params[ROOT_PARAM::ClusterGeometryPool].InitAsDescriptorTable(1, &clusterGeometryPoolRange, kAll);
     params[ROOT_PARAM::MeshletVisibleRanges].InitAsShaderResourceView(18, 0, kAll);
-    params[ROOT_PARAM::MeshletOcclusionDepth].InitAsDescriptorTable(3u, meshletOcclusionRanges,
+    params[ROOT_PARAM::MeshletOcclusionDepth].InitAsDescriptorTable(4u, meshletOcclusionRanges,
                                                                     D3D12_SHADER_VISIBILITY_AMPLIFICATION);
     params[ROOT_PARAM::LocalLights].InitAsShaderResourceView(0, 5, kPixel);
     params[ROOT_PARAM::LocalLightClusterHeaders].InitAsShaderResourceView(1, 5, kPixel);
@@ -192,7 +195,7 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
         desc.AddressV = addressVW;
         desc.AddressW = addressVW;
         desc.ShaderRegister = shaderRegister;
-        desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_PIXEL;
+        desc.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
         desc.MaxLOD = D3D12_FLOAT32_MAX;
         return desc;
     };
@@ -229,6 +232,27 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     D3D12_ROOT_SIGNATURE_DESC skinnedRsDesc = rsDesc;
     skinnedRsDesc.pParameters = skinnedParams;
     if (FAILED(GFX::CreateRootSignature(device, skinnedRsDesc, store.skinnedRootSig.GetAddressOf()))) {
+        return false;
+    }
+
+    CD3DX12_ROOT_PARAMETER surfaceExtensionParams[ROOT_PARAM::Count]{};
+    std::copy(std::begin(params), std::end(params), surfaceExtensionParams);
+    const CD3DX12_DESCRIPTOR_RANGE surfaceExtensionTextures(D3D12_DESCRIPTOR_RANGE_TYPE_SRV,
+                                                            kRenderSurfaceTextureSlotCount, 1, 10);
+    surfaceExtensionParams[ROOT_PARAM::JointPalette].InitAsShaderResourceView(0, 10, kAll);
+    surfaceExtensionParams[ROOT_PARAM::MeshletVisibleRanges].InitAsConstantBufferView(3, 0, kAll);
+    surfaceExtensionParams[ROOT_PARAM::ClusterGeometryPool].InitAsDescriptorTable(1, &surfaceExtensionTextures, kAll);
+    D3D12_ROOT_SIGNATURE_DESC surfaceExtensionRsDesc = rsDesc;
+    surfaceExtensionRsDesc.pParameters = surfaceExtensionParams;
+    // 頂点着色器が高さ図を標本化する。通常の面の標本器は画素着色器だけに見せている。
+    D3D12_STATIC_SAMPLER_DESC surfaceExtensionSamplers[std::size(staticSamplers)]{};
+    std::copy(std::begin(staticSamplers), std::end(staticSamplers), surfaceExtensionSamplers);
+    for (D3D12_STATIC_SAMPLER_DESC& surfaceSampler : surfaceExtensionSamplers) {
+        surfaceSampler.ShaderVisibility = D3D12_SHADER_VISIBILITY_ALL;
+    }
+    surfaceExtensionRsDesc.pStaticSamplers = surfaceExtensionSamplers;
+    if (FAILED(
+            GFX::CreateRootSignature(device, surfaceExtensionRsDesc, store.surfaceExtensionRootSig.GetAddressOf()))) {
         return false;
     }
 

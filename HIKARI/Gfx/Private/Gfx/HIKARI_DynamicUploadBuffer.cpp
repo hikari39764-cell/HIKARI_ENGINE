@@ -96,7 +96,13 @@ UploadAllocation DynamicUploadBuffer::Allocate(size_t size, HIKARI::GFX::UPLOAD_
         if (!HIKARI::GFX::TryAlignUploadSize(size, kUploadAlignment, alignedSize)) {
             return {};
         }
-        const size_t newPageSize = std::max(defaultPageSize_, alignedSize);
+        // 前の頁と同じくらいの要求が足りなくなったのなら余裕を持たせる（少しずつ増える要求で毎フレーム頁を作らない）。
+        size_t largestPage = 0u;
+        for (const auto& range : pageRanges_) {
+            largestPage = std::max(largestPage, range.capacity);
+        }
+        const size_t needed = largestPage * 2u >= alignedSize ? alignedSize + alignedSize / 2u : alignedSize;
+        const size_t newPageSize = std::max(defaultPageSize_, needed);
         if (!CreatePage(newPageSize) || !HIKARI::GFX::TryReserveUploadPageRange(pageRanges_, activePageIndex_, size,
                                                                                 kUploadAlignment, reservation)) {
             return {};
@@ -134,6 +140,20 @@ void DynamicUploadBuffer::Finalize(const HIKARI::GFX::Context* retireContext) {
 }
 
 void DynamicUploadBuffer::Reset() {
+    // 大きな頁ができた後に残った小さな頁を返す（GPU が読み終えた後に呼ばれる）。
+    size_t largestPage = 0u;
+    for (const auto& range : pageRanges_) {
+        largestPage = std::max(largestPage, range.capacity);
+    }
+    for (size_t index = pages_.size(); index-- > 0u;) {
+        if (pageRanges_[index].capacity * 2u <= largestPage) {
+            if (pages_[index].resource != nullptr && pages_[index].cpuBase != nullptr) {
+                pages_[index].resource->Unmap(0u, nullptr);
+            }
+            pages_.erase(pages_.begin() + static_cast<std::ptrdiff_t>(index));
+            pageRanges_.erase(pageRanges_.begin() + static_cast<std::ptrdiff_t>(index));
+        }
+    }
     HIKARI::GFX::ResetUploadPageRanges(pageRanges_, activePageIndex_);
     hasFrameSerial_ = false;
 }

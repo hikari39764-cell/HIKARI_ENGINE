@@ -68,6 +68,8 @@ private:
     void PublishDepthPyramidStats(const HIKARI::RENDER3D::DEPTH::DepthPyramidView& view);
 
     HIKARI::RENDER3D::DEPTH::DepthPyramidLayer depthPyramid_{};
+    // 前フレームの階層。今フレームの階層は別の資源へ作るので、GeometryAux の二段目まで読める。
+    HIKARI::RENDER3D::DEPTH::DepthPyramidLayer previousDepthPyramid_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> visibilityDepth_{};
     Microsoft::WRL::ComPtr<ID3D12DescriptorHeap> visibilityDsvHeap_{};
     RenderResourceView visibilityDepthSrv_{};

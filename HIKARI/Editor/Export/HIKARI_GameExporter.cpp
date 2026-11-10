@@ -23,6 +23,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Export/HIKARI_GamePackageManifest.h"
+#include "Editor/Export/HIKARI_GameExportModules.h"
 #include "Editor/Export/HIKARI_GameExportPublication.h"
 #include "Editor/Export/HIKARI_GameShippingArtifactValidator.h"
 #include "Editor/Export/HIKARI_NativeRuntimeDeployment.h"
@@ -378,7 +379,8 @@ bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const 
             const std::filesystem::path root = outputDirectory / "EngineContent" / domain;
             std::error_code ec{};
             bool empty = true;
-            for (std::filesystem::recursive_directory_iterator it(root, ec), last; !ec && it != last; it.increment(ec)) {
+            for (std::filesystem::recursive_directory_iterator it(root, ec), last; !ec && it != last;
+                 it.increment(ec)) {
                 if (it->is_regular_file(ec)) {
                     empty = false;
                     break;
@@ -568,7 +570,8 @@ CodeAssetReferences CollectCodeReferencedAssets(const std::filesystem::path& pro
             std::error_code entry;
             const auto extension = TEXT::ToLowerAsciiCopy(TEXT::PathToUtf8(it->path().extension()));
             if (!it->is_regular_file(entry) || editorOnly(it->path()) ||
-                (extension != ".cpp" && extension != ".cc" && extension != ".h" && extension != ".hpp" && extension != ".inl"))
+                (extension != ".cpp" && extension != ".cc" && extension != ".h" && extension != ".hpp" &&
+                 extension != ".inl"))
                 continue;
             std::ifstream source(it->path(), std::ios::binary);
             const std::string text{std::istreambuf_iterator<char>(source), {}};
@@ -743,13 +746,14 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     // 分かりにくい失敗になるので、先に深さを確かめて出力先の上限を伝える。発行の時は前の包を
     // 「作業フォルダ名 + .previous」へ退かすので、作業フォルダより 9 字長い名前にも収まる必要がある。
     const bool longPaths = LongPathsEnabled();
-    const long long engineDepth = static_cast<long long>(std::string_view("EngineContent/").size() +
-                                                         DeepestRelativePath(sourceExe.parent_path() / "EngineContent"));
+    const long long engineDepth = static_cast<long long>(
+        std::string_view("EngineContent/").size() + DeepestRelativePath(sourceExe.parent_path() / "EngineContent"));
     const long long stagingLength =
         static_cast<long long>(stagingDirectory.native().size() + std::wstring_view(L".previous").size());
     if (!longPaths && stagingLength + 1 + engineDepth > static_cast<long long>(kMaxWindowsPath)) {
         const long long outputLength = static_cast<long long>(outputDirectory.native().size());
-        const long long limit = static_cast<long long>(kMaxWindowsPath) - 1 - engineDepth - (stagingLength - outputLength);
+        const long long limit =
+            static_cast<long long>(kMaxWindowsPath) - 1 - engineDepth - (stagingLength - outputLength);
         result.message = "The output folder is too deep for Windows paths: the package needs " +
                          std::to_string(engineDepth) + " characters below it. Choose an output folder of at most " +
                          std::to_string((std::max)(0ll, limit)) + " characters (now " + std::to_string(outputLength) +
@@ -773,8 +777,8 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
         !CopyFileChecked(sourceProjectModule, outputProjectModule, errorMessage) ||
         !RENDER3D::UPSCALING::DeployStreamlineRuntime(sourceExe.parent_path(), stagingDirectory, streamlineDeployment,
                                                       errorMessage) ||
-        !WriteRuntimeConfig(stagingDirectory, effectiveOptions, renderQuality, cookManifest.allowTraditionalGeometryFallback,
-                            errorMessage) ||
+        !WriteRuntimeConfig(stagingDirectory, effectiveOptions, renderQuality,
+                            cookManifest.allowTraditionalGeometryFallback, errorMessage) ||
         !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, includeTerrainContent, errorMessage)) {
         result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
@@ -806,6 +810,13 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     });
     if (!cookResult.success) {
         result.message = cookResult.message;
+        HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
+        return result;
+    }
+    if (!report("Packaging project modules", 0.82f))
+        return result;
+    if (!PackageProjectModules(projectRoot, stagingDirectory, cookResult.scenePaths, errorMessage)) {
+        result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;
     }
@@ -845,14 +856,15 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     result.message = "Exported " + std::to_string(effectiveOptions.sceneGuids.size()) + " scene(s), " +
                      std::to_string(cookResult.assetCount) + " cooked asset(s), and " +
                      std::to_string(cookResult.fileCount) + " cooked file(s) to " + TEXT::PathToUtf8(outputDirectory) +
-                     ". Anti-aliasing: " + quality.value("antiAliasingMode", std::string{"?"}) + "; frame generation: " +
-                     (frameGeneration == "Off" ? std::string{"off"}
-                                               : frameGeneration + " x" +
-                                                     std::to_string(quality.value("frameGenerationMultiplier", 2))) +
+                     ". Anti-aliasing: " + quality.value("antiAliasingMode", std::string{"?"}) +
+                     "; frame generation: " +
+                     (frameGeneration == "Off"
+                          ? std::string{"off"}
+                          : frameGeneration + " x" + std::to_string(quality.value("frameGenerationMultiplier", 2))) +
                      " (ProjectSettings/render_quality.json).";
     if (!codeAssets.added.empty())
-        result.message += " Also cooked " + std::to_string(codeAssets.added.size()) +
-                          " asset(s) referenced only from project code.";
+        result.message +=
+            " Also cooked " + std::to_string(codeAssets.added.size()) + " asset(s) referenced only from project code.";
     if (!codeAssets.missing.empty())
         result.message += " Project code refers to " + std::to_string(codeAssets.missing.size()) +
                           " missing asset path(s), e.g. " + codeAssets.missing.front() + ".";

@@ -4,6 +4,11 @@
 static const uint HIKARI_MASS_GPU_SCENE_VERSION = 1u;
 static const uint HIKARI_MASS_GPU_SCENE_INDEX_BIT = 0x80000000u;
 static const uint HIKARI_MASS_GPU_SCENE_INDEX_MASK = 0x7fffffffu;
+// objectIdHigh の最上位が立つ個体は実例集の個体（物体ではない）。bit 16..23 が描く最小の大きさ、bit 8..15 が色の揺らぎ、
+// bit 0..7 が風の強さ、objectIdLow が種。HIKARI_WorldInstanceStore.cpp の詰め方と揃える。
+static const uint HIKARI_MASS_INSTANCE_IDENTITY_BIT = 0x80000000u;
+static const float HIKARI_MASS_INSTANCE_WIND_METERS = 0.6f;
+static const float HIKARI_MASS_INSTANCE_MIN_SCREEN_STEP = 0.0001f;
 
 struct HikariMassRenderProxyGpuRecord
 {
@@ -143,6 +148,20 @@ HikariSurfaceGpuSceneInstance HikariBuildMassSurfaceGpuSceneInstance(
     instance.clusterLodFlags = record.clusterLodFlags;
     instance.lightmapTextureDescriptorIndex = 0xffffffffu;
     instance.lightmapUvScaleBias = float4(1.0f, 1.0f, 0.0f, 0.0f);
+    if ((record.objectIdHigh & HIKARI_MASS_INSTANCE_IDENTITY_BIT) != 0u)
+    {
+        const float wind = (float)(record.objectIdHigh & 255u) / 255.0f;
+        if (wind > 0.0f)
+        {
+            instance.flags |= HIKARI_SURFACE_GPU_SCENE_FLAG_FOLIAGE_WIND;
+            // w は根元から梢までの高さ（風の重みを高さで読む）。
+            instance.fxUser[0] = float4(wind * HIKARI_MASS_INSTANCE_WIND_METERS, 1.3f, 0.2f,
+                localBounds.w * 2.0f * abs(record.scale.y));
+        }
+        const float tintAmount = (float)((record.objectIdHigh >> 8u) & 255u) / 255.0f;
+        const uint hash = record.objectIdLow * 2654435761u;
+        instance.fxUser[1].x = ((float)((hash >> 16u) & 1023u) / 511.5f - 1.0f) * tintAmount;
+    }
     return instance;
 }
 

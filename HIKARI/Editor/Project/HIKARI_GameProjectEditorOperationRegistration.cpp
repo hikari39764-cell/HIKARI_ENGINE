@@ -90,8 +90,10 @@ public:
 
 GameProjectEditorOperationRegistration::GameProjectEditorOperationRegistration(
     EditorOperationRegistry& registry, EditorOperationOwnerToken ownerToken,
-    EDITOR_PROJECT::IEditorDocumentService* documents, GameProjectEditorWorkspaceRegistry* commands)
-    : registry_(registry), ownerToken_(ownerToken), documents_(documents), commands_(commands) {}
+    EDITOR_PROJECT::IEditorDocumentService* documents, GameProjectEditorWorkspaceRegistry* commands,
+    EDITOR_PROJECT::IEditorSceneServices* sceneServices)
+    : registry_(registry), ownerToken_(ownerToken), documents_(documents), commands_(commands),
+      sceneServices_(sceneServices) {}
 
 EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegistration::RegisterOperation(
     const EDITOR_PROJECT::EditorOperationDescriptor& descriptor) {
@@ -213,9 +215,14 @@ EDITOR_PROJECT::EditorOperationRegistrationResult GameProjectEditorOperationRegi
         const std::string parametersJson = parameters.dump();
         struct Scope {
             GameProjectEditorWorkspaceRegistry* commands;
-            ~Scope() { if (commands) commands->EndOperationScope(); }
+            ~Scope() {
+                if (commands)
+                    commands->EndOperationScope();
+            }
         } scope{commands};
-        if (commands) { commands->BeginOperationScope(*registry); }
+        if (commands) {
+            commands->BeginOperationScope(*registry);
+        }
         handler->Execute(parametersJson, sink);
         if (!sink.received) {
             return EditorOperationResult{false, "MISSING_RESULT", "Editor operation handler did not return a result."};

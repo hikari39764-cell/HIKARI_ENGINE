@@ -1,5 +1,7 @@
 #include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 
+#include "Diagnostics/HIKARI_CpuFrameProfiler.h"
+
 #include <algorithm>
 #include <cstring>
 #include <limits>
@@ -246,6 +248,8 @@ bool MassGpuSceneFrameBuffer::UploadFrame(uint32_t frameIndex, ID3D12GraphicsCom
         }
         uploadInstanceCount += range.instanceCount;
     }
+    static const auto uploadTimer = CPU_PROFILE::RegisterDynamicPass("Mass.Upload");
+    const CPU_PROFILE::ScopedDynamicCpuTimer uploadScope(uploadTimer);
     DX::UploadAllocation upload{};
     if (uploadInstanceCount != 0u) {
         upload = slot->uploads.Allocate(uploadInstanceCount * sizeof(RUNTIME::MassRenderProxyGpuRecord));
@@ -254,25 +258,33 @@ bool MassGpuSceneFrameBuffer::UploadFrame(uint32_t frameIndex, ID3D12GraphicsCom
             return false;
         }
     }
-    size_t packedInstanceOffset = 0u;
-    for (const RUNTIME::MassRenderDirtyRange& range : uploadRanges_) {
-        auto* records = static_cast<RUNTIME::MassRenderProxyGpuRecord*>(upload.cpuAddress) + packedInstanceOffset;
-        std::memcpy(records, source->instances.data() + range.firstInstance,
-                    static_cast<size_t>(range.instanceCount) * sizeof(RUNTIME::MassRenderProxyGpuRecord));
-        for (uint32_t offset = 0u; offset < range.instanceCount; ++offset) {
-            RUNTIME::MassRenderProxyGpuRecord& record = records[offset];
-            ++stats_.materialBindingVisitCount;
-            if (record.sourceRecordIndex >= materialBindings.size() ||
-                materialBindings[record.sourceRecordIndex] == RUNTIME::kInvalidRenderSurfaceIndex) {
-                // slot 0 は GpuMaterialRegistry が所有する neutral material。
-                // 欠落は診断へ残しつつ、geometry residency は維持する。
-                record.materialDataIndex = 0u;
-                ++stats_.materialBindingMissingCount;
-            } else {
-                record.materialDataIndex = materialBindings[record.sourceRecordIndex];
+    // upload の領域は書き込み専用で、一件ずつ書くのも読み返すのも桁違いに遅い。CPU 側で材質を埋めてから一度に写す。
+    {
+        uploadStaging_.resize(uploadInstanceCount);
+        size_t packedInstanceOffset = 0u;
+        for (const RUNTIME::MassRenderDirtyRange& range : uploadRanges_) {
+            RUNTIME::MassRenderProxyGpuRecord* records = uploadStaging_.data() + packedInstanceOffset;
+            std::memcpy(records, source->instances.data() + range.firstInstance,
+                        static_cast<size_t>(range.instanceCount) * sizeof(RUNTIME::MassRenderProxyGpuRecord));
+            for (uint32_t offset = 0u; offset < range.instanceCount; ++offset) {
+                RUNTIME::MassRenderProxyGpuRecord& record = records[offset];
+                ++stats_.materialBindingVisitCount;
+                if (record.sourceRecordIndex >= materialBindings.size() ||
+                    materialBindings[record.sourceRecordIndex] == RUNTIME::kInvalidRenderSurfaceIndex) {
+                    // slot 0 は GpuMaterialRegistry が所有する neutral material。
+                    // 欠落は診断へ残しつつ、geometry residency は維持する。
+                    record.materialDataIndex = 0u;
+                    ++stats_.materialBindingMissingCount;
+                } else {
+                    record.materialDataIndex = materialBindings[record.sourceRecordIndex];
+                }
             }
+            packedInstanceOffset += range.instanceCount;
         }
-        packedInstanceOffset += range.instanceCount;
+        if (uploadInstanceCount != 0u) {
+            std::memcpy(upload.cpuAddress, uploadStaging_.data(),
+                        uploadInstanceCount * sizeof(RUNTIME::MassRenderProxyGpuRecord));
+        }
     }
 
     if (!uploadRanges_.empty()) {

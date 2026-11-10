@@ -18,6 +18,9 @@
 #include "Gfx/RayTracing/HIKARI_DxrCapabilities.h"
 #include "Render3D/Cluster/HIKARI_ClusterRayTracingGeometry.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenSceneSource.h"
+#include <string>
+
+#include "Core/HIKARI_Logger.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuScene.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
@@ -238,12 +241,14 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     std::erase_if(state.retiring, [](const auto& entry) { return entry.fence->GetCompletedValue() >= entry.value; });
     if (!state.supportsQueries)
         return state.Fail(graphics, budget, RuntimeRayTracingStatus::UnsupportedDevice);
+    const bool proxiesChanged = surfaces.proxyVersion != state.proxyVersion;
     if (materialSlots.size() == state.materialSlotCount && materials.size() == state.materialCount &&
         source.surfaceRecords->size() == state.sourceRecordCount &&
+        (!proxiesChanged || state.CanRetargetProxies(surfaces.proxies)) &&
         state.SameStructure(source, massMaterialSlots, budget, materialVersion)) {
-        // 配置か材質の値が変わっただけなら、群をまとめ直さず instance の変換と材質の版だけを直す
+        // 配置か材質の値、代理の中身が変わっただけなら、群をまとめ直さず instance の記述と材質の版だけを直す
         // （できなければ下で全体を組み直す）。
-        if (state.sourceVersion != source.sourceVersion || state.materialVersion != materialVersion ||
+        if (proxiesChanged || state.sourceVersion != source.sourceVersion || state.materialVersion != materialVersion ||
             state.mass.Moved(source.mass)) {
             if (auto updated =
                     state.UpdateInPlace(graphics, source, materialSlots, materials, materialVersion, budget, surfaces))
@@ -369,11 +374,15 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     struct MassShape {
         Asset* asset = nullptr;
         uint32_t surface = 0, material = 0xffffffffu, flags = 0;
+        uint64_t column = 0;
     };
     const GPUDRIVEN::MassGpuSceneSource* mass = source.HasMassInstances() ? source.mass : nullptr;
     std::vector<MassShape> massShapes(mass ? mass->shapes.size() : 0u);
     for (size_t s = 0; s < massShapes.size(); ++s) {
         const auto& shape = mass->shapes[s];
+        if (!shape.rayTraced) {
+            continue;
+        }
         const uint32_t slot = s < massMaterialSlots.size() ? massMaterialSlots[s] : 0xffffffffu;
         const auto* program =
             slot < materials.size()
@@ -391,7 +400,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             excluded.Add(MassInstances, false);
             continue;
         }
-        massShapes[s] = {asset, range->surfaceIndex, slot, (shape.doubleSided ? 1u : 0u) | 2u};
+        massShapes[s] = {asset, range->surfaceIndex, slot, (shape.doubleSided ? 1u : 0u) | 2u, shape.instanceColumn};
     }
     const bool massPresent =
         std::any_of(massShapes.begin(), massShapes.end(), [](const MassShape& shape) { return shape.asset; });
@@ -438,7 +447,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
                                    graphics.frameFence, graphics.deviceGeneration, source.surfaceRecords,
                                    source.layoutVersion, materialVersion});
     };
-    if (groups.empty() && state.deformed.empty() && !massPresent)
+    if (groups.empty() && state.deformed.empty() && !massPresent && surfaces.proxies.empty())
         return publishEmpty();
     // 静的な BLAS は静的に置かれた形状の分だけ組む（蒙皮だけに使う形状は変形の BLAS が担う）。
     std::vector<const Asset*> staticAssets;
@@ -555,7 +564,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             D3D12_RAYTRACING_INSTANCE_DESC instance{};
             WriteTransform(instance, group.world);
             instance.InstanceID = static_cast<uint32_t>(hits.size());
-            instance.InstanceMask = 0xff;
+            instance.InstanceMask = kRuntimeRayTracingSceneMask;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
             instance.AccelerationStructure = asset.bottomLevels[c]->GetGpuAddress();
             instances.push_back(instance);
@@ -595,7 +604,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             const bool used = std::any_of(chunk.ranges.begin(), chunk.ranges.end(), [&](const auto& range) {
                 return entry.surfaces[range.surfaceIndex].first != 0xffffffffu;
             });
-            instance.InstanceMask = used ? 0xff : 0x00;
+            instance.InstanceMask = used ? kRuntimeRayTracingSceneMask : 0x00;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
             instance.AccelerationStructure = entry.bottomLevels[c]->GetGpuAddress();
             instances.push_back(instance);
@@ -615,9 +624,40 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             }
         }
     }
+    // モジュールの代理。不透明で裏面を切る（TRIANGLE_CULL_DISABLE を付けない）。
+    const uint32_t proxyFirstInstance = static_cast<uint32_t>(instances.size());
+    const uint32_t proxyFirstHit = static_cast<uint32_t>(hits.size());
+    for (const RuntimeRayTracingProxy& proxy : surfaces.proxies) {
+        if (instances.size() >= budget.maximumInstances ||
+            proxy.surfaces.size() > budget.maximumHitRecords - hits.size())
+            return state.Fail(graphics, budget, RuntimeRayTracingStatus::BudgetExceeded);
+        D3D12_RAYTRACING_INSTANCE_DESC instance{};
+        instance.Transform[0][0] = instance.Transform[1][1] = instance.Transform[2][2] = 1.0f;
+        instance.InstanceID = static_cast<uint32_t>(hits.size());
+        instance.InstanceMask = kRuntimeRayTracingProxyMask;
+        instance.AccelerationStructure = proxy.bottomLevel;
+        instances.push_back(instance);
+        for (const uint32_t surface : proxy.surfaces) {
+            RuntimeRayTracingHitRecord hit{};
+            hit.materialIndex = 0u; // 既定の材質（面の値は reserved から作るが、受け手が材質の旗を読む）
+            hit.flags = 2u | kRuntimeRayTracingHitProxy;
+            hit.reserved = surface;
+            hits.push_back(hit);
+        }
+    }
     // 大量配置は最後に並べる。種類ごとの hit 記録を個体が共有する。予算に収まらなければ大量配置だけを外す。
     const size_t massFirstInstance = instances.size(), massFirstHit = hits.size();
-    const auto dropMass = [&] {
+    const auto dropMass = [&](const char* reason) {
+        // カスケードの影も大量配置を描かないので、外すとその影がまるごと消える。黙って起きないよう一度だけ書く。
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            HIKARI_LOG_WARN(std::string("[RT][Mass] mass instances left the ray scene (") + reason +
+                            "); they cast no ray traced shadow and GI rays pass through them. instances=" +
+                            std::to_string(instances.size()) +
+                            " resident MB=" + std::to_string(state.stats.residentBytes / 1048576u) +
+                            " retiring MB=" + std::to_string(state.stats.retiringBytes / 1048576u));
+        }
         instances.resize(massFirstInstance);
         hits.resize(massFirstHit);
         state.mass.Drop();
@@ -632,26 +672,41 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             const MassShape& shape = massShapes[s];
             if (!shape.asset)
                 continue;
+            // 一つの模型の部品は同じ BLAS と同じ変換を共有するので、最初の部品の instance に全部の面を載せる。部品ごとに
+            // instance を作ると、一本の光線が同じ木を部品の数だけ調べ、最上位の木も部品の数だけ大きくなる。
+            const auto sameModel = [&](const MassShape& other) {
+                return other.asset == shape.asset && other.column == shape.column;
+            };
+            if (std::any_of(massShapes.begin(), massShapes.begin() + s, sameModel))
+                continue;
+            const auto partOf = [&](uint32_t surface) -> const MassShape* {
+                const auto part = std::find_if(massShapes.begin(), massShapes.end(), [&](const MassShape& other) {
+                    return sameModel(other) && other.surface == surface;
+                });
+                return part != massShapes.end() ? &*part : nullptr;
+            };
             const Asset& asset = *shape.asset;
             for (size_t c = 0; c < asset.chunks.size() && fits; ++c) {
                 const auto& chunk = asset.chunks[c];
                 if (std::none_of(chunk.ranges.begin(), chunk.ranges.end(),
-                                 [&](const auto& range) { return range.surfaceIndex == shape.surface; }))
+                                 [&](const auto& range) { return partOf(range.surfaceIndex) != nullptr; }))
                     continue;
                 fits = chunk.ranges.size() <= budget.maximumHitRecords - hits.size();
                 if (!fits)
                     break;
                 shapes[s].push_back({asset.bottomLevels[c]->GetGpuAddress(), static_cast<uint32_t>(hits.size())});
-                for (const auto& range : chunk.ranges)
+                for (const auto& range : chunk.ranges) {
+                    const MassShape* part = partOf(range.surfaceIndex);
                     hits.push_back({asset.geometryDescriptor, asset.metadataDescriptor,
-                                    range.surfaceIndex == shape.surface ? shape.material : 0xffffffffu, shape.flags,
+                                    part ? part->material : 0xffffffffu, part ? part->flags : shape.flags,
                                     range.firstPrimitive, range.firstCluster, range.clusterCount,
                                     range.primitiveCount});
+                }
             }
         }
         massIncluded = fits && state.mass.Append(*mass, shapes, budget.maximumInstances, instances);
         if (!massIncluded)
-            dropMass();
+            dropMass("over the instance or hit record budget");
     }
     if (instances.empty()) // 大量配置の形がまだ組み途中で、他に入れる面が無い
         return publishEmpty();
@@ -660,6 +715,13 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
         // 変形した BLAS は中身が動いたので、それを指す TLAS も refit する。
         if (!state.deformed.empty() && !state.topLevel->RefitInPlace(graphics))
             return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
+    } else if (state.topLevel && state.hitUploads.Current() && SameBytes(hits, state.lastHits) &&
+               state.topLevel->RebuildTopLevelInPlace(graphics, instances)) {
+        // 個体の数が変わっただけなら結果と scratch を作り直さない（筆で塗る間は毎フレーム来る）。
+        state.gpuPrefixValid = false;
+        state.massDescsOnGpu = false;
+        state.lastInstances = std::move(instances);
+        ++state.version;
     } else {
         // 収まらなければ大量配置だけを外してもう一度組む（場面全体は止めない）。
         std::unique_ptr<AccelerationStructure> top;
@@ -669,17 +731,21 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             keepHits = state.hitUploads.Current() && SameBytes(hits, state.lastHits);
             desc = CD3DX12_RESOURCE_DESC::Buffer(hits.size() * sizeof(RuntimeRayTracingHitRecord));
             const uint64_t bytes = keepHits ? 0 : graphics.device->GetResourceAllocationInfo(0, 1, &desc).SizeInBytes;
-            const uint64_t available = state.Available(budget);
+            // 解放待ちは数フレームで消えるので、大量配置を残す判断には数えない（外すと森の影が一瞬消える）。
+            const uint64_t strictAvailable = state.Available(budget);
+            const uint64_t available = massIncluded && state.stats.residentBytes < budget.maximumBytes
+                                           ? budget.maximumBytes - state.stats.residentBytes
+                                           : strictAvailable;
             auto built = std::make_unique<AccelerationStructure>();
             if (bytes != UINT64_MAX && bytes < available &&
-                built->BuildTopLevel(graphics, instances, available - bytes, true,
-                                     state.topLevel && state.lastInstances.size() == instances.size()
-                                         ? state.topLevel.get()
-                                         : nullptr)) {
+                built->BuildTopLevel(
+                    graphics, instances, available - bytes, true,
+                    state.topLevel && state.lastInstances.size() == instances.size() ? state.topLevel.get() : nullptr,
+                    nullptr, static_cast<uint32_t>(instances.size() + instances.size() / 4u))) {
                 top = std::move(built);
             } else if (massIncluded) {
                 massIncluded = false;
-                dropMass();
+                dropMass("over the memory budget");
                 if (instances.empty())
                     return publishEmpty();
             } else {
@@ -701,6 +767,12 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     state.sourceVersion = source.sourceVersion;
     state.lightmapVersion = LIGHTMAP::GetVersion();
     state.layoutVersion = source.layoutVersion;
+    state.proxyVersion = surfaces.proxyVersion;
+    state.proxyFirstInstance = proxyFirstInstance;
+    state.proxyFirstHit = proxyFirstHit;
+    state.proxySurfaceCounts.clear();
+    for (const RuntimeRayTracingProxy& proxy : surfaces.proxies)
+        state.proxySurfaceCounts.push_back(static_cast<uint32_t>(proxy.surfaces.size()));
     state.materialVersion = materialVersion;
     state.sourceSurfaceCount = state.stats.sourceSurfaces;
     state.sourceRecordCount = source.surfaceRecords->size();

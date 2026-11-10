@@ -299,7 +299,29 @@ void SceneSurfaceBuffer::BeginWrite(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DE
     if (cmd == nullptr || !IsValid()) {
         return;
     }
+    TransitionToRenderTargets(cmd);
+    const float clear[] = {0.5f, 0.5f, 1.0f, 0.0f};
+    cmd->ClearRenderTargetView(packedSurfaceRtv_, clear, 0, nullptr);
+    const float maskClear[] = {0.0f, 0.0f, 0.0f, 0.0f};
+    if (HasFeatureMask()) {
+        cmd->ClearRenderTargetView(featureMaskRtv_, maskClear, 0, nullptr);
+    }
+    const float outlineStyleClear[]{0.025f, 0.030f, 0.045f, 0.25f};
+    if (HasStylizedOutlineStyle()) {
+        cmd->ClearRenderTargetView(stylizedOutlineStyleRtv_, outlineStyleClear, 0, nullptr);
+    }
+    BindRenderTargets(cmd, depthDsv);
+}
 
+void SceneSurfaceBuffer::ResumeWrite(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DESCRIPTOR_HANDLE depthDsv) {
+    if (cmd == nullptr || !IsValid()) {
+        return;
+    }
+    TransitionToRenderTargets(cmd);
+    BindRenderTargets(cmd, depthDsv);
+}
+
+void SceneSurfaceBuffer::TransitionToRenderTargets(ID3D12GraphicsCommandList* cmd) {
     if (packedSurfaceState_ != D3D12_RESOURCE_STATE_RENDER_TARGET) {
         auto barrier = CD3DX12_RESOURCE_BARRIER::Transition(packedSurface_.Get(), packedSurfaceState_,
                                                             D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -318,17 +340,9 @@ void SceneSurfaceBuffer::BeginWrite(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DE
         cmd->ResourceBarrier(1, &barrier);
         stylizedOutlineStyleState_ = D3D12_RESOURCE_STATE_RENDER_TARGET;
     }
+}
 
-    const float clear[] = {0.5f, 0.5f, 1.0f, 0.0f};
-    cmd->ClearRenderTargetView(packedSurfaceRtv_, clear, 0, nullptr);
-    const float maskClear[] = {0.0f, 0.0f, 0.0f, 0.0f};
-    if (HasFeatureMask()) {
-        cmd->ClearRenderTargetView(featureMaskRtv_, maskClear, 0, nullptr);
-    }
-    const float outlineStyleClear[]{0.025f, 0.030f, 0.045f, 0.25f};
-    if (HasStylizedOutlineStyle()) {
-        cmd->ClearRenderTargetView(stylizedOutlineStyleRtv_, outlineStyleClear, 0, nullptr);
-    }
+void SceneSurfaceBuffer::BindRenderTargets(ID3D12GraphicsCommandList* cmd, D3D12_CPU_DESCRIPTOR_HANDLE depthDsv) {
     const D3D12_CPU_DESCRIPTOR_HANDLE renderTargets[]{packedSurfaceRtv_, featureMaskRtv_, stylizedOutlineStyleRtv_};
     const bool writeStylizedSurfaces = HasFeatureMask() && HasStylizedOutlineStyle();
     cmd->OMSetRenderTargets(writeStylizedSurfaces ? 3u : 1u, renderTargets, FALSE,

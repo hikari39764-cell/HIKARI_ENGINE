@@ -31,18 +31,21 @@ std::string MakeWindowsError(const char* operation, DWORD error) {
 // モジュールの Feature 登録を、場面が持つ内部拡張の一つとして渡す。
 class GameProjectModuleExtension final : public IRuntimeExtension {
 public:
-    GameProjectModuleExtension(const GameProjectModuleApi& api, void* instance, std::string_view moduleId) noexcept
-        : api_(api), instance_(instance), moduleId_(moduleId) {}
+    GameProjectModuleExtension(const GameProjectModuleApi& api, void* instance, std::string_view moduleId,
+                               bool enablesFeatures) noexcept
+        : api_(api), instance_(instance), moduleId_(moduleId), enablesFeatures_(enablesFeatures) {}
 
     std::string_view GetExtensionId() const noexcept override { return moduleId_; }
     bool RegisterRuntimeFeatures(RuntimeFeatureCatalog& catalog) override {
         return api_.registerRuntimeFeatures(instance_, &catalog);
     }
+    bool EnablesRegisteredFeatures() const noexcept override { return enablesFeatures_; }
 
 private:
     const GameProjectModuleApi& api_;
     void* instance_ = nullptr;
     std::string_view moduleId_{};
+    bool enablesFeatures_ = false;
 };
 
 } // namespace
@@ -60,6 +63,11 @@ bool GameProjectModuleLibrary::LoadForLaunch(bool allowMissing, std::string& out
         return true;
     }
     return Load(PLATFORM::GetExecutableDirectory() / "HIKARI_GameProject.dll", outMessage);
+}
+
+bool GameProjectModuleLibrary::LoadInstalledModule(const std::filesystem::path& modulePath, std::string& outMessage) {
+    installedModule_ = true;
+    return Load(modulePath, outMessage);
 }
 
 bool GameProjectModuleLibrary::Load(const std::filesystem::path& modulePath, std::string& outMessage) {
@@ -123,7 +131,7 @@ bool GameProjectModuleLibrary::Load(const std::filesystem::path& modulePath, std
     instance_ = instance;
     modulePath_ = std::move(resolved);
     moduleId_ = moduleId;
-    extension_ = std::make_unique<GameProjectModuleExtension>(*api_, instance_, moduleId_);
+    extension_ = std::make_unique<GameProjectModuleExtension>(*api_, instance_, moduleId_, installedModule_);
     outMessage.clear();
     return true;
 }

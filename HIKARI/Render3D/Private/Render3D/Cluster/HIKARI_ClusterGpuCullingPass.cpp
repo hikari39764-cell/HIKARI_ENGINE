@@ -739,29 +739,39 @@ bool ClusterGpuCullingPass::EnsureCapacity(ID3D12Device* device, size_t pageTask
 }
 
 bool ClusterGpuCullingPass::EnsureWorkCapacity() {
-    // bucket ごとの上限を instance 数以上にする。総容量だけを見ると、
-    // 単一 pass に集中する大量の小物が他の空 bucket を使えず欠落する。
-    size_t bucketDemand = 0;
-    for (const auto& pass : stats_.passOutputs) {
-        bucketDemand = (std::max)(bucketDemand, pass.sourceInstanceCount);
-        if (pass.gpuCounterReadbackValid) {
-            bucketDemand = (std::max)(
-                bucketDemand, (std::max)(pass.gpuBackFaceDrawCommandCount, pass.gpuDoubleSidedDrawCommandCount));
-        }
-    }
-    const size_t commandDemand = bucketDemand * kClusterGpuCullingPassKindCount * kGeometryCullModeBucketCount;
-    const size_t pageDemand = (std::max)(stats_.sourceInstanceCount, static_cast<size_t>(stats_.gpuPageTaskCount));
-    if (commandDemand <= candidateCommandCapacity_ && pageDemand <= pageTaskCapacity_) {
-        return true;
-    }
-    // GPU counter は上限を越えた要求も含む。増大を無制限に繰り返さず、
-    // 小さい scene の既定 footprint は維持する。
+    // 入力の個体数は全部見えた時の上限で、大量配置では視錐台の外と遠近の切り替えで大半が落ちる。GPU の要求数（上限を
+    // 越えた分も数える）が読めたら、それに余裕を足した量だけ確保する。読めるまで（読まない経路ではずっと）既定の容量まで
+    // で始める。足りない物は数フレーム欠け、読めた値で増える。
+    constexpr size_t kBucketCount = kClusterGpuCullingPassKindCount * kGeometryCullModeBucketCount;
+    constexpr size_t kDefaultBucketCommands = kDefaultClusterGpuCandidateCommandCapacity / kBucketCount;
     constexpr size_t maxCommands = kDefaultClusterGpuCandidateCommandCapacity * 4u;
     constexpr size_t maxPages = kDefaultClusterGpuPageTaskCapacity * 4u;
+    const auto withMargin = [](size_t count) { return count + count / 4u; };
+    size_t bucketDemand = 0;
+    for (const auto& pass : stats_.passOutputs) {
+        bucketDemand = (std::max)(bucketDemand, (std::min)(pass.sourceInstanceCount, kDefaultBucketCommands));
+        if (pass.gpuCounterReadbackValid) {
+            bucketDemand = (std::max)(bucketDemand, withMargin((std::max)(pass.gpuBackFaceDrawCommandCount,
+                                                                          pass.gpuDoubleSidedDrawCommandCount)));
+        }
+    }
+    size_t commandDemand = bucketDemand * kBucketCount;
+    size_t pageDemand = (std::max)((std::min)(stats_.sourceInstanceCount, kDefaultClusterGpuPageTaskCapacity),
+                                   withMargin(static_cast<size_t>(stats_.gpuPageTaskCount)));
+    // 上限で止める。超えた分は GPU 側で捨てられて小さな物が欠けるだけで、フレーム全体を落とさない。
     if (commandDemand > maxCommands || pageDemand > maxPages) {
-        HIKARI_LOG_ERROR(std::string("[ClusterGpuCulling] Work capacity budget exceeded: commands=") +
-                         std::to_string(commandDemand) + " pages=" + std::to_string(pageDemand));
-        return false;
+        static bool reported = false;
+        if (!reported) {
+            reported = true;
+            HIKARI_LOG_WARN(std::string("[ClusterGpuCulling] Work capacity is at its limit, some clusters are not "
+                                        "drawn: commands=") +
+                            std::to_string(commandDemand) + " pages=" + std::to_string(pageDemand));
+        }
+        commandDemand = (std::min)(commandDemand, maxCommands);
+        pageDemand = (std::min)(pageDemand, maxPages);
+    }
+    if (commandDemand <= candidateCommandCapacity_ && pageDemand <= pageTaskCapacity_) {
+        return true;
     }
     const auto& graphics = GFX::GetCurrentContext();
     if (!EnsureCapacity(graphics.device, (std::max)(pageDemand, pageTaskCapacity_),

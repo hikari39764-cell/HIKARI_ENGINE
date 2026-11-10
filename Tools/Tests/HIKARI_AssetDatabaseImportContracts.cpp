@@ -1,11 +1,15 @@
 #include <algorithm>
 #include <array>
 #include <chrono>
+#include <cmath>
 #include <cstdio>
+#include <cstring>
 #include <filesystem>
 #include <fstream>
 #include <iterator>
 #include <memory>
+#include <set>
+#include <span>
 #include <string>
 #include <string_view>
 #include <thread>
@@ -29,9 +33,12 @@
 #include "Assets/Semantics/HIKARI_AssetSourceSemantics.h"
 #include "Assets/Formats/HIKARI_HmodelFormat.h"
 #include "Core/Serialization/Json/HIKARI_JsonFile.h"
+#include "Project/HIKARI_ProjectDescriptor.h"
+#include "Project/HIKARI_ProjectModules.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Scene/HIKARI_SceneDocument.h"
 #include "Scene/Serialization/HIKARI_SceneSerializer.h"
+#include "Scene/Serialization/HIKARI_WorldInstanceFile.h"
 #include <json.hpp>
 #include <DirectXTex.h>
 #include "Internal/HIKARI_ContractAssert.h"
@@ -1007,6 +1014,317 @@ void CheckPainterlyEngineDependencies(const fs::path& root) {
     content.Close();
 }
 
+// 世界分区：主ファイルと格子ごとのファイル。変えた格子だけを書き、壊れた格子は飛ばして上書きせず、資産の取り込みと
+// 書き出しも格子ファイルを扱う。分区しない場景は新しい項目を書かない。
+void CheckPartitionedScene(const fs::path& root) {
+    using namespace HIKARI;
+    using Clock = std::chrono::steady_clock;
+    const auto elapsedMs = [](Clock::time_point started) {
+        return std::chrono::duration<double, std::milli>(Clock::now() - started).count();
+    };
+    const auto project = root / "Partitioned";
+    fs::create_directories(project / "Assets/Scenes");
+    fs::copy_file(fs::path(HIKARI_CONTRACT_SOURCE_ROOT) / "Tests/Fixtures/Projects/EmptyProject/Project.hikari",
+                  project / "Project.hikari");
+    const SceneSerializer serializer{};
+
+    SceneDocument plain{};
+    plain.sceneName = "Plain";
+    for (uint64_t id = 1u; id <= 3u; ++id) {
+        SceneObjectData object{};
+        object.id = {id};
+        object.name = "Plain" + std::to_string(id);
+        object.transform.position = {static_cast<float>(id) * 300.0f, 0.0f, 0.0f};
+        plain.objects.push_back(std::move(object));
+    }
+    const auto plainPath = project / "Assets/Scenes/Plain.hscene";
+    SceneCellFileState plainCells{};
+    assert(serializer.SaveToFile(TEXT::PathToUtf8(plainPath), plain, &plainCells));
+    const std::string plainBytes = Read(plainPath);
+    assert(plainBytes.find("partition") == std::string::npos && plainBytes.find("alwaysLoaded") == std::string::npos);
+    SceneDocument plainReloaded{};
+    assert(serializer.LoadFromFile(TEXT::PathToUtf8(plainPath), plainReloaded, &plainCells) &&
+           !plainReloaded.partition.enabled);
+    assert(serializer.SaveToFile(TEXT::PathToUtf8(plainPath), plainReloaded, &plainCells) &&
+           Read(plainPath) == plainBytes);
+    assert(!fs::exists(ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(plainPath)));
+
+    // 32×32 = 1024 格（256 m）。各格に根と子（子は自分の位置に関係なく根の格子へ）、ほかに常駐の物体が一つ。
+    SceneDocument world{};
+    world.sceneName = "Island";
+    world.partition = {true, 256u};
+    uint64_t nextId = 1u;
+    for (int z = -16; z < 16; ++z) {
+        for (int x = -16; x < 16; ++x) {
+            SceneObjectData cellRoot{};
+            cellRoot.id = {nextId++};
+            cellRoot.name = "Cell" + std::to_string(x) + "_" + std::to_string(z);
+            cellRoot.transform.position = {static_cast<float>(x) * 256.0f + 128.0f, 0.0f,
+                                           static_cast<float>(z) * 256.0f + 100.0f};
+            SceneObjectData child{};
+            child.id = {nextId++};
+            child.name = cellRoot.name + "Child";
+            child.parent = cellRoot.id;
+            child.transform.position = {500.0f, 0.0f, 0.0f};
+            world.objects.push_back(std::move(cellRoot));
+            world.objects.push_back(std::move(child));
+        }
+    }
+    SceneObjectData manager{};
+    manager.id = {nextId++};
+    manager.name = "GameManager";
+    manager.alwaysLoaded = true;
+    manager.transform.position = {3000.0f, 0.0f, 3000.0f};
+    world.objects.push_back(std::move(manager));
+
+    const auto islandPath = project / "Assets/Scenes/Island.hscene";
+    const std::string island = TEXT::PathToUtf8(islandPath);
+    assert(ASSETS::SEMANTICS::MakeSceneCellDirectoryPath(islandPath) == project / "Assets/Scenes/Island.cells");
+    SceneCellFileState cells{};
+    SceneSaveReport report{};
+    Clock::time_point started = Clock::now();
+    assert(serializer.SaveToFile(island, world, &cells, &report));
+    const double firstSaveMs = elapsedMs(started);
+    assert(report.mainWritten && report.writtenCells.size() == 1024u);
+    const auto sampleCell = MakeSceneCellObjectsPath(islandPath, {3, -12});
+    assert(sampleCell.filename() == "x+003_z-012.objects.json");
+    nlohmann::json header{};
+    assert(SERIALIZATION::JSON::ReadJsonFile(sampleCell, header));
+    assert(header["format"] == "HIKARI.SceneCell" && header["version"] == 1 && header["content"] == "objects" &&
+           header["cellSize"] == 256 && header["cell"] == nlohmann::json::array({3, -12}) &&
+           header["checksum"].is_string() && header["objects"].size() == 2u);
+    nlohmann::json mainFile{};
+    assert(SERIALIZATION::JSON::ReadJsonFile(islandPath, mainFile) && mainFile["objects"].size() == 1u &&
+           mainFile["partition"]["cells"].size() == 1024u);
+
+    started = Clock::now();
+    SceneDocument opened{};
+    SceneCellFileState openedCells{};
+    assert(serializer.LoadFromFile(island, opened, &openedCells));
+    const double openMs = elapsedMs(started);
+    assert(opened.objects.size() == world.objects.size() && openedCells.unreadableCells.empty() &&
+           openedCells.cellChecksums.size() == 1024u);
+    assert(serializer.SaveToFile(island, opened, &openedCells, &report) && !report.mainWritten &&
+           report.writtenCells.empty());
+
+    const auto find = [](SceneDocument& document, std::string_view name) -> SceneObjectData& {
+        const auto found = std::find_if(document.objects.begin(), document.objects.end(),
+                                        [&](const SceneObjectData& object) { return object.name == name; });
+        assert(found != document.objects.end());
+        return *found;
+    };
+    find(opened, "Cell3_-12Child").name = "Renamed";
+    started = Clock::now();
+    assert(serializer.SaveToFile(island, opened, &openedCells, &report));
+    const double oneObjectSaveMs = elapsedMs(started);
+    assert(!report.mainWritten && (report.writtenCells == std::vector<WorldCellCoord>{{3, -12}}));
+
+    // 根を空いた格子へ動かす：子も付いていき、空になった格子のファイルは消え、主ファイルの一覧が変わる。
+    find(opened, "Cell0_0").transform.position = {9000.0f, 0.0f, 9000.0f};
+    assert(serializer.SaveToFile(island, opened, &openedCells, &report) && report.mainWritten &&
+           (report.writtenCells == std::vector<WorldCellCoord>{{35, 35}}) && report.removedCellFiles == 1u);
+    assert(!fs::exists(MakeSceneCellObjectsPath(islandPath, {0, 0})));
+
+    // 壊れた格子はその格子だけ飛ばし、保存しても上書き・削除しない。そこへ物体を入れる保存と分区の解除は断る。
+    const auto damaged = MakeSceneCellObjectsPath(islandPath, {-5, 7});
+    {
+        std::string bytes = Read(damaged);
+        const size_t at = bytes.find("Cell-5_7");
+        assert(at != std::string::npos);
+        bytes[at] = 'X';
+        std::ofstream out(damaged, std::ios::binary | std::ios::trunc);
+        out << bytes;
+    }
+    const std::string damagedBytes = Read(damaged);
+    SceneDocument partial{};
+    SceneCellFileState partialCells{};
+    assert(serializer.LoadFromFile(island, partial, &partialCells));
+    assert((partialCells.unreadableCells == std::set<WorldCellCoord>{{-5, 7}}) &&
+           partial.objects.size() == opened.objects.size() - 2u);
+    find(partial, "Cell1_1").name = "EditedBesideDamage";
+    assert(serializer.SaveToFile(island, partial, &partialCells, &report) &&
+           (report.writtenCells == std::vector<WorldCellCoord>{{1, 1}}) && Read(damaged) == damagedBytes);
+    SceneObjectData& intruder = find(partial, "Cell2_2");
+    const MATH::Vec3 intruderHome = intruder.transform.position;
+    intruder.transform.position = {-5.0f * 256.0f + 10.0f, 0.0f, 7.0f * 256.0f + 10.0f};
+    assert(!serializer.SaveToFile(island, partial, &partialCells) && Read(damaged) == damagedBytes);
+    intruder.transform.position = intruderHome;
+    partial.partition.enabled = false;
+    assert(!serializer.SaveToFile(island, partial, &partialCells) && Read(damaged) == damagedBytes);
+    partial.partition.enabled = true;
+    partial.partition.cellSizeMeters = 256u;
+
+    // 別の路径へ保存：読めない格子のファイルは生のまま写り、一覧にも残る。保護も引き継ぐ。
+    const auto copyPath = project / "Assets/Scenes/IslandCopy.hscene";
+    const std::string copy = TEXT::PathToUtf8(copyPath);
+    {
+        SceneCellFileState copyCells = partialCells;
+        assert(serializer.SaveToFile(copy, partial, &copyCells));
+        assert(Read(MakeSceneCellObjectsPath(copyPath, {-5, 7})) == damagedBytes);
+        nlohmann::json copyMain{};
+        assert(SERIALIZATION::JSON::ReadJsonFile(copyPath, copyMain));
+        const auto& listed = copyMain["partition"]["cells"];
+        assert(std::find(listed.begin(), listed.end(), nlohmann::json::array({-5, 7})) != listed.end());
+        assert(copyCells.scenePath == copyPath.lexically_normal() &&
+               (copyCells.unreadableCells == std::set<WorldCellCoord>{{-5, 7}}));
+        SceneDocument offCopy = partial;
+        offCopy.partition.enabled = false;
+        SceneCellFileState offCells = partialCells;
+        assert(
+            !serializer.SaveToFile(TEXT::PathToUtf8(project / "Assets/Scenes/IslandOff.hscene"), offCopy, &offCells));
+        fs::remove_all(MakeSceneCellObjectsPath(copyPath, {0, 0}).parent_path());
+        fs::remove(copyPath);
+    }
+
+    // 記録なしの保存は全部を書き直す（壊れた格子も直る）。
+    assert(serializer.SaveToFile(island, opened, nullptr, &report) && report.writtenCells.size() == 1024u);
+
+    // 資産：格子ファイルは資産にならない。場景の取り込みは格子ファイルを入力に持ち、一つの格子が変わると古くなる。
+    auto& content = CONTENT::GetEngineContentContext();
+    assert(content.Open(HIKARI_CONTRACT_ENGINE_CONTENT_ROOT));
+    AssetDatabase database;
+    assert(database.Initialize(project) && database.ScanAssets(true));
+    assert(database.CollectByType(AssetType::Scene).size() == 2u &&
+           database.FindByPath("Assets/Scenes/Island.cells/x+003_z-012.objects.json") == nullptr);
+    const AssetGuid islandGuid = database.FindByPath("Assets/Scenes/Island.hscene")->guid;
+    assert(database.ImportAsset(islandGuid));
+    const auto& dependencies = database.FindByGuid(islandGuid)->artifactManifest.dependencies;
+    assert(std::count_if(dependencies.begin(), dependencies.end(), [](const AssetDependencyDesc& dependency) {
+               return dependency.role == "SourceCompanion" &&
+                      dependency.path.starts_with("Assets/Scenes/Island.cells/");
+           }) == 1024);
+    SceneDocument reopened{};
+    SceneCellFileState reopenedCells{};
+    assert(serializer.LoadFromFile(island, reopened, &reopenedCells));
+    find(reopened, "Cell7_7").name = "ChangedAfterImport";
+    assert(serializer.SaveToFile(island, reopened, &reopenedCells, &report) && report.writtenCells.size() == 1u);
+    assert(database.ScanAssets(true) && database.FindByGuid(islandGuid)->importOutdated);
+    assert(database.ImportAsset(islandGuid));
+
+    // 書き出し：格子ファイルも場景の隣の同じ相対位置に入り、書き出した場景から全部読める。
+    ASSETS::COOKING::AssetCookOptions options;
+    options.projectRoot = project;
+    options.contentRoot = root / "PartitionedCooked";
+    options.sceneGuids = {islandGuid.value};
+    options.startupSceneGuid = islandGuid.value;
+    const auto cooked = ASSETS::COOKING::AssetCooker{}.Cook(options);
+    if (!cooked.success)
+        std::fprintf(stderr, "%s\n", cooked.message.c_str());
+    assert(cooked.success);
+    SceneDocument shipped{};
+    SceneCellFileState shippedCells{};
+    assert(serializer.LoadFromFile(TEXT::PathToUtf8(options.contentRoot / "RuntimePayload/Assets/Scenes/Island.hscene"),
+                                   shipped, &shippedCells));
+    assert(shipped.objects.size() == reopened.objects.size() && shippedCells.unreadableCells.empty());
+    content.Close();
+    std::printf(
+        "partitioned scene: 1024 cells, %zu objects; first save %.1f ms, open %.1f ms, one-object save %.1f ms\n",
+        world.objects.size(), firstSaveMs, openMs, oneObjectSaveMs);
+}
+
+// 実例集のセルファイル（.instances）と実例集の一覧：詰めた値の往復、ファイル名、複数の集の読み書き、
+// セルの食い違いと壊れた末尾を断ること。
+void CheckWorldInstanceFile(const fs::path& root) {
+    using namespace HIKARI;
+    const GameProjectWorldInstance instance =
+        WORLDINSTANCE::Encode({12.5f, 3.0f, -7.25f}, {0.0f, 0.70710678f, 0.0f, 0.70710678f}, {1.5f, 0.75f, 2.0f}, 77u,
+                              GameProjectWorldInstanceFlags::HandPlaced);
+    assert(std::abs(WORLDINSTANCE::DecodeSnorm16(instance.rotation[1]) - 0.70710678f) < 1.0e-4f);
+    assert(WORLDINSTANCE::DecodeHalf(instance.scale[0]) == 1.5f &&
+           WORLDINSTANCE::DecodeHalf(instance.scale[1]) == 0.75f);
+    assert(WORLDINSTANCE::DecodeHalf(WORLDINSTANCE::EncodeHalf(0.0f)) == 0.0f);
+    assert(WORLDINSTANCE::DecodeHalf(WORLDINSTANCE::EncodeHalf(1.0e9f)) > 60000.0f);
+    assert(instance.seed == 77u);
+
+    const fs::path directory = root / "WorldInstances";
+    fs::create_directories(directory);
+    const WorldCellCoord cell{-3, 5};
+    const fs::path path = MakeWorldInstanceCellPath(directory, cell);
+    WorldCellCoord parsed{};
+    assert(ParseWorldInstanceCellFileName(path.filename().string(), parsed) && parsed == cell);
+    assert(!ParseWorldInstanceCellFileName("x+000_z+000.objects.json", parsed));
+    const std::vector<GameProjectWorldInstance> first(2000u, instance);
+    const std::vector<GameProjectWorldInstance> second(3u, instance);
+    const std::array<WorldInstanceCellPart, 2> parts{WorldInstanceCellPart{11u, first},
+                                                     WorldInstanceCellPart{22u, second}};
+    std::string error{};
+    assert(WriteWorldInstanceCellFile(path, cell, parts, error));
+    std::vector<WorldInstanceCellRead> read{};
+    assert(ReadWorldInstanceCellFile(path, cell, read, error));
+    assert(read.size() == 2u && read[0].setId == 11u && read[0].instances.size() == 2000u && read[1].setId == 22u &&
+           read[1].instances.size() == 3u);
+    assert(std::memcmp(read[1].instances.data(), second.data(), sizeof(GameProjectWorldInstance) * 3u) == 0);
+    assert(!ReadWorldInstanceCellFile(path, WorldCellCoord{0, 0}, read, error));
+    {
+        std::fstream file(path, std::ios::binary | std::ios::in | std::ios::out);
+        file.seekp(-1, std::ios::end);
+        const char broken = 0x7F;
+        file.write(&broken, 1);
+    }
+    assert(!ReadWorldInstanceCellFile(path, cell, read, error));
+
+    GameProjectWorldInstanceSetDesc set{};
+    std::strcpy(set.name, "Pines");
+    std::strcpy(set.modelAssetGuid, "abc");
+    set.tintVariation = 0.25f;
+    const fs::path setsPath = directory / kWorldInstanceSetsFileName;
+    assert(WriteWorldInstanceSetsFile(setsPath, std::span(&set, 1u), error));
+    std::vector<GameProjectWorldInstanceSetDesc> sets{};
+    assert(ReadWorldInstanceSetsFile(setsPath, sets, error));
+    assert(sets.size() == 1u && std::strcmp(sets[0].name, "Pines") == 0 && sets[0].tintVariation == 0.25f);
+}
+
+// モジュールが登記した資産の種類：走査で資産になり、取り込みが値の中の GUID を依存にし、書き出しに含まれる。
+void CheckModuleAssetTypes(const fs::path& root) {
+    using namespace HIKARI;
+    std::vector<std::string> errors{};
+    ASSETS::SEMANTICS::ReplaceModuleAssetTypes({{"Test.Rule", ".htestrule", "Test Rule"},
+                                                {"Test.Rule", ".htestrule", "Test Rule"},
+                                                {"Test.Other", ".htestrule", "Other"},
+                                                {"Test.Hvfx", ".hvfx", "Engine extension"},
+                                                {"Test.NoDot", "htestrule2", "No dot"}},
+                                               errors);
+    assert(errors.size() == 3u);
+    errors.clear();
+    ASSETS::SEMANTICS::ReplaceModuleAssetTypes({}, errors);
+
+    // 種類は項目の清単から：DLL を読まない工程でも、資産庫を開くだけで種類が分かる。
+    const auto project = root / "ModuleAssets";
+    fs::create_directories(project / "Assets");
+    fs::copy_file(fs::path(HIKARI_CONTRACT_SOURCE_ROOT) / "Tests/Fixtures/Projects/EmptyProject/Project.hikari",
+                  project / "Project.hikari");
+    ModuleManifest manifest{};
+    manifest.id = "Test.Module";
+    manifest.name = "Test";
+    manifest.version = "1.0.0";
+    manifest.sdkVersion = "1.0.0";
+    manifest.runtimeLibrary = "Module.dll";
+    manifest.assetTypes.push_back({"Test.Rule", ".htestrule", "Test Rule"});
+    assert(SaveModuleManifest(project / "Test.Module.hmodule", manifest));
+    ProjectDescriptor descriptor{};
+    assert(LoadProjectDescriptor(project / "Project.hikari", descriptor));
+    descriptor.modules.push_back({"Test.Module", "Test.Module.hmodule"});
+    assert(SaveProjectDescriptor(project / "Project.hikari", descriptor));
+    WriteTga(project / "Assets/used.tga", {1, 2, 3});
+    AssetDatabase database;
+    assert(database.Initialize(project) && database.ScanAssets(true));
+    const AssetGuid textureGuid = database.FindByPath("Assets/used.tga")->guid;
+    assert(SERIALIZATION::JSON::WriteJsonFile(project / "Assets/rule.htestrule",
+                                              {{"nested", {{"texture", textureGuid.value}}}, {"density", 3}}));
+    assert(database.ScanAssets(true));
+    const auto* rule = database.FindByPath("Assets/rule.htestrule");
+    assert(rule != nullptr && rule->type == AssetType::ModuleAsset);
+    const AssetGuid ruleGuid = rule->guid;
+    assert(database.ImportAsset(ruleGuid));
+    const auto& dependencies = database.FindByGuid(ruleGuid)->artifactManifest.dependencies;
+    assert(dependencies.size() == 1u && dependencies.front().guid == textureGuid);
+    {
+        std::ofstream broken(project / "Assets/rule.htestrule", std::ios::trunc);
+        broken << "{ not json";
+    }
+    assert(database.ScanAssets(true) && !database.ImportAsset(ruleGuid));
+}
+
 void CheckProjectPostContracts(const std::filesystem::path& testRoot);
 
 int main(int argc, char** argv) {
@@ -1196,6 +1514,9 @@ int main(int argc, char** argv) {
     CheckPostAssets(database, root);
     CheckProjectPostContracts(root);
     CheckPainterlyEngineDependencies(root);
+    CheckPartitionedScene(root);
+    CheckWorldInstanceFile(root);
+    CheckModuleAssetTypes(root);
     for (int index = 1; index < argc; ++index) {
         CheckSpriteAssetIntegration(fs::absolute(TEXT::PathFromUtf8(argv[index])),
                                     root / ("SpriteContract-" + std::to_string(index)));

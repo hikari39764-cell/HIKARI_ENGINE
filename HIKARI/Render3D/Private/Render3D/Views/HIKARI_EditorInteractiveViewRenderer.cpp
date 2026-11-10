@@ -776,7 +776,8 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
                    uint64_t currentSceneRevision, SkyManager& skyManager, const AssetRegistry* assetRegistry,
                    const MATERIAL::MaterialExternalValueSnapshot* materialExternalValues,
                    const WORLD_SPRITES::WorldSpriteFrameSource* worldSpriteFrameSource,
-                   const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource) {
+                   const WORLD_TEXT::WorldTextFrameSource* worldTextFrameSource,
+                   std::span<IRenderSurfaceExtension* const> surfaceExtensions) {
     ScheduleViewCaptures([](RenderViewId id) -> std::optional<uint64_t> {
         const auto found = g_views.find(id.value);
         if (found == g_views.end() || !found->second->hasRequest || !found->second->request.visible)
@@ -904,6 +905,7 @@ bool RenderPending(const SceneEnvironment& environment, const LIGHTING::SceneLig
     if (selected->request.sceneSourceOverride == nullptr) {
         view.worldSpriteFrameSource = worldSpriteFrameSource;
         view.worldTextFrameSource = worldTextFrameSource;
+        view.surfaceExtensions = surfaceExtensions;
     }
     const PARTICLES::ParticleRenderFrameSource particleFrameSource{
         selected->request.particleInputOverride.get(), assetRegistry, materialExternalValues, {}, nullptr,

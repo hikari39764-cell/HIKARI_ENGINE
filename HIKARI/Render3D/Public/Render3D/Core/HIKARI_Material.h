@@ -111,9 +111,21 @@ public:
     void SetEmissiveStrength(float value);
     float GetEmissiveStrength() const;
     uint64_t GetRevision() const;
+    // 版本が進んだ時に所有者へ知らせる（材質を持つモデル部品が描画の変更として世界へ伝える）。
+    // 複製した材質はこの登録を引き継がない。listener は noexcept で、所有者が材質より長く生きること。
+    using RevisionListener = void (*)(void* owner) noexcept;
+    void SetRevisionListener(RevisionListener listener, void* owner) noexcept;
 
 private:
     void TouchRevision() noexcept;
+
+    struct RevisionNotifier {
+        RevisionListener listener = nullptr;
+        void* owner = nullptr;
+        RevisionNotifier() = default;
+        RevisionNotifier(const RevisionNotifier&) noexcept {}
+        RevisionNotifier& operator=(const RevisionNotifier&) noexcept { return *this; }
+    };
 
     MATH::Vec4 baseColor_{1.0f, 1.0f, 1.0f, 1.0f};
     RuntimeTextureSlot baseColorTexture_{};
@@ -151,6 +163,7 @@ private:
     bool doubleSided_ = false;
     MaterialShellSettings shellSettings_{};
     uint64_t revision_ = 0;
+    RevisionNotifier revisionNotifier_{};
 };
 
 } // namespace HIKARI

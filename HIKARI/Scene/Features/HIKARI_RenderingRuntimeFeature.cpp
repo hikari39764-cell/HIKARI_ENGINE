@@ -6,6 +6,7 @@
 #include <utility>
 
 #include "Scene/Features/HIKARI_RuntimeFeatureContextAccess.h"
+#include "Scene/Components/HIKARI_GroundAnchorComponent.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/Decal/HIKARI_DecalComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
@@ -119,7 +120,23 @@ public:
             RenderingPresentation("World Text (3D)", "Lays out UTF-8 SDF text in world space with outline, "
                                                      "wrapping, alignment, and reveal controls.");
 
+        // 編集器の置き方の約束。描画物と同じく配置される物に付けるので、ここで登録する。
+        ComponentTypeInfo groundAnchor{};
+        groundAnchor.typeName = "GroundAnchorComponent";
+        groundAnchor.factory = []() -> std::unique_ptr<IComponent> {
+            return IComponent::Create<GroundAnchorComponent>();
+        };
+        groundAnchor.initializeDefaults = [](const SceneObjectData&, nlohmann::json& properties) {
+            GroundAnchorComponent{}.Serialize(properties);
+        };
+        groundAnchor.fields = JSONFIELDS::Describe<GroundPlacementSettings>(kGroundPlacementFields);
+        groundAnchor.presentation = ComponentTypePresentation{
+            "Ground Anchor", "Placement",
+            "Keeps the object on the ground: it is placed back when it is moved or the terrain changes.",
+            std::string(RuntimeFeatureIds::Rendering)};
+
         bool success = components.Register(std::move(model));
+        success = components.Register(std::move(groundAnchor)) && success;
         success = components.Register(std::move(materialFx)) && success;
         success = components.Register(std::move(procedural)) && success;
         success = components.Register(std::move(decal)) && success;

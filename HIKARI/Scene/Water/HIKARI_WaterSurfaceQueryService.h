@@ -92,6 +92,8 @@ public:
     void SetBathymetryProvider(const IWaterBathymetryProvider* provider) noexcept;
 
     bool SampleNearest(const WaterSurfaceQuery& query, WaterSurfaceSample& outSample) const noexcept;
+    // 相机を追う海の水面の高さ（物体の原点の高さ）と物体。無ければ false。
+    bool FindOcean(float& outLevel, RuntimeObjectHandle& outObject) const noexcept;
 
     uint64_t GetSnapshotRevision() const noexcept;
     std::size_t GetSurfaceCount() const noexcept;

@@ -1,9 +1,26 @@
+#include <algorithm>
 #include <array>
+#include <filesystem>
+#include <fstream>
+#include <iostream>
+#include <iterator>
 #include <memory>
+#include <optional>
+#include <random>
 #include <stdexcept>
 #include <string>
 #include <string_view>
+#include <unordered_set>
 #include <vector>
+
+#include "Assets/Models/HIKARI_ModelManager.h"
+#include "Project/HIKARI_ProjectModules.h"
+#include "RenderContracts/Asset/HIKARI_AssetRegistry.h"
+#include "Scene/Components/HIKARI_IComponent.h"
+#include "Scene/HIKARI_GameObject.h"
+#include "Scene/HIKARI_SceneDocument.h"
+#include "Scene/HIKARI_SceneRuntimeBuilder.h"
+#include "Scene/Serialization/HIKARI_SceneSerializer.h"
 
 #include "HIKARI/Project/GameComponent.h"
 #include "HIKARI/Project/GameSystem.h"
@@ -18,7 +35,7 @@
 #include "Scene/HIKARI_SystemTypeRegistry.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/HIKARI_WorldMassStore.h"
-#include "Scene/Ui/HIKARI_UiSceneComponents.h"
+#include "HIKARI/Project/UiTypes.h"
 #include "Tools/Tests/Internal/HIKARI_ContractAssert.h"
 
 namespace {
@@ -168,9 +185,358 @@ void AssertRegistryClean(const HIKARI::ComponentRegistry& components,
     assert(policy.GetRules().empty());
 }
 
+// 項目のモジュール一覧：依存が先に並ぶ、同梱のモジュールで依存を補う、欠落・循環・id の食い違いは断る。
+// 項目の Plugins は同梱より先に探す。版の合わない包は有効に出来ず、依存されている包は外せない。
+void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
+    std::filesystem::remove_all(scratch);
+    const std::string currentSdk =
+        std::to_string(HIKARI::SDK::kVersionMajor) + "." + std::to_string(HIKARI::SDK::kVersionMinor) + ".0";
+    const auto writeManifest = [&](const std::filesystem::path& directory, const std::string& id,
+                                   const std::vector<std::string>& dependencies, const std::string& sdkVersion = {}) {
+        HIKARI::ModuleManifest manifest{};
+        manifest.id = id;
+        manifest.version = "1.0.0";
+        manifest.sdkVersion = sdkVersion.empty() ? currentSdk : sdkVersion;
+        manifest.runtimeLibrary = "HIKARI_GameProject.dll";
+        manifest.dependencies = dependencies;
+        std::filesystem::create_directories(directory);
+        assert(HIKARI::SaveModuleManifest(directory / (id + HIKARI::kModuleManifestExtension), manifest));
+    };
+    const std::filesystem::path project = scratch / "Project";
+    const std::filesystem::path builtin = scratch / "Builtin";
+    writeManifest(scratch / "External", "Test.Kit", {"Test.Base"});
+    writeManifest(builtin / "Test.Base", "Test.Base", {});
+    writeManifest(builtin / "Test.CycleA", "Test.CycleA", {"Test.CycleB"});
+    writeManifest(builtin / "Test.CycleB", "Test.CycleB", {"Test.CycleA"});
+    writeManifest(builtin / "Test.Wrong", "Test.Other", {});
+    writeManifest(builtin / "Test.Missing", "Test.Missing", {"Test.Nothing"});
+
+    const HIKARI::ProjectModuleReference kit{"Test.Kit", "../External/Test.Kit.hmodule"};
+    std::vector<HIKARI::ModuleManifest> resolved{};
+    std::string message{};
+    assert(HIKARI::ResolveProjectModules({kit}, project, builtin, resolved, &message));
+    assert(resolved.size() == 2u && resolved[0].id == "Test.Base" && resolved[1].id == "Test.Kit");
+    assert(HIKARI::ResolveProjectModules({{"Test.Base", {}}, kit}, project, builtin, resolved) &&
+           resolved.size() == 2u);
+    assert(!HIKARI::ResolveProjectModules({{"Test.CycleA", {}}}, project, builtin, resolved, &message) &&
+           message.find("cycle") != std::string::npos);
+    assert(!HIKARI::ResolveProjectModules({{"Test.Missing", {}}}, project, builtin, resolved));
+    assert(!HIKARI::ResolveProjectModules({{"Test.Absent", {}}}, project, builtin, resolved));
+    const std::filesystem::path wrong = builtin / "Test.Wrong";
+    std::filesystem::rename(wrong / "Test.Other.hmodule", wrong / "Test.Wrong.hmodule");
+    assert(!HIKARI::ResolveProjectModules({{"Test.Wrong", {}}}, project, builtin, resolved, &message) &&
+           message.find("declares id") != std::string::npos);
+
+    // 一覧の無い Project.hikari に新しい項目は書かれない。あれば読み書きで保たれる。
+    std::filesystem::create_directories(project);
+    HIKARI::ProjectDescriptor descriptor{};
+    descriptor.name = "Modules";
+    const std::filesystem::path descriptorPath = project / HIKARI::kProjectDescriptorFilename;
+    assert(HIKARI::SaveProjectDescriptor(descriptorPath, descriptor));
+    {
+        std::ifstream file(descriptorPath, std::ios::binary);
+        const std::string text{std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>()};
+        assert(text.find("modules") == std::string::npos);
+    }
+    descriptor.modules = {kit, {"Test.Base", {}}};
+    assert(HIKARI::SaveProjectDescriptor(descriptorPath, descriptor));
+    HIKARI::ProjectDescriptor reloaded{};
+    assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded));
+    assert(reloaded.modules.size() == 2u && reloaded.modules[0].id == "Test.Kit" &&
+           reloaded.modules[0].manifest == kit.manifest && reloaded.modules[1].manifest.empty());
+
+    const std::filesystem::path plugins = project / HIKARI::kProjectPluginsDirectory;
+    writeManifest(plugins / "Test.Base", "Test.Base", {});
+    writeManifest(plugins / "Test.Old", "Test.Old", {}, "1.0.0");
+    assert(HIKARI::ResolveProjectModules({{"Test.Base", {}}}, project, builtin, resolved) && resolved.size() == 1u &&
+           std::filesystem::equivalent(resolved[0].directory, plugins / "Test.Base"));
+    const auto findOption = [&](const std::string& id) {
+        for (HIKARI::ProjectModuleOption& option : HIKARI::ListProjectModuleOptions(reloaded, project, builtin)) {
+            if (option.manifest.id == id) {
+                return std::move(option);
+            }
+        }
+        return HIKARI::ProjectModuleOption{};
+    };
+    const HIKARI::ProjectModuleOption base = findOption("Test.Base");
+    assert(base.enabled && base.source == HIKARI::ModuleSource::ProjectPlugins && base.problem.empty() &&
+           base.requiredBy == std::vector<std::string>{"Test.Kit"});
+    assert(findOption("Test.Kit").source == HIKARI::ModuleSource::ManifestPath);
+    const HIKARI::ProjectModuleOption old = findOption("Test.Old");
+    assert(!old.enabled && old.problem.find("built for HIKARI SDK 1.0.0") != std::string::npos);
+    assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Old", true, &message) &&
+           message.find("HIKARI SDK") != std::string::npos);
+    assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", false, &message) &&
+           message.find("required by Test.Kit") != std::string::npos);
+    assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Nowhere", true, &message));
+    assert(HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Kit", false) &&
+           HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", false));
+    assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded) && reloaded.modules.empty());
+    assert(HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", true));
+    assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded) && reloaded.modules.size() == 1u &&
+           reloaded.modules[0].id == "Test.Base" && reloaded.modules[0].manifest.empty());
+    std::filesystem::remove_all(scratch);
+    std::cout << "project modules: dependency order, missing, cycle, id mismatch, Plugins folder, SDK version and "
+                 "enable/disable checked\n";
+}
+
+// 世界の物体ごとの名前・親・局所変換・型ごとの部品属性（同じ型の中の並びは保つ）。
+nlohmann::json DescribeWorld(const HIKARI::World& world) {
+    nlohmann::json objects = nlohmann::json::object();
+    for (const auto& object : world.GetObjects()) {
+        const HIKARI::Transform3D& local = object->GetTransform();
+        nlohmann::json entry{{"name", object->GetName()},
+                             {"parent", object->GetParent() ? object->GetParent()->GetDocumentId().value : 0u},
+                             {"position", {local.position.x, local.position.y, local.position.z}},
+                             {"rotation", {local.rotation.x, local.rotation.y, local.rotation.z, local.rotation.w}},
+                             {"scale", {local.scale.x, local.scale.y, local.scale.z}},
+                             {"components", nlohmann::json::object()}};
+        for (const auto& component : object->GetComponents()) {
+            nlohmann::json properties{};
+            component->Serialize(properties);
+            entry["components"][std::string(component->GetTypeName())].push_back(std::move(properties));
+        }
+        objects[std::to_string(object->GetDocumentId().value)] = std::move(entry);
+    }
+    return objects;
+}
+
+nlohmann::json DescribeRebuiltWorld(const HIKARI::SceneDocument& document, const HIKARI::ComponentRegistry& components,
+                                    const HIKARI::AssetRegistry& assets, HIKARI::ModelManager& models) {
+    HIKARI::World world{};
+    assert(world.BindComponentRegistry(&components));
+    std::vector<const HIKARI::SceneObjectData*> objects{};
+    for (const HIKARI::SceneObjectData& object : document.objects) {
+        objects.push_back(&object);
+    }
+    assert(HIKARI::SceneRuntimeBuilder{}.AddObjectsFromDocument(objects, world, assets, components, models));
+    return DescribeWorld(world);
+}
+
+// 編集をその場で世界へ当て続けた結果が、同じ document から作り直した世界と項目ごとに一致する。最後に document を
+// 最初の状態へ戻して（全部の取り消しに当たる）当てると、最初に作った世界と一致する。
+void InPlaceEditsMatchRebuild(const HIKARI::ComponentRegistry& components, const std::filesystem::path& scratch) {
+    constexpr std::array<std::string_view, 8> kPool{
+        "LightComponent", "CameraComponent",          "SpawnPointComponent", "WorldTextComponent",
+        "DecalComponent", "ReflectionProbeComponent", "ModelComponent",      "WorldSpriteComponent"};
+    const HIKARI::AssetRegistry assets{};
+    HIKARI::ModelManager models{};
+    const HIKARI::SceneRuntimeBuilder builder{};
+    std::mt19937 random{20261108u};
+    const auto pick = [&](size_t count) { return static_cast<size_t>(random() % count); };
+    const auto defaults = [&](std::string_view type) {
+        nlohmann::json properties{};
+        components.Find(std::string(type))->factory()->Serialize(properties);
+        return properties;
+    };
+
+    HIKARI::SceneDocument document{};
+    uint64_t nextId = 1u;
+    const auto newObject = [&]() {
+        HIKARI::SceneObjectData object{};
+        object.id = {nextId++};
+        object.name = "Object" + std::to_string(object.id.value);
+        object.transform.position = {static_cast<float>(pick(50)), 0.0f, static_cast<float>(pick(50))};
+        for (size_t count = pick(3); count-- > 0u;) {
+            const std::string_view type = kPool[pick(kPool.size())];
+            object.components.push_back({std::string(type), defaults(type)});
+        }
+        if (!document.objects.empty() && pick(3) == 0u) {
+            object.parent = document.objects[pick(document.objects.size())].id;
+        }
+        document.objects.push_back(std::move(object));
+    };
+    for (int index = 0; index < 40; ++index) {
+        newObject();
+    }
+
+    HIKARI::World world{};
+    assert(world.BindComponentRegistry(&components));
+    {
+        std::vector<const HIKARI::SceneObjectData*> objects{};
+        for (const HIKARI::SceneObjectData& object : document.objects) {
+            objects.push_back(&object);
+        }
+        assert(builder.AddObjectsFromDocument(objects, world, assets, components, models));
+    }
+    const HIKARI::SceneDocument initialDocument = document;
+    const nlohmann::json initialWorld = DescribeWorld(world);
+    std::unordered_set<uint64_t> touched{};
+
+    const auto isAncestor = [&](HIKARI::SceneObjectId ancestor, HIKARI::SceneObjectId object) {
+        for (std::optional<HIKARI::SceneObjectId> cursor = object; cursor.has_value();) {
+            if (cursor->value == ancestor.value) {
+                return true;
+            }
+            const auto found = std::find_if(document.objects.begin(), document.objects.end(),
+                                            [&](const HIKARI::SceneObjectData& data) { return data.id == *cursor; });
+            cursor = found != document.objects.end() ? found->parent : std::nullopt;
+        }
+        return false;
+    };
+    // 数値か真偽の葉を一つ選んで変え、部品に読ませて書き戻した値（正規化済み）を返す。読めない値なら元のまま。
+    const auto mutate = [&](const HIKARI::SceneComponentData& component) {
+        std::vector<nlohmann::json::json_pointer> leaves{};
+        const nlohmann::json flat = component.properties.flatten();
+        for (const auto& item : flat.items()) {
+            if (item.value().is_number() || item.value().is_boolean()) {
+                leaves.emplace_back(item.key());
+            }
+        }
+        if (leaves.empty()) {
+            return component.properties;
+        }
+        nlohmann::json edited = component.properties;
+        nlohmann::json& leaf = edited[leaves[pick(leaves.size())]];
+        if (leaf.is_boolean()) {
+            leaf = !leaf.get<bool>();
+        } else if (leaf.is_number_float()) {
+            leaf = leaf.get<double>() + 0.25 * static_cast<double>(1 + pick(4));
+        } else {
+            leaf = leaf.get<int64_t>() + 1;
+        }
+        std::unique_ptr<HIKARI::IComponent> probe = components.Find(component.type)->factory();
+        std::string diagnostic{};
+        if (!probe->TryDeserialize(edited, diagnostic)) {
+            return component.properties;
+        }
+        nlohmann::json normalized{};
+        probe->Serialize(normalized);
+        return normalized;
+    };
+
+    constexpr int kEdits = 1000;
+    for (int step = 0; step < kEdits; ++step) {
+        HIKARI::SceneObjectChanges requested{};
+        HIKARI::SceneObjectData& target = document.objects[pick(document.objects.size())];
+        switch (pick(11)) {
+        case 0:
+            target.name += "_";
+            requested.changed.push_back(target.id);
+            break;
+        case 1:
+            target.transform.position.y += 1.0f;
+            target.transform.rotationEulerDeg.y += 15.0f;
+            requested.changed.push_back(target.id);
+            break;
+        case 2: {
+            const HIKARI::SceneObjectId parent = document.objects[pick(document.objects.size())].id;
+            if (pick(4) == 0u) {
+                target.parent.reset();
+            } else if (!isAncestor(target.id, parent)) {
+                target.parent = parent;
+            }
+            requested.changed.push_back(target.id);
+            break;
+        }
+        case 3: {
+            const std::string_view type = kPool[pick(kPool.size())];
+            target.components.insert(target.components.begin() +
+                                         static_cast<std::ptrdiff_t>(pick(target.components.size() + 1u)),
+                                     {std::string(type), defaults(type)});
+            requested.changed.push_back(target.id);
+            break;
+        }
+        case 4:
+            if (!target.components.empty()) {
+                target.components.erase(target.components.begin() +
+                                        static_cast<std::ptrdiff_t>(pick(target.components.size())));
+            }
+            requested.changed.push_back(target.id);
+            break;
+        case 5:
+        case 6:
+        case 7:
+            if (!target.components.empty()) {
+                HIKARI::SceneComponentData& component = target.components[pick(target.components.size())];
+                component.properties = mutate(component);
+            }
+            requested.changed.push_back(target.id);
+            break;
+        case 8:
+        case 9:
+            newObject();
+            requested.added.push_back(document.objects.back().id);
+            break;
+        default: {
+            // 物体と子孫を消す（エディタの削除と同じ）。
+            const HIKARI::SceneObjectId root = target.id;
+            for (const HIKARI::SceneObjectData& object : document.objects) {
+                if (isAncestor(root, object.id)) {
+                    requested.removed.push_back(object.id);
+                }
+            }
+            std::erase_if(document.objects, [&](const HIKARI::SceneObjectData& object) {
+                return std::find(requested.removed.begin(), requested.removed.end(), object.id) !=
+                       requested.removed.end();
+            });
+            if (document.objects.empty()) {
+                newObject();
+                requested.added.push_back(document.objects.back().id);
+            }
+            break;
+        }
+        }
+        for (const std::vector<HIKARI::SceneObjectId>* ids :
+             {&requested.added, &requested.changed, &requested.removed}) {
+            for (HIKARI::SceneObjectId id : *ids) {
+                touched.insert(id.value);
+            }
+        }
+        const HIKARI::SceneObjectChanges changes = builder.ClassifyObjectChanges(document, requested, world);
+        std::vector<HIKARI::RuntimeObjectHandle> handles{};
+        for (HIKARI::SceneObjectId id : changes.changed) {
+            handles.push_back(world.FindObject(id)->GetRuntimeHandle());
+        }
+        assert(builder.ApplyObjectChanges(document, changes, world, assets, components, models));
+        // 変更分は壊さずに直す：句柄が変わらない。
+        for (size_t index = 0u; index < handles.size(); ++index) {
+            assert(world.FindObject(changes.changed[index])->GetRuntimeHandle() == handles[index]);
+        }
+        if ((step + 1) % 250 == 0) {
+            const bool same = DescribeWorld(world) == DescribeRebuiltWorld(document, components, assets, models);
+            if (!same) {
+                std::cerr << "in-place edits diverged from rebuild after " << (step + 1) << " edits\n";
+            }
+            assert(same);
+        }
+    }
+
+    // 保存して読み直してもう一度保存すると、一度目と同じ内容になる。
+    const HIKARI::SceneSerializer serializer{};
+    std::filesystem::create_directories(scratch);
+    const std::filesystem::path first = scratch / "first.hscene";
+    const std::filesystem::path second = scratch / "second.hscene";
+    HIKARI::SceneDocument reloaded{};
+    assert(serializer.SaveToFile(first.string(), document) && serializer.LoadFromFile(first.string(), reloaded) &&
+           serializer.SaveToFile(second.string(), reloaded));
+    const auto readBytes = [](const std::filesystem::path& path) {
+        std::ifstream file(path, std::ios::binary);
+        return std::string(std::istreambuf_iterator<char>(file), std::istreambuf_iterator<char>());
+    };
+    const std::string savedOnce = readBytes(first);
+    assert(!savedOnce.empty() && savedOnce == readBytes(second));
+    std::filesystem::remove_all(scratch);
+
+    // 全部の取り消し：document を最初へ戻し、触れた全物体を一つの差分として当てる。
+    const size_t editedObjects = document.objects.size();
+    document = initialDocument;
+    HIKARI::SceneObjectChanges undoAll{};
+    for (uint64_t id : touched) {
+        undoAll.changed.push_back({id});
+    }
+    assert(builder.ApplyObjectChanges(document, builder.ClassifyObjectChanges(document, undoAll, world), world, assets,
+                                      components, models));
+    assert(DescribeWorld(world) == initialWorld);
+    std::cout << "in-place edits: " << kEdits << " edits match rebuild, " << touched.size()
+              << " touched objects restored, " << editedObjects << " objects before undo, second save identical ("
+              << savedOnce.size() << " bytes)\n";
+}
+
 } // namespace
 
-int main() {
+int main(int, char** argv) {
+    ProjectModuleResolutionContracts(std::filesystem::path(argv[0]).parent_path() / "runtime-feature-modules");
     {
         HIKARI::RuntimeFeatureCatalog builtIn = HIKARI::CreateBuiltInRuntimeFeatureCatalog();
         assert(builtIn.FindOwningFeatureForComponent("WaterSurfaceComponent") == HIKARI::RuntimeFeatureIds::Water);
@@ -184,9 +550,6 @@ int main() {
                HIKARI::RuntimeFeatureIds::SurfaceInteraction);
         assert(builtIn.FindOwningFeatureForSystem("TerrainSurfaceSystem") ==
                HIKARI::RuntimeFeatureIds::SurfaceInteraction);
-        assert(builtIn.FindOwningFeatureForComponent("UiCanvasComponent") == HIKARI::RuntimeFeatureIds::Ui);
-        assert(builtIn.FindOwningFeatureForComponent("UiButtonComponent") == HIKARI::RuntimeFeatureIds::Ui);
-        assert(builtIn.FindOwningFeatureForSystem("UiSceneSystem") == HIKARI::RuntimeFeatureIds::Ui);
         const auto resolution = builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::Buoyancy)});
         assert(resolution.success);
         assert((resolution.resolvedFeatures ==
@@ -235,48 +598,58 @@ int main() {
         assert((animationResolution.resolvedFeatures ==
                 std::vector<std::string>{std::string(HIKARI::RuntimeFeatureIds::Rendering),
                                          std::string(HIKARI::RuntimeFeatureIds::Animation)}));
-        const auto uiResolution = builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::Ui)});
-        assert(uiResolution.success);
-        assert((uiResolution.resolvedFeatures ==
-                std::vector<std::string>{std::string(HIKARI::RuntimeFeatureIds::Rendering),
-                                         std::string(HIKARI::RuntimeFeatureIds::Ui)}));
-        HIKARI::UiRectComponent rect{};
-        rect.Deserialize({{"anchorMinimum", {0.9f, 1.2f}},
-                          {"anchorMaximum", {0.1f, -0.2f}},
-                          {"pivot", {2.0f, -1.0f}},
-                          {"order", HIKARI::kUiElementOrderLimit + 1}});
-        assert(rect.GetAnchorMinimum().x == 0.1f);
-        assert(rect.GetAnchorMaximum().x == 0.9f);
-        assert(rect.GetAnchorMinimum().y == 0.0f);
-        assert(rect.GetAnchorMaximum().y == 1.0f);
-        assert(rect.GetPivot().x == 1.0f);
-        assert(rect.GetPivot().y == 0.0f);
-        assert(rect.GetOrder() == HIKARI::kUiElementOrderLimit);
+        // 全ての組み込み部品：既定値を書いて読み直して書くと同じ JSON。空の object を読むと既定値になる
+        // （保存で既定値の項目を省けることの前提）。
+        {
+            HIKARI::ComponentRegistry allComponents{};
+            HIKARI::WorldMassSchemaRegistry allMassSchemas{};
+            HIKARI::SystemTypeRegistry allSystems{};
+            HIKARI::ComponentSystemPolicy allPolicy{};
+            HIKARI::RuntimeFeatureContext allContext =
+                HIKARI::RuntimeFeatureContextAccess::Create(allComponents, allMassSchemas, allSystems, allPolicy);
+            HIKARI::RuntimeFeatureCatalog everything = HIKARI::CreateBuiltInRuntimeFeatureCatalog();
+            assert(everything.RegisterEnabled(allContext, everything.GetFeatureIds()).success);
+            size_t checked = 0u;
+            size_t failures = 0u;
+            for (const HIKARI::ComponentTypeInfo* info : allComponents.GetTypeInfos()) {
+                std::unique_ptr<HIKARI::IComponent> original = info->factory();
+                nlohmann::json written{};
+                original->Serialize(written);
+                std::unique_ptr<HIKARI::IComponent> reread = info->factory();
+                std::string diagnostic{};
+                const bool readBack = reread->TryDeserialize(written, diagnostic);
+                nlohmann::json rewritten{};
+                reread->Serialize(rewritten);
+                std::unique_ptr<HIKARI::IComponent> empty = info->factory();
+                const bool readEmpty = empty->TryDeserialize(nlohmann::json::object(), diagnostic);
+                nlohmann::json emptyWritten{};
+                empty->Serialize(emptyWritten);
+                const char* failure = !readBack                 ? "read back"
+                                      : rewritten != written    ? "rewrite differs"
+                                      : !readEmpty              ? "empty object rejected"
+                                      : emptyWritten != written ? "empty object is not the default"
+                                                                : nullptr;
+                if (failure != nullptr) {
+                    std::cerr << "component round trip failed: " << info->typeName << " (" << failure << ") "
+                              << diagnostic << "\n  default: " << written.dump()
+                              << "\n  reread:  " << (rewritten != written ? rewritten : emptyWritten).dump() << '\n';
+                    ++failures;
+                }
+                ++checked;
+            }
+            std::cout << "component round trip: " << checked << " built-in component types, " << failures
+                      << " failed\n";
+            assert(checked > 20u && failures == 0u);
+            InPlaceEditsMatchRebuild(allComponents,
+                                     std::filesystem::path(argv[0]).parent_path() / "runtime-feature-in-place-edits");
+        }
+        // 旧 UI の物体層は削除済み。"UI" はもう組み込みの機能ではない。
+        assert(!builtIn.ResolveEnabledFeatures({"UI"}).success);
+        // 直接描画の HUD は参照解像度へ letterbox で合わせる。
         HIKARI::GameProjectUiCanvasFit fit{};
         assert(HIKARI::ResolveGameProjectUiCanvasFit(1920u, 1200u, 1920.0f, 1080.0f, fit));
         assert(fit.scale == 1.0f);
         assert(fit.offsetY == 60.0f);
-        HIKARI::ComponentRegistry uiComponents{};
-        HIKARI::WorldMassSchemaRegistry uiMassSchemas{};
-        HIKARI::SystemTypeRegistry uiSystems{};
-        HIKARI::ComponentSystemPolicy uiPolicy{};
-        HIKARI::RuntimeFeatureContext uiContext =
-            HIKARI::RuntimeFeatureContextAccess::Create(uiComponents, uiMassSchemas, uiSystems, uiPolicy);
-        const HIKARI::RuntimeFeatureInstallReport uiInstall =
-            builtIn.RegisterEnabled(uiContext, {std::string(HIKARI::RuntimeFeatureIds::Ui)});
-        assert(uiInstall.success);
-        assert(uiComponents.Find("UiCanvasComponent") != nullptr);
-        assert(uiComponents.Find("UiRectComponent") != nullptr);
-        assert(uiComponents.Find("UiImageComponent") != nullptr);
-        assert(uiComponents.Find("UiTextComponent") != nullptr);
-        assert(uiComponents.Find("UiButtonComponent") != nullptr);
-        assert(uiSystems.Find("UiSceneSystem") != nullptr);
-        const std::vector<HIKARI::SceneSystemData> uiDefaults = builtIn.CreateDefaultSceneSystems();
-        const auto uiDefault =
-            std::find_if(uiDefaults.begin(), uiDefaults.end(),
-                         [](const HIKARI::SceneSystemData& system) { return system.systemId == "UiSceneSystem"; });
-        assert(uiDefault != uiDefaults.end());
-        assert(uiDefault->executionOrder == 70);
     }
 
     {
