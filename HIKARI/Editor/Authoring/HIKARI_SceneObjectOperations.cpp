@@ -1,4 +1,6 @@
+#include "Authoring/HIKARI_IInspectorBuilder.h"
 #include "Editor/Authoring/HIKARI_ComponentAuthoringQueryService.h"
+#include "Editor/Authoring/HIKARI_ComponentPropertyAuthoringService.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Editor/Authoring/HIKARI_SceneObjectOperations.h"
 #include "Editor/Authoring/HIKARI_EditorObjectFactory.h"
@@ -6,6 +8,7 @@
 #include "Editor/Authoring/HIKARI_SceneTransformAuthoring.h"
 #include "Editor/Commands/HIKARI_SceneObjectCommandService.h"
 #include "Editor/Commands/HIKARI_EditorOperationValue.h"
+#include "Editor/HIKARI_DocumentComponentAuthoringService.h"
 #include "Editor/HIKARI_EditorContext.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
@@ -13,7 +16,9 @@
 #include "Core/HIKARI_JsonRead.h"
 #include "Core/Text/HIKARI_AsciiCase.h"
 #include "Core/Text/HIKARI_EnumNames.h"
+#include "Scene/HIKARI_World.h"
 #include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
+#include <algorithm>
 #include <cstdio>
 
 namespace HIKARI::EDITOR {
@@ -54,6 +59,52 @@ nlohmann::json CreatedObjectReceipt(const DocumentSceneBase& scene, const GameOb
     if (authored != nullptr)
         receipt["object"] = ComponentAuthoringQueryService{}.SummarizeObject(scene, *authored);
     return receipt;
+}
+
+// scene.create_empty_object の components：作ったばかりの物へ部品（と、それが要る部品）を足し、初期値を入れる。
+// 断られたら理由を返す。作りかけの物は呼び手が取り除く。
+std::optional<EditorOperationResult> AddInitialComponents(DocumentSceneBase& scene, SceneObjectId id,
+                                                          const nlohmann::json& components) {
+    if (!components.is_array()) {
+        return OperationFailure("INVALID_COMPONENTS", "components must be an array of {type, properties}.");
+    }
+    SceneDocument& document = scene.GetSceneDocument();
+    const ComponentRegistry& registry = scene.GetComponentRegistry();
+    std::vector<ComponentPropertyMutation> mutations{};
+    for (const nlohmann::json& entry : components) {
+        const std::string type = entry.is_object() ? entry.value("type", std::string{}) : std::string{};
+        const nlohmann::json properties =
+            entry.is_object() ? entry.value("properties", nlohmann::json::object()) : nlohmann::json{};
+        if (type.empty() || !properties.is_object()) {
+            return OperationFailure("INVALID_COMPONENTS",
+                                    "Each entry of components needs a type and may have a properties object.");
+        }
+        SceneObjectData* object = FindSceneObjectData(document, id);
+        const ComponentAddResult added = DocumentComponentAuthoringService{}.AddComponent(registry, *object, type);
+        if (!added.success) {
+            return OperationFailure("COMPONENT_ADD_REJECTED", added.message);
+        }
+        const auto component =
+            std::find_if(object->components.rbegin(), object->components.rend(),
+                         [&](const SceneComponentData& candidate) { return candidate.type == type; });
+        if (component == object->components.rend()) {
+            return OperationFailure("COMPONENT_ADD_REJECTED", "Component type is not registered: " + type);
+        }
+        for (const auto& [propertyId, value] : properties.items()) {
+            mutations.push_back({{id, component->id}, propertyId, value});
+        }
+    }
+    if (mutations.empty()) {
+        return std::nullopt;
+    }
+    const ComponentAuthoringServiceResult applied =
+        ComponentPropertyAuthoringService{}.Apply(registry, document, mutations,
+                                                  InspectorContext{&scene.GetAssetRegistry(), &scene.GetAssetDatabase(),
+                                                                   &document, &scene.GetWorld().Services()});
+    if (!applied.ok) {
+        return OperationFailure(applied.code, applied.message);
+    }
+    return std::nullopt;
 }
 
 EditorOperationResult EditSceneSelection(SceneObjectOperationContext& operation, SceneObjectCommandId command,
@@ -358,6 +409,24 @@ EditorOperationResult CreateSceneEmptyObject(SceneObjectOperationContext& operat
     GameObject* object = EDITOR::CreateEmptyObject(*scene, request);
     if (object == nullptr) {
         return OperationFailure("CREATE_FAILED", "创建空物体失败：" + request.name);
+    }
+    if (const auto components = parameters.find("components"); components != parameters.end()) {
+        // 部品つき：document の物へ部品と初期値を入れてから、世界の物を作り直す。断られたら何も残さない。
+        const SceneObjectId id = object->GetDocumentId();
+        std::optional<EditorOperationResult> failure = AddInitialComponents(*scene, id, *components);
+        if (!failure) {
+            (void)scene->ApplyRuntimeObjectChanges({.changed = {id}});
+            object = scene->GetWorld().FindObject(id);
+            if (object == nullptr) {
+                failure = OperationFailure("CREATE_FAILED", "创建空物体失败：" + request.name);
+            }
+        }
+        if (failure) {
+            std::erase_if(scene->GetSceneDocument().objects,
+                          [id](const SceneObjectData& candidate) { return candidate.id == id; });
+            (void)scene->ApplyRuntimeObjectChanges({.removed = {id}});
+            return *failure;
+        }
     }
     edit.Complete(*object);
     result.data = CreatedObjectReceipt(*scene, *object);

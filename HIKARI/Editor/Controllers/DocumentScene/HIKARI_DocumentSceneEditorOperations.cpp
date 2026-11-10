@@ -139,9 +139,25 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
          EDITOR::DeleteSceneObjects, ObjectTargetParameters()},
         {"scene.duplicate_object", "Duplicate the selected object, or target one object by stable objectId.", "scene",
          EDITOR::DuplicateSceneObjects, ObjectTargetParameters()},
-        {"scene.create_empty_object", "Create an empty scene object.", "scene", EDITOR::CreateSceneEmptyObject,
-         Concat({NameParameter("物体名称，缺省为 AI Object"), PositionParameters(), RotationParameters(),
-                 ScaleParameters()})},
+        {"scene.create_empty_object",
+         "Create a scene object: empty, or with components and their starting values when components is given "
+         "(component types from component.types.query, property ids from component.type.describe). Components "
+         "that a listed component requires are added too. One undo step; when a component or a value is refused, "
+         "nothing is created.",
+         "scene", EDITOR::CreateSceneEmptyObject,
+         Concat({NameParameter("物体名称，缺省为 AI Object"),
+                 PositionParameters(),
+                 RotationParameters(),
+                 ScaleParameters(),
+                 {{"components",
+                   EditorOperationParameterType::Json,
+                   false,
+                   "Components to add: [{type, properties}], properties being {propertyId: value}",
+                   {{"type", "array"},
+                    {"items",
+                     {{"type", "object"},
+                      {"required", nlohmann::json::array({"type"})},
+                      {"properties", {{"type", {{"type", "string"}}}, {"properties", {{"type", "object"}}}}}}}}}}})},
         {"scene.drop_to_ground",
          "Place the bottom of each object's model on the ground below it and tilt it to the slope, keeping its "
          "facing (objects without a model are placed by their pivot). "
