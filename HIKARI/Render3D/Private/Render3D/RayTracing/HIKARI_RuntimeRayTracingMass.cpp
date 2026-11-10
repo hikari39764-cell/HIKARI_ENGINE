@@ -21,8 +21,11 @@ namespace {
 constexpr const wchar_t* kShaderPath = L"HIKARI/Shaders/Render3D_RayTracingMassInstancesCS.hlsl";
 constexpr uint32_t kThreadsPerGroup = 64u;
 
-// 描画（HikariBuildMassMatrices）と同じ式で、位置・四元数・拡縮を instance の 3×4 へ書く。値が有限でなければ隠す。
-void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const RUNTIME::MassRenderProxyGpuRecord& record) {
+// 描画（HikariBuildMassMatrices）と同じ式で、位置・四元数・拡縮を instance の 3×4 へ書く。値が有限でない個体
+// （実例集の空きの枠もそう）は隠し、BLAS の番地も 0 にする：mask が 0 でも BLAS があると加速構造の組み立てが潰れた
+// instance を全部抱え、組み直しが 2 倍以上遅くなる。番地が 0 なら無い物として飛ばす。
+void WriteInstance(D3D12_RAYTRACING_INSTANCE_DESC& instance, const RUNTIME::MassRenderProxyGpuRecord& record,
+                   D3D12_GPU_VIRTUAL_ADDRESS bottomLevel) {
     RUNTIME::MassRenderFloat4 q = record.rotation;
     const float lengthSquared = q.x * q.x + q.y * q.y + q.z * q.z + q.w * q.w;
     if (MATH::IsFinite(lengthSquared) && lengthSquared > 1.0e-12f) {
@@ -48,6 +51,7 @@ void WriteTransform(D3D12_RAYTRACING_INSTANCE_DESC& instance, const RUNTIME::Mas
             finite = finite && MATH::IsFinite(instance.Transform[row][col]);
     }
     instance.InstanceMask = finite ? kRuntimeRayTracingMassMask : 0x00;
+    instance.AccelerationStructure = finite ? bottomLevel : 0;
     if (!finite)
         std::memset(instance.Transform, 0, sizeof(instance.Transform));
 }
@@ -108,10 +112,9 @@ bool RuntimeRayTracingMass::Append(const GPUDRIVEN::MassGpuSceneSource& mass, st
         ++store.recordCount;
         for (const auto& [bottomLevel, firstHit] : shape) {
             D3D12_RAYTRACING_INSTANCE_DESC instance{};
-            WriteTransform(instance, record);
+            WriteInstance(instance, record, bottomLevel);
             instance.InstanceID = firstHit;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
-            instance.AccelerationStructure = bottomLevel;
             instances.push_back(instance);
         }
     }
@@ -156,7 +159,7 @@ std::optional<bool> RuntimeRayTracingMass::Update(const GPUDRIVEN::MassGpuSceneS
             if (first + store.chunks > instances.size())
                 return std::nullopt;
             for (uint32_t chunk = 0; chunk < store.chunks; ++chunk)
-                WriteTransform(instances[first + chunk], record);
+                WriteInstance(instances[first + chunk], record, chunks_[store.firstChunk + chunk].bottomLevel);
         }
     }
     sourceVersion_ = mass->sourceVersion;

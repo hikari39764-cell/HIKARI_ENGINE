@@ -50,7 +50,8 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     float4x4 world;
     float4x4 normalMatrix;
     HikariBuildMassMatrices(record, world, normalMatrix);
-    // 値が有限でない個体は光線から隠す（CPU の組み立てと同じ）。
+    // 値が有限でない個体（空きの枠もそう）は光線から隠す（CPU の組み立てと同じ）。BLAS の番地も 0 にして、加速構造の
+    // 組み立てがその instance を無い物として扱えるようにする。
     const bool finite = all(isfinite(world[0])) && all(isfinite(world[1])) && all(isfinite(world[2]));
     if (!finite)
         world = (float4x4)0;
@@ -66,6 +67,6 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         gTopLevelInstances.Store4(offset + 32u, asuint(world[2]));
         gTopLevelInstances.Store4(offset + 48u,
             uint4((shape.hitBase & 0x00ffffffu) | (mask << 24u), kTriangleCullDisable << 24u,
-                shape.bottomLevel.x, shape.bottomLevel.y));
+                finite ? shape.bottomLevel.x : 0u, finite ? shape.bottomLevel.y : 0u));
     }
 }
