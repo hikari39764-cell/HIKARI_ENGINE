@@ -16,13 +16,71 @@ namespace {
 // 強調なしは 0。
 ImU32 HighlightColor(EditorNodeGraphHighlight highlight) noexcept {
     switch (highlight) {
-    case EditorNodeGraphHighlight::Active: return IM_COL32(255, 214, 92, 255);
+    case EditorNodeGraphHighlight::Active:
+    case EditorNodeGraphHighlight::Waiting: return IM_COL32(255, 214, 92, 255);
     case EditorNodeGraphHighlight::Success: return IM_COL32(104, 204, 120, 255);
     case EditorNodeGraphHighlight::Failure: return IM_COL32(232, 96, 88, 255);
-    case EditorNodeGraphHighlight::Warning: return IM_COL32(240, 160, 64, 255);
+    case EditorNodeGraphHighlight::Warning:
+    case EditorNodeGraphHighlight::Aborted: return IM_COL32(240, 160, 64, 255);
     case EditorNodeGraphHighlight::None: break;
     }
     return 0u;
+}
+
+ImU32 WithAlpha(ImU32 color, float strength) noexcept {
+    const auto alpha = static_cast<uint32_t>(std::clamp(strength, 0.0f, 1.0f) * 255.0f);
+    return (color & ~IM_COL32_A_MASK) | (alpha << IM_COL32_A_SHIFT);
+}
+
+// 題の左の印。center は字の真ん中、size は字の高さ。
+void DrawIcon(ImDrawList& drawList, EditorNodeGraphIcon icon, const ImVec2& center, float size, ImU32 color) {
+    const float half = size * 0.36f;
+    const float thickness = (std::max)(1.0f, size * 0.09f);
+    switch (icon) {
+    case EditorNodeGraphIcon::Composite:
+        for (const float offset : {-0.66f, 0.0f, 0.66f}) {
+            drawList.AddLine({center.x - half, center.y + half * offset}, {center.x + half, center.y + half * offset},
+                             color, thickness);
+        }
+        break;
+    case EditorNodeGraphIcon::Decorator:
+        drawList.AddQuad({center.x, center.y - half}, {center.x + half, center.y}, {center.x, center.y + half},
+                         {center.x - half, center.y}, color, thickness);
+        break;
+    case EditorNodeGraphIcon::Action:
+        drawList.AddTriangleFilled({center.x - half * 0.7f, center.y - half}, {center.x + half, center.y},
+                                   {center.x - half * 0.7f, center.y + half}, color);
+        break;
+    case EditorNodeGraphIcon::Condition:
+        drawList.AddCircle(center, half, color, 16, thickness);
+        drawList.AddCircleFilled(center, half * 0.35f, color);
+        break;
+    case EditorNodeGraphIcon::Subtree:
+        drawList.AddRect({center.x - half, center.y - half}, {center.x + half * 0.4f, center.y + half * 0.4f}, color,
+                         0.0f, 0, thickness);
+        drawList.AddRect({center.x - half * 0.4f, center.y - half * 0.4f}, {center.x + half, center.y + half}, color,
+                         0.0f, 0, thickness);
+        break;
+    case EditorNodeGraphIcon::None: break;
+    }
+}
+
+// 折れ線の上を流れる点（今通っている道）。
+void DrawFlow(ImDrawList& drawList, const ImVec2* points, int count, ImU32 color, float radius) {
+    constexpr float kSpacing = 22.0f;
+    const float offset = std::fmod(static_cast<float>(ImGui::GetTime()) * 40.0f, kSpacing);
+    float travelled = 0.0f;
+    for (int index = 0; index + 1 < count; ++index) {
+        const ImVec2 from = points[index];
+        const ImVec2 to = points[index + 1];
+        const float length = std::sqrt((to.x - from.x) * (to.x - from.x) + (to.y - from.y) * (to.y - from.y));
+        for (float at = std::fmod(kSpacing - std::fmod(travelled, kSpacing) + offset, kSpacing); at < length;
+             at += kSpacing) {
+            const float t = at / length;
+            drawList.AddCircleFilled({from.x + (to.x - from.x) * t, from.y + (to.y - from.y) * t}, radius, color);
+        }
+        travelled += length;
+    }
 }
 
 void DrawGraphText(ImDrawList& drawList, const ImVec2& position, float textSize, ImU32 color, std::string_view text) {
@@ -53,9 +111,11 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
     drawList.AddRectFilled(minimum, maximum, IM_COL32(29, 35, 43, 248), rounding);
     drawList.AddRectFilled(minimum, {maximum.x, minimum.y + layout.headerHeight * zoom}, ToColor(node.color), rounding,
                            ImDrawFlags_RoundCornersTop);
-    if (const ImU32 highlight = HighlightColor(node.highlight); highlight != 0u) {
-        drawList.AddRect({minimum.x - 2.0f, minimum.y - 2.0f}, {maximum.x + 2.0f, maximum.y + 2.0f}, highlight,
-                         rounding + 2.0f, 0, 3.0f);
+    if (const ImU32 highlight = HighlightColor(node.highlight); highlight != 0u && node.highlightStrength > 0.0f) {
+        const bool waiting = node.highlight == EditorNodeGraphHighlight::Waiting;
+        drawList.AddRect({minimum.x - 2.0f, minimum.y - 2.0f}, {maximum.x + 2.0f, maximum.y + 2.0f},
+                         WithAlpha(highlight, node.highlightStrength * (waiting ? 0.75f : 1.0f)), rounding + 2.0f, 0,
+                         waiting ? 1.5f : 3.0f);
     }
     drawList.AddRect(minimum, maximum, layout.selected ? IM_COL32(255, 171, 72, 255) : IM_COL32(69, 82, 96, 255),
                      rounding, 0, layout.selected ? 2.0f : 1.0f);
@@ -77,8 +137,36 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
         }
         titleLeft += fontSize + kCollapseGap * zoom;
     }
-    DrawGraphText(drawList, {titleLeft, minimum.y + kHeaderPadY * zoom}, fontSize, IM_COL32(244, 247, 250, 255),
-                  View(node.title));
+    if (node.icon != EditorNodeGraphIcon::None) {
+        DrawIcon(drawList, node.icon, {titleLeft + fontSize * 0.5f, minimum.y + kHeaderPadY * zoom + fontSize * 0.5f},
+                 fontSize, IM_COL32(244, 247, 250, 235));
+        titleLeft += fontSize + kCollapseGap * zoom;
+    }
+    // 題は角標と問題の印の手前で切る。
+    float titleRight = maximum.x - kPadX * zoom;
+    if (detailed && !View(node.badge).empty()) {
+        titleRight -= (MeasureText(View(node.badge), kSmallText).x + kPadX) * zoom;
+    }
+    if (node.problem != EditorNodeGraphProblem::None) {
+        titleRight -= fontSize;
+    }
+    if (renamingNodeId_ != node.id) {
+        DrawGraphText(drawList, {titleLeft, minimum.y + kHeaderPadY * zoom}, fontSize, IM_COL32(244, 247, 250, 255),
+                      FitText(View(node.title), (titleRight - titleLeft) / zoom));
+    }
+    if (node.problem != EditorNodeGraphProblem::None) {
+        // 右上の角の問題の印（実行の強調と重ならない）。
+        const ImVec2 center{maximum.x - 1.0f * zoom, minimum.y - 1.0f * zoom};
+        const float radius = kOrderRadius * zoom;
+        drawList.AddCircleFilled(center, radius,
+                                 node.problem == EditorNodeGraphProblem::Error ? IM_COL32(222, 74, 66, 255)
+                                                                               : IM_COL32(236, 160, 48, 255));
+        drawList.AddCircle(center, radius, IM_COL32(15, 18, 23, 255));
+        drawList.AddLine({center.x, center.y - radius * 0.55f}, {center.x, center.y + radius * 0.15f},
+                         IM_COL32(255, 255, 255, 255), (std::max)(1.0f, 2.0f * zoom));
+        drawList.AddCircleFilled({center.x, center.y + radius * 0.5f}, (std::max)(1.0f, 1.2f * zoom),
+                                 IM_COL32(255, 255, 255, 255));
+    }
     if (collapsed && node.hiddenCount != 0u) {
         // 畳んだ節の下に、隠れている節の数。
         const std::string hidden = "+" + std::to_string(node.hiddenCount);
@@ -107,11 +195,7 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
         DrawGraphText(drawList, {maximum.x - kPadX * zoom - badgeWidth, minimum.y + (kHeaderPadY + 1.0f) * zoom},
                       smallSize, IM_COL32(244, 247, 250, 190), badge);
     }
-    float lineTop = minimum.y + layout.detailTop * zoom;
-    ForEachLine(View(node.detail), [&](std::string_view line) {
-        DrawGraphText(drawList, {minimum.x + kPadX * zoom, lineTop}, smallSize, IM_COL32(170, 184, 198, 255), line);
-        lineTop += (ImGui::GetFontSize() * kSmallText + 1.0f) * zoom;
-    });
+    PaintNodeBody(node, layout, minimum, maximum);
     for (uint32_t pinIndex = 0u; pinIndex < node.inputCount + node.outputCount; ++pinIndex) {
         const PinLayout& pin = pins_[layout.firstPin + pinIndex];
         const std::string_view label = View(pin.pin->label);
@@ -131,6 +215,73 @@ void NodeGraphView::PaintNode(const EditorNodeGraphDesc& desc, const Frame& fram
             DrawGraphText(drawList, {center.x + kPadX * zoom, center.y - fontSize * 0.5f}, fontSize, labelColor, label);
         }
     }
+}
+
+void NodeGraphView::PaintNodeBody(const EditorNodeGraphNode& node, const NodeLayout& layout, const ImVec2& minimum,
+                                  const ImVec2& maximum) const {
+    ImDrawList& drawList = *ImGui::GetWindowDrawList();
+    const float zoom = canvas_.zoom;
+    const float smallSize = ImGui::GetFontSize() * kSmallText * zoom;
+    const float step = (ImGui::GetFontSize() * kSmallText + 1.0f) * zoom;
+    const float left = minimum.x + kPadX * zoom;
+    // 本体の字が使える幅（図の座標）。
+    const float room = (maximum.x - minimum.x) / zoom - kPadX * 2.0f;
+    float lineTop = minimum.y + layout.detailTop * zoom;
+    if (const std::string_view subtitle = View(node.subtitle); !subtitle.empty()) {
+        DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(150, 164, 180, 255),
+                      FitText(subtitle, room, kSmallText));
+        lineTop += step;
+    }
+    ForEachLine(View(node.detail), [&](std::string_view line) {
+        DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(170, 184, 198, 255),
+                      FitText(line, room, kSmallText));
+        lineTop += step;
+    });
+    for (uint32_t row = 0u; row < node.rowCount; ++row) {
+        const EditorNodeGraphRow& item = node.rows[row];
+        const std::string label = FitText(View(item.label), room * 0.5f, kSmallText);
+        DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(150, 164, 180, 255), label);
+        const float labelWidth = MeasureText(label, kSmallText).x + kLabelGap * 0.5f;
+        const float pad = item.capsule != 0u ? kCapsulePadX : 0.0f;
+        const std::string value = FitText(View(item.value), room - labelWidth - pad * 2.0f, kSmallText);
+        const float valueWidth = MeasureText(value, kSmallText).x * zoom;
+        const float valueLeft = maximum.x - kPadX * zoom - valueWidth - pad * zoom;
+        if (item.capsule != 0u) {
+            drawList.AddRectFilled({valueLeft - pad * zoom, lineTop - 1.0f * zoom},
+                                   {valueLeft + valueWidth + pad * zoom, lineTop + smallSize + 1.0f * zoom},
+                                   IM_COL32(48, 74, 104, 255), smallSize);
+        }
+        DrawGraphText(drawList, {valueLeft, lineTop}, smallSize,
+                      item.capsule != 0u ? IM_COL32(214, 232, 250, 255) : IM_COL32(220, 228, 236, 255), value);
+        lineTop += step + (item.capsule != 0u ? 2.0f * zoom : 0.0f);
+    }
+    if (node.progress >= 0.0f) {
+        const float barTop = lineTop + 2.0f * zoom;
+        const float barRight = maximum.x - kPadX * zoom;
+        drawList.AddRectFilled({left, barTop}, {barRight, barTop + kProgressBarHeight * zoom},
+                               IM_COL32(44, 52, 62, 255), kProgressBarHeight * zoom);
+        drawList.AddRectFilled(
+            {left, barTop},
+            {left + (barRight - left) * std::clamp(node.progress, 0.0f, 1.0f), barTop + kProgressBarHeight * zoom},
+            IM_COL32(255, 214, 92, 255), kProgressBarHeight * zoom);
+        lineTop = barTop + (kProgressBarHeight + 1.0f) * zoom;
+        DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(236, 224, 180, 255),
+                      FitText(View(node.progressText), room, kSmallText));
+        lineTop += step;
+    }
+    uint32_t noteLine = 0u;
+    ForEachLine(View(node.note), [&](std::string_view line) {
+        if (noteLine == 0u) {
+            lineTop += kBodyPad * 0.5f * zoom;
+            drawList.AddLine({left, lineTop - kBodyPad * 0.25f * zoom},
+                             {maximum.x - kPadX * zoom, lineTop - kBodyPad * 0.25f * zoom}, IM_COL32(58, 68, 80, 255));
+        }
+        if (noteLine++ < kNoteLines) {
+            DrawGraphText(drawList, {left, lineTop}, smallSize, IM_COL32(196, 188, 160, 255),
+                          FitText(line, room, kSmallText));
+            lineTop += step;
+        }
+    });
 }
 
 void NodeGraphView::PaintDropHint(const EditorNodeGraphDesc& desc, const Frame& frame) const {
@@ -210,12 +361,16 @@ void NodeGraphView::Paint(const EditorNodeGraphDesc& desc, const Frame& frame) c
             const std::array<MATH::Vec2, 4> elbow = LinkElbow(output->position, input->position);
             const std::array<ImVec2, 4> points{toScreen(elbow[0]), toScreen(elbow[1]), toScreen(elbow[2]),
                                                toScreen(elbow[3])};
+            const float width = link.flowing != 0u ? thickness * 1.6f : thickness;
             if (std::fabs(points[0].x - points[3].x) < 0.5f) {
                 // 真下の子：折れ点が一直線に重なると線の継ぎ目が崩れるので、一本で引く。
-                drawList.AddLine(points[0], points[3], color, thickness);
+                drawList.AddLine(points[0], points[3], color, width);
             } else {
-                drawList.AddPolyline(points.data(), static_cast<int>(points.size()), color, ImDrawFlags_None,
-                                     thickness);
+                drawList.AddPolyline(points.data(), static_cast<int>(points.size()), color, ImDrawFlags_None, width);
+            }
+            if (link.flowing != 0u) {
+                DrawFlow(drawList, points.data(), static_cast<int>(points.size()), IM_COL32(255, 244, 200, 255),
+                         width * 0.9f);
             }
         } else {
             drawCurve(LinkCurve(desc.flow, output->position, input->position), color, thickness);

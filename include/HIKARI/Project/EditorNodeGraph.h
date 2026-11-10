@@ -23,10 +23,37 @@ enum class EditorNodeGraphFlow : uint32_t {
 // 節と線の強調。Play 中の実行状態などを見せる。
 enum class EditorNodeGraphHighlight : uint32_t {
     None = 0u,
+    // 走っている（太い明るい縁）。
     Active,
     Success,
     Failure,
     Warning,
+    // 子を待っている（細い明るい縁：この道を通っている）。
+    Waiting,
+    // 途中で打ち切られた（橙）。
+    Aborted,
+};
+
+// 題の左に線で描く印（字体に頼らない）。
+enum class EditorNodeGraphIcon : uint32_t {
+    None = 0u,
+    // 横線三本（子を順に扱う）。
+    Composite,
+    // 菱形（子を一つ包む）。
+    Decorator,
+    // 右向きの三角（何かをする）。
+    Action,
+    // 丸と中の点（確かめる）。
+    Condition,
+    // 重なった二つの四角（別の図を埋め込む）。
+    Subtree,
+};
+
+// 節の右上の問題の印（実行の強調とは別に出る）。
+enum class EditorNodeGraphProblem : uint32_t {
+    None = 0u,
+    Warning,
+    Error,
 };
 
 // 線の形。
@@ -57,6 +84,14 @@ struct EditorNodeGraphPin {
     uint32_t reserved = 0u;
 };
 
+// 節の本体の一行：左に名前、右に値。capsule が 0 以外なら値を丸い札にする（変数を指す値など）。
+struct EditorNodeGraphRow {
+    const char* label = nullptr;
+    const char* value = nullptr;
+    uint32_t capsule = 0u;
+    uint32_t reserved = 0u;
+};
+
 struct EditorNodeGraphNode {
     // 図の中で一意。0 は無効。
     uint64_t id = 0u;
@@ -80,6 +115,26 @@ struct EditorNodeGraphNode {
     uint32_t flags = 0u;
     // 畳んだ節の下に隠れている節の数（Collapsed の時に出す）。
     uint32_t hiddenCount = 0u;
+    EditorNodeGraphIcon icon = EditorNodeGraphIcon::None;
+    EditorNodeGraphProblem problem = EditorNodeGraphProblem::None;
+    // 強調の濃さ（0..1。結果が出た後に薄れていく時など）。
+    float highlightStrength = 1.0f;
+    // 0..1 の進み具合を題の帯の下に棒で出す。負なら出さない。
+    float progress = -1.0f;
+    // 題の下の小さい字（種類の名前など、一行）。
+    const char* subtitle = nullptr;
+    // 節の一番下の注（二行まで）。
+    const char* note = nullptr;
+    // ポインタを乗せた時の説明（全文、種類の説明、問題）。
+    const char* tooltip = nullptr;
+    // 名前を変えられる節：変え始める時の字（空でよい）。nullptr なら変えられない。F2 か題の二度押しで変え始め、
+    // Enter で EditorNodeGraphResult::renamedNodeId / renameText を返す（Esc で取り消し）。
+    const char* editName = nullptr;
+    // 進み具合の棒の横の字（「0.8 / 1.5 秒」）。
+    const char* progressText = nullptr;
+    // detail の下に並べる名前と値の行。
+    const EditorNodeGraphRow* rows = nullptr;
+    uint32_t rowCount = 0u;
     uint32_t reserved = 0u;
 };
 
@@ -90,7 +145,8 @@ struct EditorNodeGraphLink {
     uint64_t inputPinId = 0u;
     EditorWorkspaceColor color{0.62f, 0.66f, 0.72f, 1.0f};
     EditorNodeGraphHighlight highlight = EditorNodeGraphHighlight::None;
-    uint32_t reserved = 0u;
+    // 0 以外：今通っている道。太くし、流れる点を描く。
+    uint32_t flowing = 0u;
 };
 
 // 右クリックの献立にモジュールが出す項目：新しく作れる節の種類（createItems）と、節に対する操作（nodeActions）。
@@ -127,6 +183,8 @@ struct EditorNodeGraphDesc {
     EditorNodeGraphLinkStyle linkStyle = EditorNodeGraphLinkStyle::Curve;
     // 0 以外：節を拖動すると、線で繋がった下流の節（樹なら子孫）も一緒に動く。
     uint32_t dragDescendants = 0u;
+    // 0 より大きい時、節の幅をこの刻みに切り上げて揃える（図の座標）。
+    float nodeWidthStep = 0.0f;
     // 拖動中の落とし先の提示（呼び手が前のフレームの EditorNodeGraphResult から決める）。dropTargetNodeId の節を囲み、
     // dropLineFrom → dropLineTo（図の座標、同じ点なら無し）に挿入線を引き、dropMessage をポインタの横に出す。
     // dropBlocked が 0 以外なら禁止の色。
@@ -135,7 +193,8 @@ struct EditorNodeGraphDesc {
     EditorWorkspacePoint dropLineTo{};
     const char* dropMessage = nullptr;
     uint32_t dropBlocked = 0u;
-    uint32_t reserved = 0u;
+    // 0 より大きい時の節の幅の上限。収まらない字は「…」で切り、全文は tooltip で見せる。
+    float nodeMaxWidth = 0.0f;
     // 0 以外：この節が画面の外にあれば、見える所まで視点を動かす（走っている節を追う時など）。
     uint64_t followNodeId = 0u;
 };
@@ -191,12 +250,17 @@ struct EditorNodeGraphResult {
     EditorWorkspacePoint dragPointer{};
     // 畳む三角が押された節（無ければ 0）。
     uint64_t toggledNodeId = 0u;
+    // 名前を変え終えた節と、新しい名前（空なら名前を消す）。無ければ 0。
+    uint64_t renamedNodeId = 0u;
+    const char* renameText = nullptr;
 };
 
 static_assert(std::is_standard_layout_v<EditorNodeGraphPin> && std::is_trivially_copyable_v<EditorNodeGraphPin>);
 static_assert(sizeof(EditorNodeGraphPin) == 40u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphNode> && std::is_trivially_copyable_v<EditorNodeGraphNode>);
-static_assert(sizeof(EditorNodeGraphNode) == 104u);
+static_assert(std::is_standard_layout_v<EditorNodeGraphRow> && std::is_trivially_copyable_v<EditorNodeGraphRow>);
+static_assert(sizeof(EditorNodeGraphRow) == 24u);
+static_assert(sizeof(EditorNodeGraphNode) == 168u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphLink> && std::is_trivially_copyable_v<EditorNodeGraphLink>);
 static_assert(sizeof(EditorNodeGraphLink) == 48u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphMenuItem>);
@@ -206,6 +270,6 @@ static_assert(sizeof(EditorNodeGraphDesc) == 144u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphMovedNode>);
 static_assert(sizeof(EditorNodeGraphMovedNode) == 16u);
 static_assert(std::is_standard_layout_v<EditorNodeGraphResult> && std::is_trivially_copyable_v<EditorNodeGraphResult>);
-static_assert(sizeof(EditorNodeGraphResult) == 168u);
+static_assert(sizeof(EditorNodeGraphResult) == 184u);
 
 } // namespace HIKARI::EDITOR_PROJECT

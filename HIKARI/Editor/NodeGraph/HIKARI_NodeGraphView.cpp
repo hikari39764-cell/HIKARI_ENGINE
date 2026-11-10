@@ -82,7 +82,14 @@ void NodeGraphView::BeginAction(const EditorNodeGraphDesc& desc, const Frame& fr
             }
             SelectNode(nodeId, io.KeyCtrl, io.KeyShift);
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                outResult.activatedNodeId = nodeId;
+                // 題の帯の二度押しは名前を変える（変えられる節だけ）。他の所は「開く」。
+                const NodeLayout& layout = nodes_[frame.node];
+                if (frame.editable && desc.nodes[frame.node].editName != nullptr &&
+                    frame.pointer.y <= layout.position.y + layout.headerHeight) {
+                    BeginRename(desc.nodes[frame.node]);
+                } else {
+                    outResult.activatedNodeId = nodeId;
+                }
             } else if (frame.editable && (desc.dragDescendants != 0u || Contains(selectedNodes_, nodeId))) {
                 action_ = Action::MoveNodes;
                 moveOffset_ = {};
@@ -225,10 +232,17 @@ bool NodeGraphView::ContinueAction(const EditorNodeGraphDesc& desc, const Frame&
 void NodeGraphView::HandleKeys(const EditorNodeGraphDesc& desc, const Frame& frame, EditorNodeGraphResult& outResult) {
     const ImGuiIO& io = ImGui::GetIO();
     if (action_ != Action::None || (!frame.hovered && !frame.focused) || io.WantTextInput ||
-        ImGui::IsPopupOpen(kMenuId)) {
+        ImGui::IsPopupOpen(kMenuId) || renamingNodeId_ != 0u) {
         return;
     }
     const bool hasNodes = !selectedNodes_.empty();
+    if (ImGui::IsKeyPressed(ImGuiKey_F2, false) && frame.editable && selectedNodes_.size() == 1u) {
+        for (uint32_t index = 0u; index < desc.nodeCount; ++index) {
+            if (desc.nodes[index].id == selectedNodes_.front() && desc.nodes[index].editName != nullptr) {
+                BeginRename(desc.nodes[index]);
+            }
+        }
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && frame.editable && (hasNodes || !selectedLinks_.empty())) {
         outResult.deleteRequested = 1u;
     }
@@ -265,6 +279,63 @@ void NodeGraphView::HandleKeys(const EditorNodeGraphDesc& desc, const Frame& fra
         for (uint32_t index = 0u; index < desc.nodeCount; ++index) {
             selectedNodes_.push_back(desc.nodes[index].id);
         }
+    }
+}
+
+void NodeGraphView::BeginRename(const EditorNodeGraphNode& node) {
+    renamingNodeId_ = node.id;
+    renameFocus_ = true;
+    renameBuffer_.fill('\0');
+    const std::string_view name = View(node.editName);
+    std::copy_n(name.data(), (std::min)(name.size(), renameBuffer_.size() - 1u), renameBuffer_.data());
+}
+
+void NodeGraphView::DrawRename(const EditorNodeGraphDesc& desc, const Frame& frame, EditorNodeGraphResult& outResult) {
+    if (renamingNodeId_ == 0u) {
+        if (action_ == Action::None && frame.node >= 0 && !ImGui::IsPopupOpen(kMenuId)) {
+            if (const std::string_view tooltip = View(desc.nodes[frame.node].tooltip); !tooltip.empty()) {
+                ImGui::BeginTooltip();
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+                ImGui::TextUnformatted(tooltip.data(), tooltip.data() + tooltip.size());
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+        }
+        return;
+    }
+    const auto found = std::find_if(desc.nodes, desc.nodes + desc.nodeCount,
+                                    [&](const EditorNodeGraphNode& node) { return node.id == renamingNodeId_; });
+    if (found == desc.nodes + desc.nodeCount) {
+        renamingNodeId_ = 0u;
+        return;
+    }
+    const NodeLayout& layout = nodes_[static_cast<size_t>(found - desc.nodes)];
+    const float zoom = canvas_.zoom;
+    const float line = ImGui::GetFontSize();
+    // 題の字の所（畳む三角と印の後ろ）に入力欄を重ねる。
+    float offset = kPadX;
+    offset += HasFlag(found->flags, EditorNodeGraphNodeFlag::Collapsible) ? line + kCollapseGap : 0.0f;
+    offset += found->icon != EditorNodeGraphIcon::None ? line + kCollapseGap : 0.0f;
+    const MATH::Vec2 topLeft = NodeGraphCanvas::CanvasToScreen(canvas_, frame.origin, layout.position);
+    ImGui::SetCursorScreenPos({topLeft.x + offset * zoom, topLeft.y + 1.0f});
+    ImGui::SetNextItemWidth((std::max)(80.0f, (layout.size.x - offset - kPadX) * zoom));
+    const bool focusing = renameFocus_;
+    if (renameFocus_) {
+        ImGui::SetKeyboardFocusHere();
+        renameFocus_ = false;
+    }
+    const bool entered = ImGui::InputText("##NodeGraphRename", renameBuffer_.data(), renameBuffer_.size(),
+                                          ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        renamingNodeId_ = 0u;
+    } else if (entered || ImGui::IsItemDeactivatedAfterEdit()) {
+        renameText_ = renameBuffer_.data();
+        outResult.renamedNodeId = renamingNodeId_;
+        outResult.renameText = renameText_.c_str();
+        renamingNodeId_ = 0u;
+    } else if (!focusing && !ImGui::IsItemActive()) {
+        // 何も変えずに外を押した。
+        renamingNodeId_ = 0u;
     }
 }
 
@@ -388,6 +459,8 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     frame.origin = {origin.x, origin.y};
     frame.size = {size.x, size.y};
+    // 名前の入力欄を上に重ねられるように。
+    ImGui::SetNextItemAllowOverlap();
     ImGui::InvisibleButton("NodeGraphCanvas", size,
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight |
                                ImGuiButtonFlags_MouseButtonMiddle);
@@ -427,6 +500,7 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
         nodes_[index].selected = Contains(selectedNodes_, desc.nodes[index].id);
     }
     Paint(desc, frame);
+    DrawRename(desc, frame, outResult);
     DrawContextMenu(desc, outResult);
     ImGui::EndChild();
 

@@ -81,16 +81,58 @@ void NodeGraphView::BuildLayout(const EditorNodeGraphDesc& desc) {
         if (HasFlag(node.flags, EditorNodeGraphNodeFlag::Collapsible)) {
             width += lineHeight + kCollapseGap;
         }
+        if (node.icon != EditorNodeGraphIcon::None) {
+            width += lineHeight + kCollapseGap;
+        }
+        if (node.problem != EditorNodeGraphProblem::None) {
+            width += lineHeight;
+        }
+        // 題の下の小字、行、進み具合、注（どの向きでも detail の続きに並ぶ）。
+        float extraHeight = 0.0f;
+        const auto addLine = [&](float lineWidth) {
+            width = (std::max)(width, lineWidth);
+            extraHeight += smallLine;
+        };
+        if (!View(node.subtitle).empty()) {
+            addLine(MeasureText(View(node.subtitle), kSmallText).x);
+        }
+        for (uint32_t row = 0u; row < node.rowCount; ++row) {
+            const EditorNodeGraphRow& item = node.rows[row];
+            addLine(MeasureText(View(item.label), kSmallText).x + kLabelGap +
+                    MeasureText(View(item.value), kSmallText).x + (item.capsule != 0u ? kCapsulePadX * 2.0f : 0.0f));
+            extraHeight += item.capsule != 0u ? 2.0f : 0.0f;
+        }
+        if (node.progress >= 0.0f) {
+            addLine(MeasureText(View(node.progressText), kSmallText).x);
+            extraHeight += kProgressBarHeight + 3.0f;
+        }
+        uint32_t noteLines = 0u;
+        ForEachLine(View(node.note), [&](std::string_view line) {
+            if (noteLines++ < kNoteLines) {
+                addLine(MeasureText(line, kSmallText).x);
+            }
+        });
+        if (noteLines != 0u) {
+            extraHeight += kBodyPad;
+        }
         if (const std::string_view badge = View(node.badge); !badge.empty()) {
             width += kPadX + MeasureText(badge, kSmallText).x;
         }
-        float detailHeight = 0.0f;
+        float detailHeight = extraHeight;
         ForEachLine(View(node.detail), [&](std::string_view line) {
             width = (std::max)(width, MeasureText(line, kSmallText).x);
             detailHeight += smallLine;
         });
         if (detailHeight > 0.0f) {
             detailHeight += kBodyPad;
+        }
+        // 幅を刻みに揃え、上限で切る（はみ出す字は描く時に「…」）。
+        float nodeWidth = (std::max)(kMinNodeWidth, width + kPadX * 2.0f);
+        if (desc.nodeWidthStep > 0.0f) {
+            nodeWidth = std::ceil(nodeWidth / desc.nodeWidthStep) * desc.nodeWidthStep;
+        }
+        if (desc.nodeMaxWidth > 0.0f) {
+            nodeWidth = (std::min)(nodeWidth, (std::max)(kMinNodeWidth, desc.nodeMaxWidth));
         }
 
         float body = layout.headerHeight;
@@ -119,7 +161,7 @@ void NodeGraphView::BuildLayout(const EditorNodeGraphDesc& desc) {
             layout.outputLabelTop = layout.inputLabelTop;
             body += static_cast<float>((std::max)(node.inputCount, node.outputCount)) * rowHeight + kBodyPad;
         }
-        layout.size = {(std::max)(kMinNodeWidth, width + kPadX * 2.0f), body};
+        layout.size = {nodeWidth, body};
 
         const auto addPins = [&](const EditorNodeGraphPin* pins, uint32_t count, bool output) {
             for (uint32_t pin = 0u; pin < count; ++pin) {

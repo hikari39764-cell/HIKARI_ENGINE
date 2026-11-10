@@ -91,8 +91,15 @@ void GameProjectEditorWorkspaceUi::NodeGraph(std::string_view stableGraphId,
                                                                      desc.createItems + desc.createItemCount);
     std::vector<EDITOR_PROJECT::EditorNodeGraphMenuItem> nodeActions(desc.nodeActions,
                                                                      desc.nodeActions + desc.nodeActionCount);
+    // 行は節ごとに写し直す（節の rows を写しへ向ける）。
+    size_t rowCount = 0u;
+    for (const EDITOR_PROJECT::EditorNodeGraphNode& node : nodes) {
+        rowCount += node.rowCount;
+    }
+    std::vector<EDITOR_PROJECT::EditorNodeGraphRow> rows{};
+    rows.reserve(rowCount);
     std::vector<std::string> texts{};
-    texts.reserve(nodes.size() * 3u + (createItems.size() + nodeActions.size()) * 2u + 1u);
+    texts.reserve(nodes.size() * 7u + rowCount * 2u + (createItems.size() + nodeActions.size()) * 2u + 1u);
     const auto shown = [&](const char*& text) {
         if (text != nullptr) {
             text = texts.emplace_back(Shown(text)).c_str();
@@ -102,6 +109,17 @@ void GameProjectEditorWorkspaceUi::NodeGraph(std::string_view stableGraphId,
         shown(node.title);
         shown(node.detail);
         shown(node.badge);
+        shown(node.subtitle);
+        shown(node.note);
+        shown(node.tooltip);
+        shown(node.progressText);
+        const size_t first = rows.size();
+        for (uint32_t row = 0u; row < node.rowCount; ++row) {
+            EDITOR_PROJECT::EditorNodeGraphRow& copy = rows.emplace_back(node.rows[row]);
+            shown(copy.label);
+            shown(copy.value);
+        }
+        node.rows = node.rowCount != 0u ? rows.data() + first : nullptr;
     }
     for (auto* items : {&createItems, &nodeActions}) {
         for (EDITOR_PROJECT::EditorNodeGraphMenuItem& item : *items) {

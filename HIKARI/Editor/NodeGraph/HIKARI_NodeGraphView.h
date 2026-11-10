@@ -2,11 +2,14 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "Editor/NodeGraph/HIKARI_NodeGraphCanvas.h"
 #include "HIKARI/Project/EditorNodeGraph.h"
+
+struct ImVec2;
 
 namespace HIKARI::EDITOR {
 
@@ -102,6 +105,13 @@ private:
     void Paint(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame) const;
     void PaintNode(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame, uint32_t index) const;
     void PaintDropHint(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame) const;
+    // 題の帯より下：小字、detail、行、進み具合、注。
+    void PaintNodeBody(const EDITOR_PROJECT::EditorNodeGraphNode& node, const NodeLayout& layout, const ImVec2& minimum,
+                       const ImVec2& maximum) const;
+    // 名前を変えている節の入力欄（Paint の後）と、ポインタの下の節の説明。
+    void DrawRename(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame,
+                    EDITOR_PROJECT::EditorNodeGraphResult& outResult);
+    void BeginRename(const EDITOR_PROJECT::EditorNodeGraphNode& node);
 
     NodeGraphCanvasState canvas_{};
     bool framed_ = false;
@@ -115,6 +125,11 @@ private:
     // dragDescendants の拖動で掴んだ節と、一緒に動く節。
     uint64_t grabbedNodeId_ = 0u;
     std::vector<uint64_t> dragSet_{};
+    // 名前を変えている節（0 は無し）と、入力中の字、終えた時に返す字。
+    uint64_t renamingNodeId_ = 0u;
+    bool renameFocus_ = false;
+    std::array<char, 128> renameBuffer_{};
+    std::string renameText_{};
     uint64_t dragPinId_ = 0u;
     MATH::Vec2 boxStart_{};
     bool boxAdditive_ = false;
