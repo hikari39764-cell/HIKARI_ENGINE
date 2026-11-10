@@ -223,7 +223,10 @@ void GameProjectEditorWorkspaceUi::EndPanel() {
 
 void GameProjectEditorWorkspaceUi::Text(std::string_view utf8Text) {
     const std::string_view shown = Shown(utf8Text);
+    // 面板（表の中なら列）の端で折り返す。
+    ImGui::PushTextWrapPos(0.0f);
     ImGui::TextUnformatted(shown.data(), shown.data() + shown.size());
+    ImGui::PopTextWrapPos();
 }
 
 std::string_view GameProjectEditorWorkspaceUi::Shown(std::string_view text) const {
