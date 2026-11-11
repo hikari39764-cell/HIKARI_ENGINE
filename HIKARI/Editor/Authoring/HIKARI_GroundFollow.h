@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <optional>
 #include <vector>
+#include <utility>
 
 #include "Editor/Authoring/HIKARI_SceneObjectAuthoringTypes.h"
 
@@ -24,10 +25,12 @@ public:
     // 記録する前の編集に、地面に従う物体の置き直しを足す（history と文書の両方を書き換える）。
     // 模型がまだ描画の写しに無い物は次の Update で置く。
     void ApplyToEdit(DocumentSceneBase& scene, SceneObjectAuthoringHistoryRequest& history);
+    bool ConsumeMissingGroundWarning() noexcept { return std::exchange(missingGround_, false); }
 
 private:
     uint64_t seenRevision_ = 0u;
     bool pending_ = false;
+    bool missingGround_ = false;
     double lastApplySeconds_ = -1.0e9;
     // 編集で置くはずだったが、模型の底がまだ分からなかった物。
     std::vector<uint64_t> waiting_{};

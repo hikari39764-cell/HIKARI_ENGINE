@@ -641,6 +641,9 @@ void DocumentSceneEditorController::Draw(DocumentSceneBase& scene, EDITOR::Edito
     // 地形を変えたら、地面に従う物体を置き直す（どの工作区で変えても）。
     if (auto history = groundFollow_.Update(scene, context_.sceneDirty, ImGui::GetTime()))
         CommitSceneObjectAuthoringHistory(scene, std::move(*history));
+    if (groundFollow_.ConsumeMissingGroundWarning() && projectWorkspaceHost_)
+        projectWorkspaceHost_->Registry().PublishStatus(EDITOR_PROJECT::EditorWorkspaceStatusSeverity::Warning,
+                                                        "No ground below an anchored object; its position was kept.");
     // 診断窓は全工作区で共通。ドックを描いた後に復帰し、通常フレームではフォーカスを奪わない。
     if (context_.windows.runtime.showPerformanceAudit) {
         performanceAuditPanel_.Draw(context_.windows.runtime.showPerformanceAudit,

@@ -1,4 +1,8 @@
 #include "HIKARI/Project/FrameContext.h"
+#include "HIKARI/Project/WorldView.h"
+#include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
+#include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Physics/HIKARI_PhysicsSceneBridge.h"
 #include "Physics/HIKARI_PhysicsRuntimeStatusService.h"
 #include "Scene/Components/HIKARI_ColliderComponent.h"
@@ -282,7 +286,67 @@ static int SurfaceFieldPublication() {
     return 0;
 }
 
-int main() {
+static int HeightFieldHoles() {
+    using namespace HIKARI;
+    using namespace PHYSICS;
+    World world;
+    PhysicsWorldService physics;
+    if (!physics.InstallBackend(CreateJoltPhysicsBackend()) || !physics.AttachWorld(world) ||
+        !world.Services().Register(physics))
+        return Fail("heightfield physics world");
+    const WorldView view = GameProjectSdkAccess::MakeWorldView(world);
+    std::vector<float> heights(17u * 17u, 0.0f);
+    std::vector<uint8_t> holes(heights.size(), 0u);
+    for (size_t z = 6u; z <= 10u; ++z)
+        for (size_t x = 6u; x <= 10u; ++x)
+            holes[z * 17u + x] = 1u;
+    const auto owner = GameProjectSdkAccess::MakeObjectView(*world.CreateObject("heightfield")).GetHandle();
+    const uint64_t solid = view.AddStaticHeightField(owner, 32.0f, 0.0f, 1.0f, 17u, heights);
+    const uint64_t cut = view.AddStaticHeightField(owner, 0.0f, 0.0f, 1.0f, 17u, heights, holes);
+    if (solid == 0u || cut == 0u ||
+        view.AddStaticHeightField({}, 64.0f, 0.0f, 1.0f, 17u, heights, std::span(holes).first(1u)) != 0u)
+        return Fail("heightfield old call / masked call / malformed mask");
+    PhysicsRaycastQuery ray;
+    ray.direction = {0, -1, 0};
+    ray.maxDistance = 20.0f;
+    PhysicsHit hit;
+    for (const float x : {2.0f, 40.0f}) {
+        ray.origin = {x, 10.0f, 8.0f};
+        if (!physics.Raycast(ray, hit) || !Near(hit.position.y, 0.0f, 0.02f))
+            return Fail("heightfield solid samples remain collidable");
+    }
+    ray.origin = {8.0f, 10.0f, 8.0f};
+    if (physics.Raycast(ray, hit))
+        return Fail("heightfield hole is empty");
+    PhysicsBodyCreateInfo box;
+    box.body.object = world.CreateObject("falling box")->GetRuntimeHandle();
+    box.body.motionType = PhysicsMotionType::Dynamic;
+    box.initialPose.position = {8.0f, 3.0f, 8.0f};
+    box.shapes.emplace_back().halfExtents = {0.25f, 0.25f, 0.25f};
+    const auto falling = physics.CreateBody(box);
+    box.initialPose.position.x = 2.0f;
+    box.body.object = world.CreateObject("standing box")->GetRuntimeHandle();
+    const auto standing = physics.CreateBody(box);
+    if (!falling.Succeeded() || !standing.Succeeded())
+        return Fail("heightfield falling boxes");
+    for (int tick = 0; tick < 90; ++tick)
+        if (!physics.Step(1.0f / 60.0f).Succeeded())
+            return Fail("heightfield physics step");
+    PhysicsBodyState below, above;
+    if (!physics.TryGetBodyState(falling.handle, below) || !physics.TryGetBodyState(standing.handle, above) ||
+        below.pose.position.y > -3.0f || !Near(above.pose.position.y, 0.25f, 0.05f))
+        return Fail("heightfield hole drops box while solid ground supports box");
+    view.RemoveStaticHeightField(cut);
+    view.RemoveStaticHeightField(solid);
+    physics.DetachWorld();
+    std::cout << "SDK heightfield holes / old call / box fall: passed.\n";
+    return 0;
+}
+
+int main(int argc, char** argv) {
+    if (const int result = HeightFieldHoles();
+        result != 0 || (argc == 2 && std::string_view(argv[1]) == "--heightfield"))
+        return result;
     if (const int result = SurfaceFieldPublication(); result != 0)
         return result;
     if (const int result = ColliderFootprintPublication(); result != 0)

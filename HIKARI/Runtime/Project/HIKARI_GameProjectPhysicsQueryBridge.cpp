@@ -6,8 +6,8 @@
 #include "Scene/HIKARI_RuntimeWorldServices.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Physics/HIKARI_PhysicsTypes.h"
-#include "HIKARI/Project/WorldView.h"
 #include "Physics/HIKARI_PhysicsWorldService.h"
+#include "Core/Math/HIKARI_MathValidation.h"
 #include <algorithm>
 #include <array>
 #include <string>
@@ -234,14 +234,17 @@ uint32_t PhysicsQueryView::ReadTriggerEvents(GameProjectPhysicsTriggerEvent* out
     }
 }
 uint64_t WorldView::AddStaticHeightField(GameProjectObjectHandle owner, float originX, float originZ,
-                                         float spacingMeters, uint32_t sampleCount,
-                                         std::span<const float> heights) const noexcept {
+                                         float spacingMeters, uint32_t sampleCount, std::span<const float> heights,
+                                         std::span<const uint8_t> noCollisionSamples) const noexcept {
     try {
         const World* world = GameProjectSdkAccess::GetWorld(*this);
         PHYSICS::PhysicsWorldService* service =
             world != nullptr ? const_cast<World*>(world)->Services().Find<PHYSICS::PhysicsWorldService>() : nullptr;
-        if (service == nullptr || sampleCount < 3u || spacingMeters <= 0.0f ||
-            heights.size() != static_cast<size_t>(sampleCount) * sampleCount) {
+        if (service == nullptr || sampleCount < 3u || !MATH::IsFinite(originX) || !MATH::IsFinite(originZ) ||
+            !MATH::IsFinite(spacingMeters) || spacingMeters <= 0.0f ||
+            heights.size() != static_cast<size_t>(sampleCount) * sampleCount ||
+            (!noCollisionSamples.empty() && noCollisionSamples.size() != heights.size()) ||
+            std::any_of(heights.begin(), heights.end(), [](float value) { return !MATH::IsFinite(value); })) {
             return 0u;
         }
         PHYSICS::PhysicsBodyCreateInfo info{};
@@ -251,6 +254,10 @@ uint64_t WorldView::AddStaticHeightField(GameProjectObjectHandle owner, float or
         shape.type = PHYSICS::PhysicsShapeType::HeightField;
         shape.localCenter = {originX, 0.0f, originZ};
         shape.heightSamples = std::make_shared<const std::vector<float>>(heights.begin(), heights.end());
+        if (!noCollisionSamples.empty()) {
+            shape.heightNoCollisionSamples =
+                std::make_shared<const std::vector<uint8_t>>(noCollisionSamples.begin(), noCollisionSamples.end());
+        }
         shape.heightSampleCount = sampleCount;
         shape.heightSampleSpacing = spacingMeters;
         shape.material = PHYSICS::PhysicsMaterialDesc{0.8f, 0.0f, 1.0f};
