@@ -8,6 +8,7 @@
 #include <imgui_internal.h>
 
 #include "Assets/HIKARI_AssetDatabase.h"
+#include "Core/Text/HIKARI_OwnedText.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 
 namespace HIKARI::EDITOR {
@@ -76,11 +77,17 @@ void GameProjectEditorWorkspaceUi::SetWorkspaceId(std::string_view workspaceId) 
 
 void GameProjectEditorWorkspaceUi::ClearDockRegions() noexcept {
     dockRegions_.fill(0u);
+    viewportDock_ = 0u;
     forceDock_ = false;
     floatingPanelCount_ = 0;
 }
 
-void GameProjectEditorWorkspaceUi::DrawDockSpace(bool reset, bool wideCenter) {
+void GameProjectEditorWorkspaceUi::DrawDockSpace(
+    bool reset, std::optional<EDITOR_PROJECT::EditorWorkspaceDockRegion> viewportRegion) {
+    using EDITOR_PROJECT::EditorWorkspaceDockRegion;
+    const bool wideCenter = viewportRegion == EditorWorkspaceDockRegion::Center;
+    const bool viewportInColumn =
+        viewportRegion == EditorWorkspaceDockRegion::Left || viewportRegion == EditorWorkspaceDockRegion::Right;
     const auto* viewport = ImGui::GetMainViewport();
     const std::string name = "HIKARI_ProjectWorkspace/" + workspaceId_;
     const ImGuiID root = ImGui::GetID(name.c_str());
@@ -98,20 +105,30 @@ void GameProjectEditorWorkspaceUi::DrawDockSpace(bool reset, bool wideCenter) {
                                     &dockRegions_[1], &body);
         fitToolbarFrames_ = 3;
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Left, 0.21f, &dockRegions_[2], &body);
-        ImGui::DockBuilderSplitNode(body, ImGuiDir_Right, 0.30f, &dockRegions_[3], &body);
+        // 視口を右の列に置く時は、画面が小さくなり過ぎないよう列を広げる。
+        ImGui::DockBuilderSplitNode(body, ImGuiDir_Right,
+                                    viewportRegion == EditorWorkspaceDockRegion::Right ? 0.36f : 0.30f,
+                                    &dockRegions_[3], &body);
         ImGui::DockBuilderSplitNode(body, ImGuiDir_Down, wideCenter ? 0.11f : 0.25f, &dockRegions_[4], &body);
         dockRegions_[0] = body;
+        viewportDock_ = viewportRegion ? dockRegions_[static_cast<size_t>(*viewportRegion)] : 0u;
+        if (viewportInColumn) {
+            // 左右の列：上に視口、下にその列のパネル。
+            ImGuiID& column = dockRegions_[static_cast<size_t>(*viewportRegion)];
+            ImGui::DockBuilderSplitNode(column, ImGuiDir_Up, 0.45f, &viewportDock_, &column);
+        }
         ImGui::DockBuilderFinish(root);
     } else {
         // 保存済みレイアウトは ImGui が管理する。新規パネルだけ中央へ入れる。
         dockRegions_.fill(root);
+        viewportDock_ = root;
     }
     HIKARI::EDITOR::DrawWorkspaceDockSpace(root, viewport);
 }
 
 void GameProjectEditorWorkspaceUi::PrepareSceneViewportWindow() {
-    if (dockRegions_[0] != 0u) {
-        ImGui::SetNextWindowDockID(dockRegions_[0], forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
+    if (viewportDock_ != 0u) {
+        ImGui::SetNextWindowDockID(viewportDock_, forceDock_ ? ImGuiCond_Always : ImGuiCond_FirstUseEver);
     }
 }
 
@@ -148,7 +165,7 @@ bool GameProjectEditorWorkspaceUi::BeginPanel(std::string_view stablePanelId, st
                                               EDITOR_PROJECT::EditorWorkspaceDockRegion region) {
     const bool toolbar = region == EDITOR_PROJECT::EditorWorkspaceDockRegion::Toolbar && !toolbarLabel_.empty();
     const std::string label =
-        toolbar ? toolbarLabel_ : MakeWorkspaceControlLabel(displayName, workspaceId_, stablePanelId);
+        toolbar ? toolbarLabel_ : MakeWorkspaceControlLabel(Shown(displayName), workspaceId_, stablePanelId);
     if (toolbar) {
         open = nullptr;
     }
@@ -185,8 +202,8 @@ bool GameProjectEditorWorkspaceUi::InputTextMultiline(std::string_view id, std::
     if (!buffer || !capacity)
         return false;
     Text(label);
-    return ImGui::InputTextMultiline(MakeWorkspaceControlLabel(label, workspaceId_, id).c_str(), buffer, capacity,
-                                     ImVec2(-1.0f, height));
+    return ImGui::InputTextMultiline(MakeWorkspaceControlLabel(Shown(label), workspaceId_, id).c_str(), buffer,
+                                     capacity, ImVec2(-1.0f, height));
 }
 
 void GameProjectEditorWorkspaceUi::EndPanel() {
@@ -205,7 +222,22 @@ void GameProjectEditorWorkspaceUi::EndPanel() {
 }
 
 void GameProjectEditorWorkspaceUi::Text(std::string_view utf8Text) {
-    ImGui::TextUnformatted(utf8Text.data(), utf8Text.data() + utf8Text.size());
+    const std::string_view shown = Shown(utf8Text);
+    // 面板（表の中なら列）の端で折り返す。
+    ImGui::PushTextWrapPos(0.0f);
+    ImGui::TextUnformatted(shown.data(), shown.data() + shown.size());
+    ImGui::PopTextWrapPos();
+}
+
+std::string_view GameProjectEditorWorkspaceUi::Shown(std::string_view text) const {
+    if (!text.empty() && text.front() == EDITOR_PROJECT::kEditorTextVerbatim) {
+        return text.substr(1u);
+    }
+    return TEXT::TranslateOwnedText(textOwner_, text);
+}
+
+std::string_view GameProjectEditorWorkspaceUi::Translate(std::string_view englishText) {
+    return TEXT::TranslateOwnedText(textOwner_, englishText);
 }
 
 void GameProjectEditorWorkspaceUi::Separator() { ImGui::Separator(); }
@@ -213,7 +245,7 @@ void GameProjectEditorWorkspaceUi::Separator() { ImGui::Separator(); }
 void GameProjectEditorWorkspaceUi::SameLine() { ImGui::SameLine(); }
 
 bool GameProjectEditorWorkspaceUi::Button(std::string_view stableControlId, std::string_view label) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::Button(stableLabel.c_str());
 }
 
@@ -222,7 +254,7 @@ bool GameProjectEditorWorkspaceUi::InputText(std::string_view stableControlId, s
     if (utf8Buffer == nullptr || bufferCapacity == 0u) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::InputText(stableLabel.c_str(), utf8Buffer, bufferCapacity);
 }
 
@@ -230,7 +262,7 @@ bool GameProjectEditorWorkspaceUi::Checkbox(std::string_view stableControlId, st
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::Checkbox(stableLabel.c_str(), value);
 }
 
@@ -239,7 +271,7 @@ bool GameProjectEditorWorkspaceUi::InputInt(std::string_view stableControlId, st
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     int edited = static_cast<int>(*value);
     const bool changed = ImGui::InputInt(stableLabel.c_str(), &edited, std::max(1, static_cast<int>(options.step)));
     if (changed) {
@@ -256,7 +288,7 @@ bool GameProjectEditorWorkspaceUi::InputFloat(std::string_view stableControlId, 
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const bool changed = ImGui::InputFloat(stableLabel.c_str(), value, std::max(0.0f, options.step));
     if (changed && options.clampToRange != 0u && options.minimum <= options.maximum) {
         *value = std::clamp(*value, options.minimum, options.maximum);
@@ -270,7 +302,7 @@ bool GameProjectEditorWorkspaceUi::InputFloat2(std::string_view stableControlId,
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     float values[2]{value->x, value->y};
     const float speed = std::max(0.001f, options.step);
     const bool hasRange = options.clampToRange != 0u && options.minimum <= options.maximum;
@@ -293,7 +325,7 @@ bool GameProjectEditorWorkspaceUi::Color4(std::string_view stableControlId, std:
     if (value == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     float color[4]{value->r, value->g, value->b, value->a};
     const bool changed = ImGui::ColorEdit4(stableLabel.c_str(), color);
     if (changed) {
@@ -306,16 +338,31 @@ bool GameProjectEditorWorkspaceUi::Color4(std::string_view stableControlId, std:
 }
 
 bool GameProjectEditorWorkspaceUi::Selectable(std::string_view stableControlId, std::string_view label, bool selected) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     PushSelectionColor(selected);
     const bool pressed = ImGui::Selectable(stableLabel.c_str(), selected);
     PopSelectionColor(selected);
     return pressed;
 }
 
+void GameProjectEditorWorkspaceUi::DragSource(std::string_view payloadType, std::string_view payload,
+                                              std::string_view label) {
+    if (payloadType.empty() || payloadType.size() > 31u || payload.size() > 255u ||
+        !ImGui::BeginDragDropSource(ImGuiDragDropFlags_None)) {
+        return;
+    }
+    // 受け取る側が文字として読めるよう、終わりの 0 まで渡す。
+    const std::string type(payloadType);
+    const std::string data(payload);
+    ImGui::SetDragDropPayload(type.c_str(), data.c_str(), data.size() + 1u);
+    const std::string shown(Shown(label));
+    ImGui::TextUnformatted(shown.c_str());
+    ImGui::EndDragDropSource();
+}
+
 bool GameProjectEditorWorkspaceUi::Choice(std::string_view stableControlId, std::string_view label, bool selected) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
-    const std::string text(label);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
+    const std::string text(Shown(label));
     PushSelectionColor(selected);
     const bool pressed =
         ImGui::Selectable(stableLabel.c_str(), selected, 0, ImGui::CalcTextSize(text.c_str(), nullptr, true));
@@ -328,7 +375,7 @@ bool GameProjectEditorWorkspaceUi::SliderFloat(std::string_view stableControlId,
     if (value == nullptr || !(minimum < maximum)) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const float span = maximum - minimum;
     const bool wide = minimum > 0.0f ? maximum / minimum >= 100.0f : minimum == 0.0f && maximum >= 1000.0f;
     // 対数の滑块は値の大きさで桁を変える。0 まである物は 0 の近くを潰さないよう桁を固定する。
@@ -344,13 +391,14 @@ bool GameProjectEditorWorkspaceUi::SliderFloat(std::string_view stableControlId,
 }
 
 bool GameProjectEditorWorkspaceUi::Section(std::string_view stableControlId, std::string_view label, bool defaultOpen) {
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     return ImGui::CollapsingHeader(stableLabel.c_str(), defaultOpen ? ImGuiTreeNodeFlags_DefaultOpen : 0);
 }
 
 void GameProjectEditorWorkspaceUi::Tooltip(std::string_view utf8Text) {
     if (!utf8Text.empty() && ImGui::IsItemHovered(ImGuiHoveredFlags_DelayShort)) {
-        ImGui::SetTooltip("%.*s", static_cast<int>(utf8Text.size()), utf8Text.data());
+        const std::string_view shown = Shown(utf8Text);
+        ImGui::SetTooltip("%.*s", static_cast<int>(shown.size()), shown.data());
     }
 }
 
@@ -359,13 +407,13 @@ bool GameProjectEditorWorkspaceUi::Combo(std::string_view stableControlId, std::
     if (selected == nullptr) {
         return false;
     }
-    const std::string stableLabel = MakeWorkspaceControlLabel(label, workspaceId_, stableControlId);
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableControlId);
     const bool valid = *selected >= 0 && static_cast<size_t>(*selected) < items.size();
-    const std::string shown = valid ? std::string(items[static_cast<size_t>(*selected)]) : std::string();
+    const std::string shown = valid ? std::string(Shown(items[static_cast<size_t>(*selected)])) : std::string();
     bool changed = false;
     if (ImGui::BeginCombo(stableLabel.c_str(), shown.c_str())) {
         for (size_t index = 0u; index < items.size(); ++index) {
-            const std::string item(items[index]);
+            const std::string item(Shown(items[index]));
             ImGui::PushID(static_cast<int>(index));
             if (ImGui::Selectable(item.c_str(), valid && static_cast<size_t>(*selected) == index)) {
                 *selected = static_cast<int32_t>(index);
@@ -399,7 +447,7 @@ bool GameProjectEditorWorkspaceUi::ImageSelectable(std::string_view stableContro
             textX = corner.x + picture + 8.0f;
         }
     }
-    const std::string text(label);
+    const std::string text(Shown(label));
     drawList->AddText(ImVec2(textX, start.y + (row - ImGui::GetTextLineHeight()) * 0.5f),
                       ImGui::GetColorU32(ImGuiCol_Text), text.c_str());
     return pressed;
@@ -416,6 +464,104 @@ bool GameProjectEditorWorkspaceUi::BeginTable(std::string_view stableTableId, ui
     }
     ++tableDepth_;
     return true;
+}
+
+bool GameProjectEditorWorkspaceUi::BeginTableHeaders(std::string_view stableTableId,
+                                                     std::span<const std::string_view> headers) {
+    if (headers.empty() || !BeginTable(stableTableId, static_cast<uint32_t>(headers.size()))) {
+        return false;
+    }
+    for (const std::string_view header : headers) {
+        ImGui::TableSetupColumn(std::string(Shown(header)).c_str());
+    }
+    ImGui::TableHeadersRow();
+    return true;
+}
+
+bool GameProjectEditorWorkspaceUi::BeginTabBar(std::string_view stableTabBarId) {
+    if (panelDepth_ == 0u || canvasActive_) {
+        return false;
+    }
+    const std::string stableLabel = MakeWorkspaceControlLabel("Tabs", workspaceId_, stableTabBarId);
+    if (!ImGui::BeginTabBar(stableLabel.c_str(), ImGuiTabBarFlags_Reorderable | ImGuiTabBarFlags_FittingPolicyScroll)) {
+        return false;
+    }
+    ++tabBarDepth_;
+    return true;
+}
+
+bool GameProjectEditorWorkspaceUi::TabItem(std::string_view stableTabId, std::string_view label, bool dirty,
+                                           bool select, bool* closeRequested) {
+    if (tabBarDepth_ == 0u) {
+        return false;
+    }
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableTabId);
+    bool open = true;
+    ImGuiTabItemFlags flags = dirty ? ImGuiTabItemFlags_UnsavedDocument : ImGuiTabItemFlags_None;
+    flags |= select ? ImGuiTabItemFlags_SetSelected : ImGuiTabItemFlags_None;
+    const bool shown = ImGui::BeginTabItem(stableLabel.c_str(), closeRequested != nullptr ? &open : nullptr, flags);
+    if (shown) {
+        ImGui::EndTabItem();
+    }
+    if (closeRequested != nullptr) {
+        *closeRequested = !open;
+    }
+    return shown;
+}
+
+bool GameProjectEditorWorkspaceUi::TabButton(std::string_view stableButtonId, std::string_view label) {
+    if (tabBarDepth_ == 0u) {
+        return false;
+    }
+    const std::string stableLabel = MakeWorkspaceControlLabel(Shown(label), workspaceId_, stableButtonId);
+    return ImGui::TabItemButton(stableLabel.c_str(), ImGuiTabItemFlags_Trailing);
+}
+
+void GameProjectEditorWorkspaceUi::EndTabBar() {
+    if (tabBarDepth_ == 0u) {
+        return;
+    }
+    ImGui::EndTabBar();
+    --tabBarDepth_;
+}
+
+void GameProjectEditorWorkspaceUi::OpenPopup(std::string_view stablePopupId) {
+    // 窓の識別は ### から後ろだけで決まるので、題を付けた対話窓と同じ識別になる。
+    ImGui::OpenPopup(("###" + MakeWorkspaceControlLabel("Popup", workspaceId_, stablePopupId)).c_str());
+}
+
+bool GameProjectEditorWorkspaceUi::BeginPopup(std::string_view stablePopupId, std::string_view title, bool modal) {
+    if (panelDepth_ == 0u || canvasActive_) {
+        return false;
+    }
+    const std::string id = "###" + MakeWorkspaceControlLabel("Popup", workspaceId_, stablePopupId);
+    bool opened = false;
+    if (modal) {
+        // 対話窓はいつも画面の真ん中（前に開いた位置を覚えさせない）。
+        ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, ImVec2(0.5f, 0.5f));
+        opened = ImGui::BeginPopupModal((std::string(Shown(title)) + id).c_str(), nullptr,
+                                        ImGuiWindowFlags_AlwaysAutoResize);
+    } else {
+        opened = ImGui::BeginPopup(id.c_str());
+    }
+    if (opened) {
+        ++popupDepth_;
+    }
+    return opened;
+}
+
+void GameProjectEditorWorkspaceUi::CloseCurrentPopup() {
+    if (popupDepth_ != 0u) {
+        ImGui::CloseCurrentPopup();
+    }
+}
+
+void GameProjectEditorWorkspaceUi::EndPopup() {
+    if (popupDepth_ == 0u) {
+        return;
+    }
+    ImGui::EndPopup();
+    --popupDepth_;
 }
 
 void GameProjectEditorWorkspaceUi::TableNextRow() {

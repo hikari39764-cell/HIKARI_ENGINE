@@ -3,6 +3,7 @@
 #include "RenderContracts/Model/HIKARI_ModelBounds.h"
 #include "Core/Serialization/Json/HIKARI_JsonMath.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_OwnedText.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Editor/Agent/HIKARI_AgentProjectFiles.h"
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
@@ -56,6 +57,41 @@ void DocumentSceneEditorController::RegisterAgentOperations() {
     state.entryPoint = true;
     state.searchTerms = {"state", "selection", "context", "camera", "状态", "选中", "现场"};
     operationRegistry_.Register(std::move(state), EDITOR::EditorOperationKind::Query, false);
+
+    // 項目とモジュールの文字表の検査：今の言語で引かれて表に無かった原文。language を渡すと、この起動の間だけ
+    // 界面の言語を替える（利用者の設定は書かない）。
+    EDITOR::EditorOperationDefinition missingText{
+        "editor.text.missing",
+        "List the module and project interface texts that were shown in the current editor language but have no "
+        "translation in their Text/zh.json or Text/ja.json tables. language (en, zh, ja) switches the interface "
+        "language for this run first, without saving the preference.",
+        "general",
+        {{"language", EditorOperationParameterType::String, false, "en, zh or ja."}},
+        [](const nlohmann::json& parameters) -> EDITOR::EditorOperationResult {
+            constexpr std::pair<std::string_view, TEXT::Language> kLanguages[] = {
+                {"en", TEXT::Language::English}, {"zh", TEXT::Language::Chinese}, {"ja", TEXT::Language::Japanese}};
+            if (const auto language = parameters.find("language"); language != parameters.end()) {
+                const std::string name = language->get<std::string>();
+                const auto found = std::find_if(std::begin(kLanguages), std::end(kLanguages),
+                                                [&](const auto& entry) { return entry.first == name; });
+                if (found == std::end(kLanguages)) {
+                    return EDITOR::OperationFailure("INVALID_LANGUAGE", "language must be en, zh or ja.");
+                }
+                TEXT::SetLocalizationLanguage(found->second);
+            }
+            const TEXT::Language current = TEXT::GetLocalizationLanguage();
+            nlohmann::json missing = nlohmann::json::array();
+            for (const TEXT::MissingText& text : TEXT::CopyMissingTexts()) {
+                missing.push_back({{"owner", text.owner}, {"text", text.text}});
+            }
+            const auto name = std::find_if(std::begin(kLanguages), std::end(kLanguages),
+                                           [&](const auto& entry) { return entry.second == current; });
+            return EDITOR::OperationOk("Missing texts.",
+                                       {{"language", std::string(name->first)}, {"missing", std::move(missing)}});
+        }};
+    missingText.permission = EDITOR::EditorOperationPermission::ModifyEditorState;
+    missingText.searchTerms = {"language", "translation", "localization", "语言", "翻译", "言語"};
+    operationRegistry_.Register(std::move(missingText), EDITOR::EditorOperationKind::Session, false);
 
     EDITOR::EditorOperationDefinition batch{
         "operations.batch",
@@ -176,11 +212,13 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::DescribeEditorState
     state["project"] = {{"root", TEXT::PathToUtf8(scene->GetAssetDatabase().GetProjectRoot())}};
     const SceneDocument& document = scene->GetSceneDocument();
     // editRevision は記録・撤销・重做のたびに進む（documentRevision は場景を読み込んだ時だけ）。同じ名前の操作が続いても変化が分かる。
-    nlohmann::json sceneState{
-        {"path", scene->GetScenePath()},         {"objects", document.objects.size()},
-        {"dirty", context_.sceneDirty},          {"documentRevision", scene->GetSceneDocumentRevision()},
-        {"editRevision", documentHistory_.GetEditRevision()},
-        {"canUndo", documentHistory_.CanUndo()}, {"canRedo", documentHistory_.CanRedo()}};
+    nlohmann::json sceneState{{"path", scene->GetScenePath()},
+                              {"objects", document.objects.size()},
+                              {"dirty", context_.sceneDirty},
+                              {"documentRevision", scene->GetSceneDocumentRevision()},
+                              {"editRevision", documentHistory_.GetEditRevision()},
+                              {"canUndo", documentHistory_.CanUndo()},
+                              {"canRedo", documentHistory_.CanRedo()}};
     if (const std::string* label = documentHistory_.GetUndoLabel())
         sceneState["undoLabel"] = *label;
     state["scene"] = std::move(sceneState);

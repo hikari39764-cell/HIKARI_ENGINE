@@ -87,7 +87,8 @@ configure_package_config_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
     INSTALL_DESTINATION "Sdk/lib/cmake/HIKARI"
     NO_SET_AND_CHECK_MACRO)
-# 公開ヘッダーを唯一のバージョン定義とする。
+# 公開ヘッダーを唯一のバージョン定義とする。版は配布物の名前で、互換の判定には使わない（界面の指紋で決める）：
+# 古い版を書いた項目もそのまま通し、今より新しい版を求める項目だけを断る。
 set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS
     "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h")
 file(READ "${HIKARI_SOURCE_ROOT}/include/HIKARI/Project/GameProjectSdk.h" _hikari_sdk_header)
@@ -101,7 +102,79 @@ endforeach()
 write_basic_package_version_file(
     "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
     VERSION "${_hikari_sdk_Major}.${_hikari_sdk_Minor}.${_hikari_sdk_Patch}"
-    COMPATIBILITY SameMajorVersion)
+    COMPATIBILITY AnyNewerVersion)
+
+# SDK の界面の指紋（HIKARI/Project/Public/Project/HIKARI_SdkInterface.h）。SDK が配る編訳対象（公開ヘッダー、
+# 共用の核、入口アダプター）を道具（Tools/SdkInterface）で指紋の表にする：SDK に置く JSON と、host に埋め込む C++。
+# 同じ道具を SDK に入れ、モジュールの構築が「DLL が読んだ SDK のファイル」を記録するのに使う。
+# hikari_project を定義した後に呼ぶ。
+function(hikari_configure_sdk_interface)
+    file(GLOB_RECURSE _headers CONFIGURE_DEPENDS LIST_DIRECTORIES false
+        RELATIVE "${HIKARI_SOURCE_ROOT}/include" "${HIKARI_SOURCE_ROOT}/include/HIKARI/*")
+    # 「SDK の中の相対路径|元のファイル」。SDK への写し（hikari_configure_game_project_sdk）と同じ対応。
+    set(_entries "")
+    foreach(_file IN LISTS _headers)
+        list(APPEND _entries "include/${_file}|${HIKARI_SOURCE_ROOT}/include/${_file}")
+    endforeach()
+    foreach(_file IN LISTS HIKARI_SDK_CORE_SHARED_HEADERS)
+        list(APPEND _entries "shared/include/${_file}|${HIKARI_SOURCE_ROOT}/HIKARI/Core/Public/${_file}")
+    endforeach()
+    foreach(_file IN LISTS HIKARI_SDK_CORE_SHARED_SOURCES)
+        list(APPEND _entries "shared/src/${_file}|${HIKARI_SOURCE_ROOT}/HIKARI/Core/Private/${_file}")
+    endforeach()
+    list(APPEND _entries
+        "third_party/nlohmann/json.hpp|${HIKARI_SOURCE_ROOT}/ThirdParty/nlohmann/json.hpp"
+        "src/HIKARI_GameProjectModuleAdapter.cpp|${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectModuleAdapter.cpp")
+    if(HIKARI_WITH_EDITOR_BUILD)
+        list(APPEND _entries
+            "src/HIKARI_GameProjectEditorModuleAdapter.cpp|${HIKARI_SOURCE_ROOT}/cmake/SDK/HIKARI_GameProjectEditorModuleAdapter.cpp")
+    endif()
+    set(_inputs "")
+    foreach(_entry IN LISTS _entries)
+        string(REGEX REPLACE "^[^|]*\\|" "" _source "${_entry}")
+        list(APPEND _inputs "${_source}")
+    endforeach()
+    list(JOIN _entries "\n" _list_text)
+    set(_list "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_SdkInterfaceFiles.txt")
+    set(_existing "")
+    if(EXISTS "${_list}")
+        file(READ "${_list}" _existing)
+    endif()
+    if(NOT _existing STREQUAL "${_list_text}\n")
+        file(WRITE "${_list}" "${_list_text}\n")
+    endif()
+
+    add_executable(HIKARI_SdkInterfaceTool "${HIKARI_SOURCE_ROOT}/Tools/SdkInterface/HIKARI_SdkInterfaceMain.cpp")
+    target_link_libraries(HIKARI_SdkInterfaceTool PRIVATE HIKARI::Nlohmann Bcrypt user32)
+    hikari_configure_engine_target(HIKARI_SdkInterfaceTool)
+    set_target_properties(HIKARI_SdkInterfaceTool PROPERTIES
+        OUTPUT_NAME "HIKARI_SdkInterface"
+        FOLDER "Engine/Tools"
+        HIKARI_WHOLE_PROGRAM_OPTIMIZATION OFF
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/tools")
+    foreach(configuration IN ITEMS Debug EditorRelease Shipping)
+        string(TOUPPER "${configuration}" configuration_upper)
+        set_target_properties(HIKARI_SdkInterfaceTool PROPERTIES
+            "RUNTIME_OUTPUT_DIRECTORY_${configuration_upper}" "${CMAKE_BINARY_DIR}/tools")
+    endforeach()
+
+    # 道具は中身が同じ出力を書き直さないので、注釈だけの変更では表を使う側が編訳し直されない。
+    # 構築の依存は、毎回書く印のファイルで持つ。
+    set(_json "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_SdkInterface.json")
+    set(_table "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_SdkInterfaceTable.cpp")
+    set(_stamp "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_SdkInterface.stamp")
+    add_custom_command(
+        OUTPUT "${_stamp}"
+        BYPRODUCTS "${_json}" "${_table}"
+        COMMAND HIKARI_SdkInterfaceTool table "${_list}" "${_json}" "${_table}"
+        COMMAND "${CMAKE_COMMAND}" -E touch "${_stamp}"
+        DEPENDS HIKARI_SdkInterfaceTool "${_list}" ${_inputs}
+        COMMENT "HIKARI SDK interface fingerprints"
+        VERBATIM)
+    target_sources(hikari_project PRIVATE "${_table}" "${_stamp}")
+    set_source_files_properties("${_stamp}" PROPERTIES HEADER_FILE_ONLY TRUE)
+    set(HIKARI_SDK_INTERFACE_JSON "${_json}" PARENT_SCOPE)
+endfunction()
 
 function(hikari_configure_game_project_sdk host_target)
     set(_sdk_root "$<TARGET_FILE_DIR:${host_target}>/Sdk")
@@ -130,7 +203,10 @@ function(hikari_configure_game_project_sdk host_target)
         "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfig.cmake"
         "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARI_GameHost.json"
-        "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake")
+        "${HIKARI_SDK_GENERATED_DIRECTORY}/HIKARIConfigVersion.cmake"
+        "${HIKARI_SDK_INTERFACE_JSON}"
+        "$<TARGET_FILE:HIKARI_SdkInterfaceTool>")
+    add_dependencies("${host_target}" HIKARI_SdkInterfaceTool)
     if(HIKARI_WITH_EDITOR_BUILD)
         list(
             APPEND
@@ -188,7 +264,12 @@ function(hikari_configure_game_project_sdk host_target)
             "${CMAKE_COMMAND}" -E copy_if_different
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
             "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
+            "$<TARGET_FILE:HIKARI_SdkInterfaceTool>"
             "${_sdk_root}/Tools"
+        COMMAND
+            "${CMAKE_COMMAND}" -E copy_if_different
+            "${HIKARI_SDK_INTERFACE_JSON}"
+            "${_sdk_root}/HIKARI_SdkInterface.json"
         VERBATIM)
 
     if(HIKARI_WITH_EDITOR_BUILD)
@@ -275,6 +356,12 @@ function(hikari_configure_game_project_sdk host_target)
             "${HIKARI_SOURCE_ROOT}/Tools/Build/Build-HikariProject.ps1"
             "${HIKARI_SOURCE_ROOT}/Tools/Build/HikariProjectPublication.ps1"
         DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools")
+    install(
+        PROGRAMS "$<TARGET_FILE:HIKARI_SdkInterfaceTool>"
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk/Tools")
+    install(
+        FILES "${HIKARI_SDK_INTERFACE_JSON}"
+        DESTINATION "${HIKARI_INSTALL_RUNTIME_PREFIX}Sdk")
     if(HIKARI_WITH_EDITOR_BUILD)
         install(
             PROGRAMS "${CMAKE_COMMAND}"

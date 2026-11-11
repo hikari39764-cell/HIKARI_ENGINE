@@ -3,8 +3,11 @@
 #include <cstddef>
 #include <cstdint>
 #include "HIKARI/Project/AssetKind.h"
+#include "HIKARI/Project/TextTemplate.h"
 #include "HIKARI/Project/UiTypes.h"
+#include <initializer_list>
 #include <span>
+#include <string>
 #include <string_view>
 #include <type_traits>
 
@@ -17,7 +20,13 @@ namespace HIKARI::EDITOR_PROJECT {
 struct EditorNodeGraphDesc;
 struct EditorNodeGraphResult;
 
-inline constexpr uint32_t kEditorWorkspaceApiVersion = 7u;
+inline constexpr uint32_t kEditorWorkspaceApiVersion = 11u;
+
+// 界面の文字の言語：モジュールが IEditorWorkspaceUi に渡す固定の英文（ボタン、見出し、Tooltip、ui.Text、節点図の題など）は、
+// 宿主が描く前にモジュールの包の Text/zh.json、ja.json（と項目の ProjectSettings/Text）で今の言語へ引く。
+// 表に無い字は英文のまま。名前や数を埋めた文は、FormatText で原文の模板から作るか、Verbatim で「訳さない」と印を付ける
+// （印の付いた字は宿主が印を外して表を引かずに出す）。
+inline constexpr char kEditorTextVerbatim = '\x1F';
 
 enum class EditorWorkspaceDockRegion : uint32_t {
     Center,
@@ -35,7 +44,8 @@ struct EditorWorkspaceInteraction {
     uint32_t editing = 0u;
     // The author asked to undo / redo (Ctrl+Z, Ctrl+Y, the Edit menu or the toolbar) while this workspace is active.
     // Reported only to workspaces that edit their own documents. A workspace that shows the Scene viewport
-    // (RequestSceneViewport) shares the Scene history instead: record entries with IEditorSceneServices::RecordUndo.
+    // (RequestSceneViewport) shares the Scene history instead (record entries with IEditorSceneServices::RecordUndo),
+    // unless it also sets OwnHistory.
     uint32_t undoPressed = 0u;
     uint32_t redoPressed = 0u;
     uint32_t deletePressed = 0u;
@@ -68,7 +78,11 @@ enum class EditorWorkspaceStatusSeverity : uint32_t {
 
 enum class EditorWorkspaceOption : uint32_t {
     None = 0u,
+    // Show the Scene viewport (the game view during Play) as a panel of the workspace, in sceneViewportRegion.
     RequestSceneViewport = 1u << 0u,
+    // With RequestSceneViewport: undo / redo still go to the workspace (EditorWorkspaceInteraction) instead of the
+    // Scene history, for a workspace that edits its own documents and only watches the Scene.
+    OwnHistory = 1u << 1u,
 };
 
 enum class EditorWorkspacePointerButton : uint32_t {
@@ -84,7 +98,9 @@ struct EditorWorkspaceDescriptor {
     const char* workspaceId = nullptr;
     const char* displayName = nullptr;
     uint32_t options = static_cast<uint32_t>(EditorWorkspaceOption::None);
-    uint32_t reserved = 0u;
+    // Where the Scene viewport of a RequestSceneViewport workspace is docked in the default layout: Center, Left,
+    // Right or Bottom (an EditorWorkspaceDockRegion value). Left and Right put it above that column's panels.
+    uint32_t sceneViewportRegion = static_cast<uint32_t>(EditorWorkspaceDockRegion::Center);
 };
 
 struct EditorWorkspacePoint {
@@ -211,7 +227,60 @@ public:
     // Copies the clipboard text with its terminator and returns the bytes the text needs including the terminator.
     // When the buffer is too small, it receives an empty string; call again with the returned size.
     virtual size_t GetClipboardText(char* utf8Buffer, size_t bufferCapacity) = 0;
+    // English source text (a fixed sentence or a template with {0}, {1}...) in the current editor language, from the
+    // module's text tables. Valid until the end of the frame. Use FormatText for sentences with names or numbers.
+    virtual std::string_view Translate(std::string_view englishText) = 0;
+    // Makes the control drawn just before this call a drag source. Dragging it carries payload (UTF-8, at most 255
+    // bytes) under payloadType (at most 31 bytes); label is shown next to the pointer. A NodeGraph whose
+    // desc.dropPayloadType is the same type receives it (EditorNodeGraphResult::droppedPayload).
+    virtual void DragSource(std::string_view payloadType, std::string_view payload, std::string_view label) = 0;
+    // Table whose first row names the columns (one column per header; headers are translated like labels).
+    // EndTable is required only when it returns true.
+    virtual bool BeginTableHeaders(std::string_view stableTableId, std::span<const std::string_view> headers) = 0;
+    // Tabs: TabItem / TabButton calls between BeginTabBar and EndTabBar (EndTabBar only when BeginTabBar returned
+    // true). Draw the contents of the shown tab after EndTabBar.
+    virtual bool BeginTabBar(std::string_view stableTabBarId) = 0;
+    // Returns true for the tab that is shown. dirty draws the unsaved mark; select makes it the shown tab this frame.
+    // closeRequested (may be null for a tab that cannot be closed) is set when its close button is pressed; the tab
+    // stays until the module stops drawing it.
+    virtual bool TabItem(std::string_view stableTabId, std::string_view label, bool dirty, bool select,
+                         bool* closeRequested) = 0;
+    // Button after the last tab (for example "+").
+    virtual bool TabButton(std::string_view stableButtonId, std::string_view label) = 0;
+    virtual void EndTabBar() = 0;
+    // Small window next to the control drawn last (OpenPopup), closed by clicking outside, or a dialog (modal) with a
+    // title that blocks the rest of the editor. Call OpenPopup and BeginPopup with the same id from the same place;
+    // EndPopup only when BeginPopup returned true.
+    virtual void OpenPopup(std::string_view stablePopupId) = 0;
+    virtual bool BeginPopup(std::string_view stablePopupId, std::string_view title, bool modal) = 0;
+    virtual void CloseCurrentPopup() = 0;
+    virtual void EndPopup() = 0;
 };
+
+// Marks text that the host must show as it is (names, values, sentences already translated).
+inline std::string Verbatim(std::string_view text) {
+    std::string marked(1u, kEditorTextVerbatim);
+    marked.append(text);
+    return marked;
+}
+
+// Translates an English template such as "Saved {0}." and fills {0}, {1}... with values (shown as they are).
+inline std::string FormatText(IEditorWorkspaceUi& ui, std::string_view englishTemplate,
+                              std::span<const std::string_view> values) {
+    // 埋める値に印が付いていても、印は先頭の一つだけにする。
+    std::string_view unmarked[10]{};
+    const size_t count = values.size() < std::size(unmarked) ? values.size() : std::size(unmarked);
+    for (size_t index = 0u; index < count; ++index) {
+        const std::string_view value = values[index];
+        unmarked[index] = !value.empty() && value.front() == kEditorTextVerbatim ? value.substr(1u) : value;
+    }
+    return Verbatim(FillText(ui.Translate(englishTemplate), std::span<const std::string_view>(unmarked, count)));
+}
+
+inline std::string FormatText(IEditorWorkspaceUi& ui, std::string_view englishTemplate,
+                              std::initializer_list<std::string_view> values) {
+    return FormatText(ui, englishTemplate, std::span<const std::string_view>(values.begin(), values.size()));
+}
 
 // Results are borrowed for this callback only. Copy strings in the project
 // if they are needed later; the host never transfers allocator ownership.
@@ -237,6 +306,9 @@ public:
     // transactions and diagnostics as AI. Worker-only actions are rejected.
     virtual void ExecuteOperation(std::string_view operationId, std::string_view parametersJson,
                                   IEditorOperationResultSink& result) = 0;
+    // Shows or hides the Scene viewport of a RequestSceneViewport workspace. While hidden the Scene is not rendered
+    // (Play keeps running). Shown again each time the workspace is activated.
+    virtual void SetSceneViewportVisible(bool visible) = 0;
 };
 
 class IEditorDocumentService;
@@ -289,6 +361,7 @@ static_assert(std::is_standard_layout_v<EditorWorkspaceDescriptor>);
 static_assert(std::is_trivially_copyable_v<EditorWorkspaceDescriptor>);
 static_assert(sizeof(EditorWorkspaceDescriptor) == 32u);
 static_assert(offsetof(EditorWorkspaceDescriptor, options) == 24u);
+static_assert(offsetof(EditorWorkspaceDescriptor, sceneViewportRegion) == 28u);
 static_assert(offsetof(EditorWorkspaceDescriptor, structSize) == 0u);
 static_assert(offsetof(EditorWorkspaceDescriptor, apiVersion) == 4u);
 static_assert(offsetof(EditorWorkspaceDescriptor, workspaceId) == 8u);

@@ -100,6 +100,7 @@ set(
     ${HIKARI_RUNTIME_PRIVATE_LINK_LIBRARIES}
     ${HIKARI_RUNTIME_PUBLIC_LINK_LIBRARIES})
 hikari_define_runtime_modules(HIKARI_RUNTIME_MODULE_TARGETS)
+hikari_configure_sdk_interface()
 target_link_libraries(
     hikari_core
     PUBLIC

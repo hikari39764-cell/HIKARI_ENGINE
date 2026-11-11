@@ -121,6 +121,12 @@ try {
             $Preset,
             '-SdkRoot',
             $sdkRoot)
+        # Engine-bundled modules (project code includes their public headers) sit next to the Editor host,
+        # which a Shipping build tree does not contain.
+        $engineModules = Join-Path $repoRoot 'out\build\editor-release\bin\Runtime\Modules'
+        if (Test-Path -LiteralPath $engineModules -PathType Container) {
+            $projectArguments += @('-EngineModulesRoot', $engineModules)
+        }
         if ($ConfigureOnly) {
             $projectArguments += '-ConfigureOnly'
         }

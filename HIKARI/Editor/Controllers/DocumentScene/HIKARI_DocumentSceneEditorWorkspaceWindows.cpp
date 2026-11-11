@@ -108,7 +108,7 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         projectWorkspaceHost_->Registry().SetOperationRegistry(&operationRegistry_);
         projectWorkspaceHost_->Draw(workspaceHost_, TIME::GetFrameContext().unscaledDt, scene.GetAssetDatabase(),
                                     scene.GetAssetRegistry());
-        if (projectWorkspaceHost_->ActiveWorkspaceRequestsSceneViewport()) {
+        if (projectWorkspaceHost_->ActiveSceneViewport().visible) {
             DrawGameViewportWindow(scene, playSession, projectWorkspaceHost_->PrepareSceneViewportWindow());
         } else {
             playSession.ReleaseEmbeddedInput();

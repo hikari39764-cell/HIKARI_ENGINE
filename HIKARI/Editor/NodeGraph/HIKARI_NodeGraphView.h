@@ -2,11 +2,14 @@
 
 #include <array>
 #include <cstdint>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
 #include "Editor/NodeGraph/HIKARI_NodeGraphCanvas.h"
 #include "HIKARI/Project/EditorNodeGraph.h"
+
+struct ImVec2;
 
 namespace HIKARI::EDITOR {
 
@@ -31,6 +34,8 @@ private:
         Canvas,
         Node,
         Link,
+        // 選んでいる節に対する作る献立（子を足す、挟む、置き換える）。
+        Create,
     };
 
     struct NodeLayout {
@@ -42,6 +47,8 @@ private:
         float outputLabelTop = 0.0f;
         uint32_t firstPin = 0u;
         bool selected = false;
+        // 拖動で一緒に動いている（当たり判定から外し、上に描く）。
+        bool dragged = false;
     };
     struct PinLayout {
         const EDITOR_PROJECT::EditorNodeGraphPin* pin = nullptr;
@@ -70,6 +77,15 @@ private:
     int HitPin(const MATH::Vec2& pointer, float radius) const;
     int HitNode(const MATH::Vec2& pointer) const;
     int HitLink(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const MATH::Vec2& pointer, float tolerance) const;
+    // 畳む三角の当たり（図の座標）。
+    bool HitCollapse(const EDITOR_PROJECT::EditorNodeGraphNode& node, const NodeLayout& layout,
+                     const MATH::Vec2& pointer) const;
+    // 直角の線の折れ点（出力 → 下 → 横 → 入力）。
+    std::array<MATH::Vec2, 4> LinkElbow(const MATH::Vec2& start, const MATH::Vec2& end) const;
+    // 掴んだ節と、線で繋がった下流の節を dragSet_ に集める。
+    void CollectDragSet(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, uint64_t nodeId);
+    // followNodeId の節が画面の外にあれば、真ん中へ視点を動かす。
+    void FollowNode(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame);
     std::array<MATH::Vec2, 4> LinkCurve(EDITOR_PROJECT::EditorNodeGraphFlow flow, const MATH::Vec2& start,
                                         const MATH::Vec2& end) const;
 
@@ -90,6 +106,20 @@ private:
     // ---- 描画（HIKARI_NodeGraphViewPaint.cpp） ----
     void Paint(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame) const;
     void PaintNode(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame, uint32_t index) const;
+    void PaintDropHint(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame) const;
+    // 題の帯より下：小字、detail、行、進み具合、注。
+    void PaintNodeBody(const EDITOR_PROJECT::EditorNodeGraphNode& node, const NodeLayout& layout, const ImVec2& minimum,
+                       const ImVec2& maximum) const;
+    // 名前を変えている節の入力欄（Paint の後）と、ポインタの下の節の説明。
+    void DrawRename(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, const Frame& frame,
+                    EDITOR_PROJECT::EditorNodeGraphResult& outResult);
+    void BeginRename(const EDITOR_PROJECT::EditorNodeGraphNode& node);
+    // 面板の項目から引いてきた物を受け取る（desc.dropPayloadType の時だけ）。
+    void AcceptPayload(const EDITOR_PROJECT::EditorNodeGraphDesc& desc, Frame& frame,
+                       EDITOR_PROJECT::EditorNodeGraphResult& outResult);
+    // 選んでいる節の横に、mode の作る献立を開く（desc.createModes に無い mode は開かない）。
+    void OpenCreateMenu(const EDITOR_PROJECT::EditorNodeGraphDesc& desc,
+                        EDITOR_PROJECT::EditorNodeGraphCreateMode mode);
 
     NodeGraphCanvasState canvas_{};
     bool framed_ = false;
@@ -100,12 +130,31 @@ private:
     float panDistance_ = 0.0f;
     // 拖動中の節のずれ（図の座標）。離した時に一度だけ呼び手へ返す。
     MATH::Vec2 moveOffset_{};
+    // dragDescendants の拖動で掴んだ節と、一緒に動く節。
+    uint64_t grabbedNodeId_ = 0u;
+    std::vector<uint64_t> dragSet_{};
+    // 名前を変えている節（0 は無し）と、入力中の字、終えた時に返す字。
+    uint64_t renamingNodeId_ = 0u;
+    bool renameFocus_ = false;
+    std::array<char, 128> renameBuffer_{};
+    std::string renameText_{};
+    // 受け取った物の字（outResult.droppedPayload が指す）。
+    std::string payloadText_{};
     uint64_t dragPinId_ = 0u;
     MATH::Vec2 boxStart_{};
     bool boxAdditive_ = false;
     MenuTarget menuTarget_ = MenuTarget::Canvas;
     MATH::Vec2 menuPosition_{};
     uint64_t menuFromPinId_ = 0u;
+    EDITOR_PROJECT::EditorNodeGraphCreateMode createMode_ = EDITOR_PROJECT::EditorNodeGraphCreateMode::Place;
+    // 節の献立で選んだ「子を足す…」などを、献立を閉じた後で開き直す。
+    bool reopen_ = false;
+    EDITOR_PROJECT::EditorNodeGraphCreateMode reopenMode_ = EDITOR_PROJECT::EditorNodeGraphCreateMode::Place;
+    // このフレームの画布の左上（画面の座標）。
+    MATH::Vec2 frameOrigin_{};
+    // 次に開く献立を置く所（画面の座標）。
+    bool placeMenu_ = false;
+    MATH::Vec2 menuScreenPosition_{};
     std::array<char, 64> menuFilter_{};
 
     std::vector<uint64_t> selectedNodes_{};

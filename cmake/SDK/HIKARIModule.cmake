@@ -5,17 +5,21 @@ include("${CMAKE_CURRENT_LIST_DIR}/HIKARIModuleTargets.cmake")
 # 項目をまたいで使う外部モジュールを構築し、そのまま配れる挿件包のフォルダを作る：
 #
 #   <HIKARI_MODULE_PACKAGE_ROOT>/<id>/
-#       <id>.hmodule            構築が書く清単（元の清単 + SDK の版 + DLL の路径）
+#       <id>.hmodule            構築が書く清単（元の清単 + DLL の路径）
 #       <library>.dll           EditorRelease の実行 DLL
 #       <library>Editor.dll     編集器の DLL（SINGLE_LIBRARY なら実行 DLL が兼ねる）
 #       Shipping/<library>.dll  Shipping の実行 DLL（編集器の分を含まない）
 #       Debug/                  Debug の DLL（清単からは指さない）
-#       <内容のフォルダ>        元の清単の runtimeDirectories と editorDirectories の写し
+#       <library>.interface.json  DLL ごとに隣に置く記録：編訳の時に読んだ SDK のファイルとその指紋。引擎は DLL を
+#                                 読む前に自分の表と比べ、合う間は引擎が新しくなっても同じ DLL を読む
+#       <内容のフォルダ>        元の清単の runtimeDirectories、editorDirectories、publicIncludeDirectories の写し
 #
-# MANIFEST は元の清単：id、name、version、dependencies、assetTypes、runtimeDirectories、editorDirectories
-# だけを書く。DLL の路径（runtimeLibrary など）は構築が決めるので、元の清単には書かない。
+# MANIFEST は元の清単：id、name、version、dependencies、assetTypes、runtimeDirectories、editorDirectories、
+# publicIncludeDirectories だけを書く。DLL の路径（runtimeLibrary など）は構築が決めるので、元の清単には書かない。
 #   runtimeDirectories：実行側の DLL が自分の隣から読むフォルダ（着色器など）。書き出したゲームにも入る。
 #   editorDirectories：編集器だけが使う内容。挿件包には入るが、ゲームには入らない。
+#   publicIncludeDirectories：このモジュールを使う項目のコードが #include するヘッダーのフォルダ。モジュールを
+#       有効にした項目の構築が、編訳の include 路径へ自動で足す（HIKARIGameProject.cmake）。
 # HIKARI_MODULE_PACKAGE_ROOT の既定は <CMAKE_SOURCE_DIR>/Library/Plugins。
 #
 # SINGLE_LIBRARY：編集器の部分も同じ DLL に入れる（編集器の画面が実行側の状態を直接読むモジュール向け）。
@@ -51,13 +55,13 @@ function(hikari_add_module)
     if(_error OR _id STREQUAL "")
         message(FATAL_ERROR "HIKARI Module MANIFEST has no id: ${_manifest_path}")
     endif()
-    foreach(_built IN ITEMS sdkVersion runtimeLibrary shippingRuntimeLibrary editorLibrary)
+    foreach(_built IN ITEMS runtimeLibrary shippingRuntimeLibrary editorLibrary)
         string(JSON _value ERROR_VARIABLE _error GET "${_manifest}" "${_built}")
         if(NOT _error)
             message(
                 FATAL_ERROR
-                "HIKARI Module ${_id}: remove ${_built} from ${_manifest_path}. The build writes the SDK version "
-                "and the library paths into the packaged manifest.")
+                "HIKARI Module ${_id}: remove ${_built} from ${_manifest_path}. The build writes the library "
+                "paths into the packaged manifest.")
         endif()
     endforeach()
     if(NOT HIKARI_VERSION)
@@ -135,10 +139,29 @@ function(hikari_add_module)
         source_group("HIKARI Editor SDK" FILES "${_editor_adapter}")
     endif()
 
+    # DLL の隣の界面の記録。構築木の全部の目標（モジュールが自分で作る静的ライブラリも）の編訳ログから、実際に読んだ
+    # SDK のファイルを拾う。SDK だけが変わった時も記録が合うよう、毎回の構築で確かめ直す（同じ中身なら書かない）。
+    get_filename_component(_sdk_root "${CMAKE_CURRENT_FUNCTION_LIST_DIR}/../../.." ABSOLUTE)
+    set(_interface_tool "${_sdk_root}/Tools/HIKARI_SdkInterface.exe")
+    if(NOT EXISTS "${_interface_tool}")
+        message(FATAL_ERROR "HIKARI SDK interface tool is missing: ${_interface_tool}")
+    endif()
+    set(_interface_targets "${_library}")
+    if(_editor_enabled AND NOT HIKARI_MODULE_SINGLE_LIBRARY)
+        list(APPEND _interface_targets "${_editor_target}")
+    endif()
+    set(_interface_records "")
+    foreach(_target IN LISTS _interface_targets)
+        list(APPEND _interface_records "$<TARGET_FILE_DIR:${_target}>/$<TARGET_FILE_BASE_NAME:${_target}>.interface.json")
+    endforeach()
+    add_custom_target(
+        "${_library}Interface" ALL
+        COMMAND "${_interface_tool}" record "${CMAKE_BINARY_DIR}" "$<CONFIG>" "${_sdk_root}" ${_interface_records}
+        VERBATIM)
+    add_dependencies("${_library}Interface" ${_interface_targets})
+
     # 挿件包の清単。内容が変わった時だけ書く。
-    # sdkVersion：引擎は major と minor が同じ SDK で作った DLL だけを読み込む。
     set(_packaged "${_manifest}")
-    string(JSON _packaged SET "${_packaged}" sdkVersion "\"${HIKARI_VERSION}\"")
     string(JSON _packaged SET "${_packaged}" runtimeLibrary "\"${_library}.dll\"")
     string(JSON _packaged SET "${_packaged}" shippingRuntimeLibrary "\"Shipping/${_library}.dll\"")
     if(_editor_library_file)
@@ -155,7 +178,7 @@ function(hikari_add_module)
 
     # 清単が宣言したフォルダは毎回の構築で鏡写しにする（コードが変わらなくても内容の変更が包に入る）。
     set(_package_directories "")
-    foreach(_key IN ITEMS runtimeDirectories editorDirectories)
+    foreach(_key IN ITEMS runtimeDirectories editorDirectories publicIncludeDirectories)
         string(JSON _count ERROR_VARIABLE _error LENGTH "${_manifest}" "${_key}")
         if(_error OR _count EQUAL 0)
             continue()

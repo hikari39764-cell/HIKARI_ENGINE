@@ -5,6 +5,7 @@
 
 #include "Core/HIKARI_Logger.h"
 #include "Core/HIKARI_TimeService.h"
+#include "Core/Text/HIKARI_OwnedText.h"
 #include "Core/Text/HIKARI_UtfPath.h"
 #include "Project/HIKARI_ProjectContext.h"
 #include "Runtime/Presentation/HIKARI_GamePresentationService.h"
@@ -13,6 +14,16 @@
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
 
 namespace HIKARI::EDITOR {
+namespace {
+
+void LoadOwnedTexts(std::string_view owner, const std::filesystem::path& directory) {
+    std::string error{};
+    if (!TEXT::LoadOwnedTexts(owner, directory, error)) {
+        HIKARI_LOG_ERROR("[Text] " + std::string(owner) + ": " + error);
+    }
+}
+
+} // namespace
 
 bool EditorEngineApp::Initialize() {
     documentSceneEditorController_.SetProjectWorkspaceHost(&gameProjectWorkspaceHost_);
@@ -37,7 +48,13 @@ bool EditorEngineApp::Initialize() {
         gameProjectWorkspaceHost_.ReportModuleFailure(std::move(moduleMessage));
         gameProjectEditorModule_.Reset();
     }
+    // 界面の文字表：項目の ProjectSettings/Text と、各モジュールの包の Text（清単の editorDirectories）。
+    TEXT::ClearOwnedTexts();
+    LoadOwnedTexts(TEXT::kProjectTextOwner, GetProjectContext().GetRoot() / "ProjectSettings" / "Text");
     for (InstalledModuleStatus& status : runtimeApp_.GetInstalledModules()) {
+        if (status.runtimeLoaded) {
+            LoadOwnedTexts(status.manifest.id, status.manifest.directory / "Text");
+        }
         if (!status.runtimeLoaded || status.manifest.editorLibrary.empty()) {
             continue;
         }

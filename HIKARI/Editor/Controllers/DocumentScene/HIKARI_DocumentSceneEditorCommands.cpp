@@ -74,9 +74,12 @@ void DocumentSceneEditorController::ConfigureEditorCommands(DocumentSceneBase& s
                                 projectWorkspaceHost_->Registry().HasActiveWorkspace(),
                                 [this] { (void)projectWorkspaceHost_->Registry().RequestSaveActiveWorkspace(); });
         }
-        if (projectWorkspaceHost_ == nullptr || projectWorkspaceHost_->ActiveWorkspaceRequestsSceneViewport()) {
+        if (const EDITOR::GameProjectSceneViewportUse viewport = projectWorkspaceHost_ != nullptr
+                                                                     ? projectWorkspaceHost_->ActiveSceneViewport()
+                                                                     : EDITOR::GameProjectSceneViewportUse{true};
+            viewport.requested && !viewport.ownHistory) {
             // 場景の視口を持つ項目の工作区（レベル編集、地形など）は場面を直接書き換えるので、
-            // Ctrl+Z と編集メニューは場面の履歴へ送る。
+            // Ctrl+Z と編集メニューは場面の履歴へ送る（OwnHistory の工作区は場景を見るだけなので除く）。
             bindSceneHistory();
             return;
         }

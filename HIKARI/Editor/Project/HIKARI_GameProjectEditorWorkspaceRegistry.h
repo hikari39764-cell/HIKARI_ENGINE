@@ -33,6 +33,17 @@ struct GameProjectEditorWorkspaceInfo {
     bool disabled = false;
 };
 
+// 今の工作区が場景の視口をどう使うか（EditorWorkspaceOption と sceneViewportRegion、SetSceneViewportVisible）。
+struct GameProjectSceneViewportUse {
+    // 視口を持つ工作区（RequestSceneViewport）。配置と撤销の行き先はこれで決まり、表示の有無には依らない。
+    bool requested = false;
+    // 今のフレームに視口を描いて場景を描画する。
+    bool visible = false;
+    // 撤销・やり直しは場景の履歴ではなく工作区へ（OwnHistory）。
+    bool ownHistory = false;
+    EDITOR_PROJECT::EditorWorkspaceDockRegion region = EDITOR_PROJECT::EditorWorkspaceDockRegion::Center;
+};
+
 // Owns host-side workspace identity and transition state. Workspace
 // instances remain owned by the project DLL and must outlive this registry.
 class GameProjectEditorWorkspaceRegistry final : public EDITOR_PROJECT::IEditorWorkspaceCommands {
@@ -53,7 +64,7 @@ public:
     GameProjectEditorWorkspaceInfo GetWorkspaceInfo(size_t index) const noexcept;
     bool HasActiveWorkspace() const noexcept;
     std::string_view GetActiveWorkspaceId() const noexcept;
-    bool ActiveWorkspaceRequestsSceneViewport() const noexcept;
+    GameProjectSceneViewportUse ActiveSceneViewport() const noexcept;
     bool HasUnsavedWorkspaceChanges() const noexcept;
     bool IsActiveWorkspaceDirty() noexcept;
     // モジュールが登記した資産の種類を編集する工作区の ID（無ければ空）。
@@ -86,6 +97,7 @@ public:
     void PublishStatus(EDITOR_PROJECT::EditorWorkspaceStatusSeverity severity, std::string_view message) override;
     void ExecuteOperation(std::string_view operationId, std::string_view parametersJson,
                           EDITOR_PROJECT::IEditorOperationResultSink& result) override;
+    void SetSceneViewportVisible(bool visible) override;
 
 private:
     struct Entry {
@@ -94,7 +106,8 @@ private:
         std::string displayName{};
         EDITOR_PROJECT::IEditorWorkspace* workspace = nullptr;
         std::string failureMessage{};
-        bool requestsSceneViewport = false;
+        // visible は工作区が SetSceneViewportVisible で切り替える（開く度に表示へ戻す）。
+        GameProjectSceneViewportUse sceneViewport{};
         bool disabled = false;
         // この工作区が編集する、モジュールの資産の種類（無ければ空）。
         std::string assetTypeId{};

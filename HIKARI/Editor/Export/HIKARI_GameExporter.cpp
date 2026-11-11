@@ -815,7 +815,8 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     }
     if (!report("Packaging project modules", 0.82f))
         return result;
-    if (!PackageProjectModules(projectRoot, stagingDirectory, cookResult.scenePaths, errorMessage)) {
+    if (!PackageProjectModules(projectRoot, sourceExe.parent_path(), stagingDirectory, cookResult.scenePaths,
+                               errorMessage)) {
         result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;

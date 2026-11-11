@@ -100,12 +100,23 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
                          "incompatible.";
             return false;
         }
-        constexpr uint32_t kKnownOptions =
-            static_cast<uint32_t>(EDITOR_PROJECT::EditorWorkspaceOption::RequestSceneViewport);
-        if ((descriptor.options & ~kKnownOptions) != 0u || descriptor.reserved != 0u) {
-            outMessage = "GameProject Editor workspace descriptor contains unknown options or reserved values.";
+        using EDITOR_PROJECT::EditorWorkspaceDockRegion;
+        using EDITOR_PROJECT::EditorWorkspaceOption;
+        constexpr uint32_t kViewport = static_cast<uint32_t>(EditorWorkspaceOption::RequestSceneViewport);
+        constexpr uint32_t kOwnHistory = static_cast<uint32_t>(EditorWorkspaceOption::OwnHistory);
+        const auto region = static_cast<EditorWorkspaceDockRegion>(descriptor.sceneViewportRegion);
+        if ((descriptor.options & ~(kViewport | kOwnHistory)) != 0u ||
+            (region != EditorWorkspaceDockRegion::Center && region != EditorWorkspaceDockRegion::Left &&
+             region != EditorWorkspaceDockRegion::Right && region != EditorWorkspaceDockRegion::Bottom)) {
+            outMessage = "GameProject Editor workspace descriptor contains unknown options or an invalid Scene "
+                         "viewport region.";
             return false;
         }
+        GameProjectSceneViewportUse sceneViewport{};
+        sceneViewport.requested = (descriptor.options & kViewport) != 0u;
+        sceneViewport.visible = sceneViewport.requested;
+        sceneViewport.ownHistory = sceneViewport.requested && (descriptor.options & kOwnHistory) != 0u;
+        sceneViewport.region = region;
         if (!IsGameProjectEditorIdentifier(workspaceId) || HasReservedEnginePrefix(workspaceId)) {
             outMessage = "GameProject Editor workspace ID is invalid or uses "
                          "the reserved 'hikari.' namespace: " +
@@ -138,7 +149,7 @@ bool GameProjectEditorWorkspaceRegistry::RegisterModule(std::string_view moduleI
             std::string(displayName),
             workspace,
             {},
-            (descriptor.options & kKnownOptions) != 0u,
+            sceneViewport,
             false,
             std::move(assetTypeId),
         });
@@ -428,8 +439,15 @@ EDITOR_PROJECT::EditorWorkspaceHostContext GameProjectEditorWorkspaceRegistry::M
     };
 }
 
-bool GameProjectEditorWorkspaceRegistry::ActiveWorkspaceRequestsSceneViewport() const noexcept {
-    return active_ && *active_ < entries_.size() && entries_[*active_].requestsSceneViewport;
+GameProjectSceneViewportUse GameProjectEditorWorkspaceRegistry::ActiveSceneViewport() const noexcept {
+    return active_ && *active_ < entries_.size() ? entries_[*active_].sceneViewport : GameProjectSceneViewportUse{};
+}
+
+void GameProjectEditorWorkspaceRegistry::SetSceneViewportVisible(bool visible) {
+    if (active_ && *active_ < entries_.size()) {
+        GameProjectSceneViewportUse& viewport = entries_[*active_].sceneViewport;
+        viewport.visible = viewport.requested && visible;
+    }
 }
 
 bool GameProjectEditorWorkspaceRegistry::HasUnsavedWorkspaceChanges() const noexcept {
@@ -454,6 +472,7 @@ bool GameProjectEditorWorkspaceRegistry::Activate(size_t index) noexcept {
         return false;
     }
     Entry& entry = entries_[index];
+    entry.sceneViewport.visible = entry.sceneViewport.requested;
     EDITOR_PROJECT::EditorWorkspaceHostContext context = MakeContext(entry);
     try {
         entry.workspace->OnActivate(context);

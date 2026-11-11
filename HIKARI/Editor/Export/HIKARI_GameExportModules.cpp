@@ -153,7 +153,16 @@ bool CollectModuleExportFiles(const ModuleManifest& module, ModuleExportFiles& f
     return true;
 }
 
-// 項目のモジュールを依存が先の順に解決し、どれも書き出せる状態か確かめる。
+// Shipping の DLL が清単にあり、実行側だけの DLL として揃っているか。
+bool ValidateShippingModule(const ModuleManifest& module, std::string& outMessage) {
+    if (module.shippingRuntimeLibrary.empty()) {
+        outMessage = "Module " + module.id + " does not declare a Shipping library.";
+        return false;
+    }
+    return ValidateShippingLibrary(module, module.directory / module.shippingRuntimeLibrary, outMessage);
+}
+
+// 項目のモジュールを依存が先の順に解決する。
 bool ResolveExportModules(const std::filesystem::path& projectRoot, std::vector<ModuleManifest>& outModules,
                           std::string& outMessage) {
     outModules.clear();
@@ -170,18 +179,6 @@ bool ResolveExportModules(const std::filesystem::path& projectRoot, std::vector<
                      " folder or next to the Editor (" + TEXT::PathToUtf8(GetEngineModulesDirectory()) + ").";
         return false;
     }
-    for (const ModuleManifest& module : outModules) {
-        if (!IsModuleSdkCompatible(module, &outMessage)) {
-            return false;
-        }
-        if (module.shippingRuntimeLibrary.empty()) {
-            outMessage = "Module " + module.id + " does not declare a Shipping library.";
-            return false;
-        }
-        if (!ValidateShippingLibrary(module, module.directory / module.shippingRuntimeLibrary, outMessage)) {
-            return false;
-        }
-    }
     return true;
 }
 
@@ -189,10 +186,19 @@ bool ResolveExportModules(const std::filesystem::path& projectRoot, std::vector<
 
 bool ValidateProjectModulesForExport(const std::filesystem::path& projectRoot, std::string& outMessage) {
     std::vector<ModuleManifest> modules{};
-    return ResolveExportModules(projectRoot, modules, outMessage);
+    if (!ResolveExportModules(projectRoot, modules, outMessage)) {
+        return false;
+    }
+    for (const ModuleManifest& module : modules) {
+        if (module.sourceDirectory.empty() && !ValidateShippingModule(module, outMessage)) {
+            return false;
+        }
+    }
+    return true;
 }
 
-bool PackageProjectModules(const std::filesystem::path& projectRoot, const std::filesystem::path& stagingDirectory,
+bool PackageProjectModules(const std::filesystem::path& projectRoot, const std::filesystem::path& shippingRuntimeRoot,
+                           const std::filesystem::path& stagingDirectory,
                            const std::vector<std::filesystem::path>& scenePaths, std::string& outMessage) {
     std::vector<ModuleManifest> modules{};
     if (!ResolveExportModules(projectRoot, modules, outMessage)) {
@@ -201,12 +207,24 @@ bool PackageProjectModules(const std::filesystem::path& projectRoot, const std::
     if (modules.empty()) {
         return true;
     }
+    // ゲームが使う host（Shipping）の界面の表。編集器の host の表とは別（Shipping の構築が古いこともある）。
+    const std::filesystem::path interfaceTable = shippingRuntimeRoot / "Sdk" / kSdkInterfaceFilename;
+    SdkInterfaceFiles shippingInterface{};
+    if (!LoadSdkInterfaceFile(interfaceTable, shippingInterface, &outMessage)) {
+        outMessage = "The Shipping runtime has no usable SDK interface table (" + TEXT::PathToUtf8(interfaceTable) +
+                     "): " + outMessage + ". Rebuild or reinstall the Shipping runtime.";
+        return false;
+    }
     const std::filesystem::path contentDirectory = stagingDirectory / "Content";
     const std::filesystem::path packagedModules = stagingDirectory / kEngineModulesDirectory;
     for (const ModuleManifest& module : modules) {
         const std::filesystem::path sourceLibrary = module.directory / module.shippingRuntimeLibrary;
+        const std::filesystem::path sourceRecord = MakeLibraryInterfacePath(sourceLibrary);
         const std::filesystem::path targetDirectory = packagedModules / TEXT::PathFromUtf8(module.id);
-        if (!CopyPackageFile(sourceLibrary, targetDirectory / sourceLibrary.filename(), outMessage)) {
+        if (!ValidateShippingModule(module, outMessage) ||
+            !IsModuleLibraryCurrent(module, sourceLibrary, shippingInterface, &outMessage) ||
+            !CopyPackageFile(sourceLibrary, targetDirectory / sourceLibrary.filename(), outMessage) ||
+            !CopyPackageFile(sourceRecord, targetDirectory / sourceRecord.filename(), outMessage)) {
             return false;
         }
         for (const std::filesystem::path& directory : module.runtimeDirectories) {

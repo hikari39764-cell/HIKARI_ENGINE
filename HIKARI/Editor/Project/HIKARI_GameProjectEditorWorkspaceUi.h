@@ -4,6 +4,7 @@
 #include <cstddef>
 #include <cstdint>
 #include <filesystem>
+#include <optional>
 #include <span>
 #include <string>
 #include <string_view>
@@ -38,7 +39,8 @@ public:
     void SetWorkspaceId(std::string_view workspaceId);
     // 場景の作業区の窓はプロジェクト作業区のドックに入れない。
     void ClearDockRegions() noexcept;
-    void DrawDockSpace(bool reset, bool wideCenter);
+    // viewportRegion：場景の視口を持つ工作区で、視口を置く区画（無ければ視口なし）。
+    void DrawDockSpace(bool reset, std::optional<EDITOR_PROJECT::EditorWorkspaceDockRegion> viewportRegion);
     // 作業区の工具栏（作業区に一つ、題は作業区の名前）を開く。宿主が先に自分の一行を描く。このあとモジュールが
     // Toolbar 区画へ出すパネルは、別の窓にならず同じ窓の続きになる。EndPanel で閉じる。
     bool BeginToolbar(std::string_view title);
@@ -49,6 +51,8 @@ public:
         undoRequested_ = undo;
         redoRequested_ = redo;
     }
+    // これから描くモジュール（文字表の持ち主）。空なら全部の表から引く。
+    void SetTextOwner(std::string_view owner) { textOwner_.assign(owner); }
 
     // ---- IEditorWorkspaceUi ----
     bool BeginPanel(std::string_view stablePanelId, std::string_view displayName, bool* open,
@@ -108,6 +112,17 @@ public:
                      float maximum) override;
     bool Section(std::string_view stableControlId, std::string_view label, bool defaultOpen) override;
     void Tooltip(std::string_view utf8Text) override;
+    void DragSource(std::string_view payloadType, std::string_view payload, std::string_view label) override;
+    bool BeginTableHeaders(std::string_view stableTableId, std::span<const std::string_view> headers) override;
+    bool BeginTabBar(std::string_view stableTabBarId) override;
+    bool TabItem(std::string_view stableTabId, std::string_view label, bool dirty, bool select,
+                 bool* closeRequested) override;
+    bool TabButton(std::string_view stableButtonId, std::string_view label) override;
+    void EndTabBar() override;
+    void OpenPopup(std::string_view stablePopupId) override;
+    bool BeginPopup(std::string_view stablePopupId, std::string_view title, bool modal) override;
+    void CloseCurrentPopup() override;
+    void EndPopup() override;
     bool Combo(std::string_view stableControlId, std::string_view label, std::span<const std::string_view> items,
                int32_t* selected) override;
     bool ModuleAssetField(std::string_view stableControlId, std::string_view label, std::string_view moduleAssetTypeId,
@@ -119,8 +134,11 @@ public:
                    EDITOR_PROJECT::EditorNodeGraphResult& outResult) override;
     void SetClipboardText(std::string_view utf8Text) override;
     size_t GetClipboardText(char* utf8Buffer, size_t bufferCapacity) override;
+    std::string_view Translate(std::string_view englishText) override;
 
 private:
+    // モジュールの字を画面に出す形へ：「訳さない」印があれば外し、無ければ文字表で今の言語へ。
+    std::string_view Shown(std::string_view text) const;
     struct Thumbnail {
         int handle = -1;
         uint64_t revision = 0u;
@@ -148,14 +166,19 @@ private:
     bool previewOpen_{}, previewFailed_{};
 
     std::string workspaceId_{};
+    std::string textOwner_{};
     bool undoRequested_ = false;
     bool redoRequested_ = false;
     AssetDatabase* database_{};
     AssetRegistry* assets_{};
     size_t panelDepth_ = 0u;
     size_t tableDepth_ = 0u;
+    size_t tabBarDepth_ = 0u;
+    size_t popupDepth_ = 0u;
     bool canvasActive_ = false;
     std::array<ImGuiID, 5> dockRegions_{};
+    // 場景の視口を入れるドック（区画そのもの、または左右の列の上半分）。
+    ImGuiID viewportDock_ = 0u;
     bool forceDock_ = false;
     std::string toolbarLabel_{};
     // 配置を組み直した直後の数フレーム、工具栏の高さを中身に合わせる。

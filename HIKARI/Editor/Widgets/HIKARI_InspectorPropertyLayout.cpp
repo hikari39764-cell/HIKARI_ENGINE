@@ -3,19 +3,33 @@
 #include <algorithm>
 
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_OwnedText.h"
+#include "HIKARI/Project/EditorWorkspace.h"
 #include "Editor/Style/HIKARI_EditorTheme.h"
 
 #include "imgui.h"
 
 namespace HIKARI::EDITOR {
 
+namespace {
+
+// 引擎の表 → 項目とモジュールの文字表（PropertyFields の字段名、部品の名前など）→ 原文。印の付いた字はそのまま。
+std::string TranslateInspectorText(std::string_view text) {
+    if (!text.empty() && text.front() == EDITOR_PROJECT::kEditorTextVerbatim) {
+        return std::string(text.substr(1u));
+    }
+    std::string translated = TEXT::LocalizeSourceText("ui.inspector.text.", text);
+    return translated != text ? translated : std::string(TEXT::TranslateOwnedText({}, text));
+}
+
+} // namespace
+
 std::string InspectorText(std::string_view text) {
-    constexpr std::string_view prefix = "ui.inspector.text.";
     const size_t idStart = text.find("##");
     if (idStart == std::string_view::npos) {
-        return TEXT::LocalizeSourceText(prefix, text);
+        return TranslateInspectorText(text);
     }
-    return TEXT::LocalizeSourceText(prefix, text.substr(0, idStart)).append(text.substr(idStart));
+    return TranslateInspectorText(text.substr(0, idStart)).append(text.substr(idStart));
 }
 
 void DrawInspectorPropertyLabel(std::string_view label, float availableWidth, std::string_view description) {

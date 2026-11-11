@@ -189,18 +189,22 @@ void AssertRegistryClean(const HIKARI::ComponentRegistry& components,
 // 項目の Plugins は同梱より先に探す。版の合わない包は有効に出来ず、依存されている包は外せない。
 void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
     std::filesystem::remove_all(scratch);
-    const std::string currentSdk =
-        std::to_string(HIKARI::SDK::kVersionMajor) + "." + std::to_string(HIKARI::SDK::kVersionMinor) + ".0";
+    // current：DLL の隣に、今の引擎と合う界面の記録を置く（SDK のファイルを一つも読んでいない記録は必ず合う）。
+    // false なら記録の無い包（古い SDK で作った包）。library が空なら、構築前の元の清単。
     const auto writeManifest = [&](const std::filesystem::path& directory, const std::string& id,
-                                   const std::vector<std::string>& dependencies, const std::string& sdkVersion = {}) {
+                                   const std::vector<std::string>& dependencies, bool current = true,
+                                   const std::string& library = "HIKARI_GameProject.dll") {
         HIKARI::ModuleManifest manifest{};
         manifest.id = id;
         manifest.version = "1.0.0";
-        manifest.sdkVersion = sdkVersion.empty() ? currentSdk : sdkVersion;
-        manifest.runtimeLibrary = "HIKARI_GameProject.dll";
+        manifest.runtimeLibrary = library;
         manifest.dependencies = dependencies;
         std::filesystem::create_directories(directory);
         assert(HIKARI::SaveModuleManifest(directory / (id + HIKARI::kModuleManifestExtension), manifest));
+        if (current && !library.empty()) {
+            std::ofstream(HIKARI::MakeLibraryInterfacePath(directory / library))
+                << "{\"formatVersion\": 1, \"files\": {}}";
+        }
     };
     const std::filesystem::path project = scratch / "Project";
     const std::filesystem::path builtin = scratch / "Builtin";
@@ -247,7 +251,7 @@ void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
 
     const std::filesystem::path plugins = project / HIKARI::kProjectPluginsDirectory;
     writeManifest(plugins / "Test.Base", "Test.Base", {});
-    writeManifest(plugins / "Test.Old", "Test.Old", {}, "1.0.0");
+    writeManifest(plugins / "Test.Old", "Test.Old", {}, false);
     assert(HIKARI::ResolveProjectModules({{"Test.Base", {}}}, project, builtin, resolved) && resolved.size() == 1u &&
            std::filesystem::equivalent(resolved[0].directory, plugins / "Test.Base"));
     const auto findOption = [&](const std::string& id) {
@@ -263,9 +267,31 @@ void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
            base.requiredBy == std::vector<std::string>{"Test.Kit"});
     assert(findOption("Test.Kit").source == HIKARI::ModuleSource::ManifestPath);
     const HIKARI::ProjectModuleOption old = findOption("Test.Old");
-    assert(!old.enabled && old.problem.find("built for HIKARI SDK 1.0.0") != std::string::npos);
+    assert(!old.enabled && old.problem.find("does not match this engine") != std::string::npos);
     assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Old", true, &message) &&
-           message.find("HIKARI SDK") != std::string::npos);
+           message.find("does not match this engine") != std::string::npos);
+    // 記録の中の一つでも host の表と違えば合わない。表に無いファイル名は必ず違う。
+    {
+        std::ofstream(HIKARI::MakeLibraryInterfacePath(plugins / "Test.Old" / "HIKARI_GameProject.dll"))
+            << "{\"formatVersion\": 1, \"files\": {\"include/HIKARI/Project/NoSuchHeader.h\": \"00\"}}";
+        const HIKARI::ProjectModuleOption changed = findOption("Test.Old");
+        assert(changed.problem.find("include/HIKARI/Project/NoSuchHeader.h") != std::string::npos);
+    }
+
+    // ソースの形のモジュール（Plugins/<id> に CMakeLists.txt）：一覧には構築前から出て、有効にできる。
+    // 読み込みは、項目の構築が Library/Plugins/<id> に包を作ってから。
+    const std::filesystem::path sourceModule = plugins / "Test.Source";
+    writeManifest(sourceModule, "Test.Source", {}, false, {});
+    std::ofstream(sourceModule / HIKARI::kModuleSourceMarker) << "# module source";
+    const HIKARI::ProjectModuleOption unbuilt = findOption("Test.Source");
+    assert(unbuilt.source == HIKARI::ModuleSource::ProjectSource && unbuilt.problem.empty());
+    assert(!HIKARI::ResolveProjectModules({{"Test.Source", {}}}, project, builtin, resolved, &message) &&
+           message.find("has not been built yet") != std::string::npos);
+    const std::filesystem::path builtPackage = project / HIKARI::kProjectBuiltPluginsDirectory / "Test.Source";
+    writeManifest(builtPackage, "Test.Source", {});
+    assert(HIKARI::ResolveProjectModules({{"Test.Source", {}}}, project, builtin, resolved) && resolved.size() == 1u &&
+           std::filesystem::equivalent(resolved[0].directory, builtPackage) &&
+           std::filesystem::equivalent(resolved[0].sourceDirectory, sourceModule));
     assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Base", false, &message) &&
            message.find("required by Test.Kit") != std::string::npos);
     assert(!HIKARI::SetProjectModuleEnabled(project, builtin, "Test.Nowhere", true, &message));
@@ -276,8 +302,8 @@ void ProjectModuleResolutionContracts(const std::filesystem::path& scratch) {
     assert(HIKARI::LoadProjectDescriptor(descriptorPath, reloaded) && reloaded.modules.size() == 1u &&
            reloaded.modules[0].id == "Test.Base" && reloaded.modules[0].manifest.empty());
     std::filesystem::remove_all(scratch);
-    std::cout << "project modules: dependency order, missing, cycle, id mismatch, Plugins folder, SDK version and "
-                 "enable/disable checked\n";
+    std::cout << "project modules: dependency order, missing, cycle, id mismatch, Plugins folder, interface "
+                 "record, source modules and enable/disable checked\n";
 }
 
 // 世界の物体ごとの名前・親・局所変換・型ごとの部品属性（同じ型の中の並びは保つ）。

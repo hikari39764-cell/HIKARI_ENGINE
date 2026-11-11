@@ -59,6 +59,9 @@ void NodeGraphView::SelectNode(uint64_t nodeId, bool toggle, bool additive) {
 
 void NodeGraphView::OpenMenu(MenuTarget target, const MATH::Vec2& position, uint64_t fromPinId) {
     menuTarget_ = target;
+    if (target != MenuTarget::Create) {
+        createMode_ = EditorNodeGraphCreateMode::Place;
+    }
     menuPosition_ = position;
     menuFromPinId_ = fromPinId;
     menuFilter_.fill('\0');
@@ -76,12 +79,25 @@ void NodeGraphView::BeginAction(const EditorNodeGraphDesc& desc, const Frame& fr
             dragPinId_ = pins_[frame.pin].pin->id;
         } else if (frame.node >= 0) {
             const uint64_t nodeId = desc.nodes[frame.node].id;
+            if (HitCollapse(desc.nodes[frame.node], nodes_[frame.node], frame.pointer)) {
+                outResult.toggledNodeId = nodeId;
+                return;
+            }
             SelectNode(nodeId, io.KeyCtrl, io.KeyShift);
             if (ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left)) {
-                outResult.activatedNodeId = nodeId;
-            } else if (frame.editable && Contains(selectedNodes_, nodeId)) {
+                // 題の帯の二度押しは名前を変える（変えられる節だけ）。他の所は「開く」。
+                const NodeLayout& layout = nodes_[frame.node];
+                if (frame.editable && desc.nodes[frame.node].editName != nullptr &&
+                    frame.pointer.y <= layout.position.y + layout.headerHeight) {
+                    BeginRename(desc.nodes[frame.node]);
+                } else {
+                    outResult.activatedNodeId = nodeId;
+                }
+            } else if (frame.editable && (desc.dragDescendants != 0u || Contains(selectedNodes_, nodeId))) {
                 action_ = Action::MoveNodes;
                 moveOffset_ = {};
+                grabbedNodeId_ = nodeId;
+                CollectDragSet(desc, nodeId);
             }
         } else if (frame.link >= 0) {
             const uint64_t linkId = desc.links[frame.link].id;
@@ -137,6 +153,29 @@ bool NodeGraphView::ContinueAction(const EditorNodeGraphDesc& desc, const Frame&
         }
         break;
     case Action::MoveNodes:
+        if (desc.dragDescendants != 0u) {
+            // 樹の拖動：位置は返さず、掴んだ節とポインタを毎フレーム返す。落とし先を決めるのは呼び手。
+            if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+                action_ = Action::None;
+                moveOffset_ = {};
+                break;
+            }
+            const bool down = ImGui::IsMouseDown(ImGuiMouseButton_Left);
+            if (down) {
+                moveOffset_.x += io.MouseDelta.x / canvas_.zoom;
+                moveOffset_.y += io.MouseDelta.y / canvas_.zoom;
+            }
+            if ((std::fabs(moveOffset_.x) + std::fabs(moveOffset_.y)) * canvas_.zoom >= kClickSlop) {
+                outResult.draggingNodeId = grabbedNodeId_;
+                outResult.dragPointer = {frame.pointer.x, frame.pointer.y};
+                outResult.dropped = down ? 0u : 1u;
+            }
+            if (!down) {
+                action_ = Action::None;
+                moveOffset_ = {};
+            }
+            break;
+        }
         if (ImGui::IsMouseDown(ImGuiMouseButton_Left)) {
             moveOffset_.x += io.MouseDelta.x / canvas_.zoom;
             moveOffset_.y += io.MouseDelta.y / canvas_.zoom;
@@ -196,10 +235,21 @@ bool NodeGraphView::ContinueAction(const EditorNodeGraphDesc& desc, const Frame&
 void NodeGraphView::HandleKeys(const EditorNodeGraphDesc& desc, const Frame& frame, EditorNodeGraphResult& outResult) {
     const ImGuiIO& io = ImGui::GetIO();
     if (action_ != Action::None || (!frame.hovered && !frame.focused) || io.WantTextInput ||
-        ImGui::IsPopupOpen(kMenuId)) {
+        ImGui::IsPopupOpen(kMenuId) || renamingNodeId_ != 0u) {
         return;
     }
     const bool hasNodes = !selectedNodes_.empty();
+    // Tab：選んでいる節の子を足す献立、Shift+Tab：挟む献立を、その節の横に開く。
+    if (ImGui::IsKeyPressed(ImGuiKey_Tab, false) && frame.editable && selectedNodes_.size() == 1u) {
+        OpenCreateMenu(desc, io.KeyShift ? EditorNodeGraphCreateMode::Wrap : EditorNodeGraphCreateMode::AddChild);
+    }
+    if (ImGui::IsKeyPressed(ImGuiKey_F2, false) && frame.editable && selectedNodes_.size() == 1u) {
+        for (uint32_t index = 0u; index < desc.nodeCount; ++index) {
+            if (desc.nodes[index].id == selectedNodes_.front() && desc.nodes[index].editName != nullptr) {
+                BeginRename(desc.nodes[index]);
+            }
+        }
+    }
     if (ImGui::IsKeyPressed(ImGuiKey_Delete, false) && frame.editable && (hasNodes || !selectedLinks_.empty())) {
         outResult.deleteRequested = 1u;
     }
@@ -207,6 +257,9 @@ void NodeGraphView::HandleKeys(const EditorNodeGraphDesc& desc, const Frame& fra
         if (ImGui::IsKeyPressed(ImGuiKey_F, false)) {
             // 選んだ節があればそこへ、無ければ全体へ視点を合わせる。
             FrameNodes(frame.size, hasNodes);
+        }
+        if (ImGui::IsKeyPressed(ImGuiKey_A, false)) {
+            FrameNodes(frame.size, false);
         }
         return;
     }
@@ -236,7 +289,109 @@ void NodeGraphView::HandleKeys(const EditorNodeGraphDesc& desc, const Frame& fra
     }
 }
 
+void NodeGraphView::AcceptPayload(const EditorNodeGraphDesc& desc, Frame& frame, EditorNodeGraphResult& outResult) {
+    if (desc.dropPayloadType == nullptr || !ImGui::BeginDragDropTarget()) {
+        return;
+    }
+    // 引いている間も図の上にいる扱い（落とし先の節を当てる）。
+    frame.hovered = true;
+    if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload(desc.dropPayloadType)) {
+        payloadText_.assign(static_cast<const char*>(payload->Data));
+        const ImGuiIO& io = ImGui::GetIO();
+        const MATH::Vec2 pointer =
+            NodeGraphCanvas::ScreenToCanvas(canvas_, frame.origin, {io.MousePos.x, io.MousePos.y});
+        BuildLayout(desc);
+        const int node = HitNode(pointer);
+        const int link = node < 0 ? HitLink(desc, pointer, 8.0f / canvas_.zoom) : -1;
+        outResult.droppedPayload = payloadText_.c_str();
+        outResult.dropPayloadNodeId = node >= 0 ? desc.nodes[node].id : 0u;
+        outResult.dropPayloadLinkId = link >= 0 ? desc.links[link].id : 0u;
+        outResult.dropPayloadPosition = {pointer.x, pointer.y};
+    }
+    ImGui::EndDragDropTarget();
+}
+
+void NodeGraphView::OpenCreateMenu(const EditorNodeGraphDesc& desc, EditorNodeGraphCreateMode mode) {
+    if ((desc.createModes & (1u << static_cast<uint32_t>(mode))) == 0u || selectedNodes_.size() != 1u) {
+        return;
+    }
+    // 選んでいる節の右横に開く。
+    for (uint32_t index = 0u; index < desc.nodeCount; ++index) {
+        if (desc.nodes[index].id == selectedNodes_.front()) {
+            const NodeLayout& node = nodes_[index];
+            const MATH::Vec2 corner = NodeGraphCanvas::CanvasToScreen(canvas_, frameOrigin_,
+                                                                      {node.position.x + node.size.x, node.position.y});
+            menuScreenPosition_ = {corner.x + 8.0f, corner.y};
+            placeMenu_ = true;
+            OpenMenu(MenuTarget::Create, {node.position.x + node.size.x, node.position.y}, 0u);
+            createMode_ = mode;
+            return;
+        }
+    }
+}
+
+void NodeGraphView::BeginRename(const EditorNodeGraphNode& node) {
+    renamingNodeId_ = node.id;
+    renameFocus_ = true;
+    renameBuffer_.fill('\0');
+    const std::string_view name = View(node.editName);
+    std::copy_n(name.data(), (std::min)(name.size(), renameBuffer_.size() - 1u), renameBuffer_.data());
+}
+
+void NodeGraphView::DrawRename(const EditorNodeGraphDesc& desc, const Frame& frame, EditorNodeGraphResult& outResult) {
+    if (renamingNodeId_ == 0u) {
+        if (action_ == Action::None && frame.node >= 0 && !ImGui::IsPopupOpen(kMenuId)) {
+            if (const std::string_view tooltip = View(desc.nodes[frame.node].tooltip); !tooltip.empty()) {
+                ImGui::BeginTooltip();
+                ImGui::PushTextWrapPos(ImGui::GetFontSize() * 28.0f);
+                ImGui::TextUnformatted(tooltip.data(), tooltip.data() + tooltip.size());
+                ImGui::PopTextWrapPos();
+                ImGui::EndTooltip();
+            }
+        }
+        return;
+    }
+    const auto found = std::find_if(desc.nodes, desc.nodes + desc.nodeCount,
+                                    [&](const EditorNodeGraphNode& node) { return node.id == renamingNodeId_; });
+    if (found == desc.nodes + desc.nodeCount) {
+        renamingNodeId_ = 0u;
+        return;
+    }
+    const NodeLayout& layout = nodes_[static_cast<size_t>(found - desc.nodes)];
+    const float zoom = canvas_.zoom;
+    const float line = ImGui::GetFontSize();
+    // 題の字の所（畳む三角と印の後ろ）に入力欄を重ねる。
+    float offset = kPadX;
+    offset += HasFlag(found->flags, EditorNodeGraphNodeFlag::Collapsible) ? line + kCollapseGap : 0.0f;
+    offset += found->icon != EditorNodeGraphIcon::None ? line + kCollapseGap : 0.0f;
+    const MATH::Vec2 topLeft = NodeGraphCanvas::CanvasToScreen(canvas_, frame.origin, layout.position);
+    ImGui::SetCursorScreenPos({topLeft.x + offset * zoom, topLeft.y + 1.0f});
+    ImGui::SetNextItemWidth((std::max)(80.0f, (layout.size.x - offset - kPadX) * zoom));
+    const bool focusing = renameFocus_;
+    if (renameFocus_) {
+        ImGui::SetKeyboardFocusHere();
+        renameFocus_ = false;
+    }
+    const bool entered = ImGui::InputText("##NodeGraphRename", renameBuffer_.data(), renameBuffer_.size(),
+                                          ImGuiInputTextFlags_EnterReturnsTrue | ImGuiInputTextFlags_AutoSelectAll);
+    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false)) {
+        renamingNodeId_ = 0u;
+    } else if (entered || ImGui::IsItemDeactivatedAfterEdit()) {
+        renameText_ = renameBuffer_.data();
+        outResult.renamedNodeId = renamingNodeId_;
+        outResult.renameText = renameText_.c_str();
+        renamingNodeId_ = 0u;
+    } else if (!focusing && !ImGui::IsItemActive()) {
+        // 何も変えずに外を押した。
+        renamingNodeId_ = 0u;
+    }
+}
+
 void NodeGraphView::DrawContextMenu(const EditorNodeGraphDesc& desc, EditorNodeGraphResult& outResult) {
+    if (placeMenu_) {
+        ImGui::SetNextWindowPos({menuScreenPosition_.x, menuScreenPosition_.y});
+        placeMenu_ = false;
+    }
     if (!ImGui::BeginPopup(kMenuId)) {
         return;
     }
@@ -251,6 +406,29 @@ void NodeGraphView::DrawContextMenu(const EditorNodeGraphDesc& desc, EditorNodeG
             outResult.duplicateRequested |= item("ui.nodeGraph.duplicate", "Ctrl+D");
             ImGui::Separator();
             outResult.deleteRequested |= item("ui.common.delete", "Del");
+        }
+        if (editable) {
+            constexpr std::pair<EditorNodeGraphCreateMode, const char*> kModes[] = {
+                {EditorNodeGraphCreateMode::AddChild, "ui.nodeGraph.addChild"},
+                {EditorNodeGraphCreateMode::Wrap, "ui.nodeGraph.wrapWith"},
+                {EditorNodeGraphCreateMode::Replace, "ui.nodeGraph.replaceWith"}};
+            bool separated = false;
+            for (const auto& [mode, key] : kModes) {
+                if ((desc.createModes & (1u << static_cast<uint32_t>(mode))) == 0u) {
+                    continue;
+                }
+                if (!separated) {
+                    ImGui::Separator();
+                    separated = true;
+                }
+                if (ImGui::MenuItem(TEXT::Localize(key).c_str(), mode == EditorNodeGraphCreateMode::AddChild ? "Tab"
+                                                                 : mode == EditorNodeGraphCreateMode::Wrap ? "Shift+Tab"
+                                                                                                           : nullptr)) {
+                    // この献立を閉じた後で、作る献立を開き直す。
+                    reopenMode_ = mode;
+                    reopen_ = true;
+                }
+            }
         }
         if (desc.nodeActionCount != 0u) {
             ImGui::Separator();
@@ -268,27 +446,52 @@ void NodeGraphView::DrawContextMenu(const EditorNodeGraphDesc& desc, EditorNodeG
         }
     } else {
         if (editable && desc.createItemCount != 0u) {
-            ImGui::TextDisabled("%s", TEXT::Localize("ui.nodeGraph.addNode").c_str());
+            ImGui::TextDisabled(
+                "%s", TEXT::Localize(createMode_ == EditorNodeGraphCreateMode::Wrap       ? "ui.nodeGraph.wrapWith"
+                                     : createMode_ == EditorNodeGraphCreateMode::Replace  ? "ui.nodeGraph.replaceWith"
+                                     : createMode_ == EditorNodeGraphCreateMode::AddChild ? "ui.nodeGraph.addChild"
+                                                                                          : "ui.nodeGraph.addNode")
+                          .c_str());
             if (ImGui::IsWindowAppearing()) {
                 ImGui::SetKeyboardFocusHere();
             }
             ImGui::SetNextItemWidth(220.0f);
-            ImGui::InputText("##NodeGraphFilter", menuFilter_.data(), menuFilter_.size());
+            // 絞り込んで Enter を押すと、最初に合った種類を選ぶ。
+            const bool pickFirst = ImGui::InputText("##NodeGraphFilter", menuFilter_.data(), menuFilter_.size(),
+                                                    ImGuiInputTextFlags_EnterReturnsTrue) &&
+                                   menuFilter_[0] != '\0';
             const std::string filter = TEXT::ToLowerAsciiCopy(menuFilter_.data());
+            const uint32_t modeBit = 1u << static_cast<uint32_t>(createMode_);
+            const auto shown = [&](const EditorNodeGraphMenuItem& entry) {
+                return entry.modes == 0u || (entry.modes & modeBit) != 0u;
+            };
             const auto choose = [&](uint32_t index) {
                 ImGui::PushID(static_cast<int>(index));
                 if (ImGui::MenuItem(desc.createItems[index].label != nullptr ? desc.createItems[index].label : "")) {
                     outResult.createItemIndex = static_cast<int32_t>(index);
                     outResult.createPosition = {menuPosition_.x, menuPosition_.y};
                     outResult.createFromPinId = menuFromPinId_;
+                    outResult.createMode = createMode_;
                 }
                 ImGui::PopID();
             };
             for (uint32_t index = 0u; index < desc.createItemCount; ++index) {
-                const std::string_view category = View(desc.createItems[index].category);
+                const EditorNodeGraphMenuItem& entry = desc.createItems[index];
+                const std::string_view category = View(entry.category);
+                if (!shown(entry)) {
+                    continue;
+                }
                 if (!filter.empty()) {
-                    // 絞り込み中は小見出しを開かずに、合う種類を並べる。
-                    if (TEXT::ToLowerAsciiCopy(View(desc.createItems[index].label)).find(filter) != std::string::npos) {
+                    // 絞り込み中は小見出しを開かずに、名前か手がかりの字に合う種類を並べる。
+                    if (TEXT::ToLowerAsciiCopy(View(entry.label)).find(filter) != std::string::npos ||
+                        TEXT::ToLowerAsciiCopy(View(entry.keywords)).find(filter) != std::string::npos) {
+                        if (pickFirst && outResult.createItemIndex < 0) {
+                            outResult.createItemIndex = static_cast<int32_t>(index);
+                            outResult.createPosition = {menuPosition_.x, menuPosition_.y};
+                            outResult.createFromPinId = menuFromPinId_;
+                            outResult.createMode = createMode_;
+                            ImGui::CloseCurrentPopup();
+                        }
                         choose(index);
                     }
                 } else if (category.empty()) {
@@ -300,7 +503,7 @@ void NodeGraphView::DrawContextMenu(const EditorNodeGraphDesc& desc, EditorNodeG
                            ImGui::BeginMenu(desc.createItems[index].category)) {
                     // 小見出しは、その名前が最初に出た所に一度だけ作り、同じ名前の種類を全部入れる。
                     for (uint32_t member = index; member < desc.createItemCount; ++member) {
-                        if (View(desc.createItems[member].category) == category) {
+                        if (View(desc.createItems[member].category) == category && shown(desc.createItems[member])) {
                             choose(member);
                         }
                     }
@@ -309,13 +512,13 @@ void NodeGraphView::DrawContextMenu(const EditorNodeGraphDesc& desc, EditorNodeG
             }
             ImGui::Separator();
         }
-        // 引脚から線を引いて開いた献立は、節を作るためだけのもの。
-        if (menuFromPinId_ == 0u) {
+        // 引脚から線を引いて開いた献立と、選んだ節に対する作る献立は、節を作るためだけのもの。
+        if (menuFromPinId_ == 0u && menuTarget_ == MenuTarget::Canvas) {
             if (editable && item("ui.nodeGraph.paste", "Ctrl+V") != 0u) {
                 outResult.pasteRequested = 1u;
                 outResult.pastePosition = {menuPosition_.x, menuPosition_.y};
             }
-            if (item("ui.nodeGraph.frameAll", "F") != 0u) {
+            if (item("ui.nodeGraph.frameAll", "A") != 0u) {
                 framed_ = false;
             }
         }
@@ -355,16 +558,20 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
     Frame frame{};
     const ImVec2 origin = ImGui::GetCursorScreenPos();
     frame.origin = {origin.x, origin.y};
+    frameOrigin_ = frame.origin;
     frame.size = {size.x, size.y};
+    // 名前の入力欄を上に重ねられるように。
+    ImGui::SetNextItemAllowOverlap();
     ImGui::InvisibleButton("NodeGraphCanvas", size,
                            ImGuiButtonFlags_MouseButtonLeft | ImGuiButtonFlags_MouseButtonRight |
                                ImGuiButtonFlags_MouseButtonMiddle);
     frame.hovered = ImGui::IsItemHovered();
+    AcceptPayload(desc, frame, outResult);
     frame.focused = ImGui::IsItemFocused();
     frame.editable = desc.readOnly == 0u;
     const ImGuiIO& io = ImGui::GetIO();
     if (frame.hovered && io.MouseWheel != 0.0f) {
-        NodeGraphCanvas::ZoomAt(canvas_, {io.MousePos.x, io.MousePos.y}, frame.origin, io.MouseWheel);
+        NodeGraphCanvas::ZoomAt(canvas_, {io.MousePos.x, io.MousePos.y}, frame.origin, io.MouseWheel, kMinZoom);
     }
 
     BuildLayout(desc);
@@ -374,10 +581,12 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
         framed_ = frame.size.x == framedSize_.x && frame.size.y == framedSize_.y;
         framedSize_ = frame.size;
     }
+    FollowNode(desc, frame);
 
     frame.pointer = NodeGraphCanvas::ScreenToCanvas(canvas_, frame.origin, {io.MousePos.x, io.MousePos.y});
     if (frame.hovered) {
-        frame.pin = HitPin(frame.pointer, kPinHitRadius / canvas_.zoom);
+        // 節を拖動している間は、落とし先の節を当てる（引脚は見ない）。
+        frame.pin = action_ == Action::MoveNodes ? -1 : HitPin(frame.pointer, kPinHitRadius / canvas_.zoom);
         frame.node = frame.pin < 0 ? HitNode(frame.pointer) : -1;
         frame.link = frame.pin < 0 && frame.node < 0 ? HitLink(desc, frame.pointer, 6.0f / canvas_.zoom) : -1;
     }
@@ -393,7 +602,12 @@ void NodeGraphView::Draw(const char* stableId, const EditorNodeGraphDesc& desc, 
         nodes_[index].selected = Contains(selectedNodes_, desc.nodes[index].id);
     }
     Paint(desc, frame);
+    DrawRename(desc, frame, outResult);
     DrawContextMenu(desc, outResult);
+    if (reopen_) {
+        reopen_ = false;
+        OpenCreateMenu(desc, reopenMode_);
+    }
     ImGui::EndChild();
 
     if (commitMove) {

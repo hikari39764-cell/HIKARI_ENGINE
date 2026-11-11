@@ -1,6 +1,7 @@
 #include "Editor/Style/HIKARI_EditorWidgets.h"
 #include "Editor/Style/HIKARI_EditorGlyphs.h"
 #include "Core/Text/HIKARI_Localization.h"
+#include "Core/Text/HIKARI_OwnedText.h"
 #include "Editor/Project/HIKARI_GameProjectEditorWorkspaceHost.h"
 
 #include <string>
@@ -89,6 +90,8 @@ void GameProjectEditorWorkspaceHost::DrawModulePanels(AssetDatabase& database, A
     ui_->SetAssets(database, assets);
     ui_->BeginFrame("scene");
     ui_->ClearDockRegions();
+    // 場景の作業区のモジュールの窓は、どのモジュールの物かを問わず全部の文字表から引く。
+    ui_->SetTextOwner({});
     extensions_.DrawPanels(*ui_);
     ui_->EndFrame();
 }
@@ -161,8 +164,9 @@ void GameProjectEditorWorkspaceHost::Draw(EditorWorkspaceHost& host, float unsca
     }
     registry_.ProcessPending();
     ui_->SetWorkspaceId(registry_.GetActiveWorkspaceId());
+    const GameProjectSceneViewportUse viewport = ActiveSceneViewport();
     ui_->DrawDockSpace(resetLayout_ || host.ConsumeReset(EditorWorkspaceId::Project),
-                       ActiveWorkspaceRequestsSceneViewport());
+                       viewport.requested ? std::optional(viewport.region) : std::nullopt);
     resetLayout_ = false;
     DrawToolbar(host);
     DrawClosePrompt();
@@ -207,8 +211,8 @@ bool GameProjectEditorWorkspaceHost::IsAvailable() const noexcept {
     return registry_.GetWorkspaceCount() != 0u || !moduleFailureMessage_.empty();
 }
 
-bool GameProjectEditorWorkspaceHost::ActiveWorkspaceRequestsSceneViewport() const noexcept {
-    return registry_.ActiveWorkspaceRequestsSceneViewport();
+GameProjectSceneViewportUse GameProjectEditorWorkspaceHost::ActiveSceneViewport() const noexcept {
+    return registry_.ActiveSceneViewport();
 }
 
 bool GameProjectEditorWorkspaceHost::HasUnsavedChanges() const noexcept {
@@ -216,7 +220,7 @@ bool GameProjectEditorWorkspaceHost::HasUnsavedChanges() const noexcept {
 }
 
 std::string GameProjectEditorWorkspaceHost::PrepareSceneViewportWindow() {
-    if (ui_ && ActiveWorkspaceRequestsSceneViewport()) {
+    if (ui_ && ActiveSceneViewport().requested) {
         ui_->PrepareSceneViewportWindow();
     }
     return "Project Scene View/" + std::string(registry_.GetActiveWorkspaceId());
@@ -232,7 +236,7 @@ const GameProjectEditorWorkspaceRegistry& GameProjectEditorWorkspaceHost::Regist
 std::string GameProjectEditorWorkspaceHost::ModuleLabel(std::string_view moduleId) const {
     for (const auto& [id, name] : moduleNames_) {
         if (id == moduleId)
-            return TEXT::Localize("shell.module") + "  " + name;
+            return TEXT::Localize("shell.module") + "  " + std::string(TEXT::TranslateOwnedText(moduleId, name));
     }
     return TEXT::Localize("shell.projectModule");
 }
@@ -242,13 +246,17 @@ void GameProjectEditorWorkspaceHost::ListWorkspaces(EditorWorkspaceHost& host, c
     std::string_view module{};
     for (size_t i = 0; i < registry_.GetWorkspaceCount(); ++i) {
         const auto info = registry_.GetWorkspaceInfo(i);
-        if (filter && filter[0] && info.displayName.find(filter) == std::string_view::npos)
+        const std::string_view shown = TEXT::TranslateOwnedText(info.moduleId, info.displayName);
+        if (filter && filter[0] && info.displayName.find(filter) == std::string_view::npos &&
+            shown.find(filter) == std::string_view::npos)
             continue;
         if (info.moduleId != module) {
             module = info.moduleId;
             ImGui::SeparatorText(ModuleLabel(module).c_str());
         }
-        if (drawItem(info, info.active && host.IsActive(EditorWorkspaceId::Project))) {
+        GameProjectEditorWorkspaceInfo item = info;
+        item.displayName = shown;
+        if (drawItem(item, info.active && host.IsActive(EditorWorkspaceId::Project))) {
             requestedWorkspace_.assign(info.workspaceId);
             (void)host.RequestOpen({EditorWorkspaceId::Project});
         }
@@ -285,7 +293,10 @@ void GameProjectEditorWorkspaceHost::DrawToolbar(EditorWorkspaceHost& host) {
     GameProjectEditorWorkspaceInfo active{};
     for (size_t i = 0; i < registry_.GetWorkspaceCount() && !active.active; ++i)
         active = registry_.GetWorkspaceInfo(i);
-    if (ui_->BeginToolbar(active.active ? active.displayName : std::string_view{})) {
+    // 作業区が描く字は、その作業区のモジュールの文字表で引く。
+    ui_->SetTextOwner(active.moduleId);
+    if (ui_->BeginToolbar(active.active ? TEXT::TranslateOwnedText(active.moduleId, active.displayName)
+                                        : std::string_view{})) {
         if (IconButton(EditorGlyph::Scene, "backToScene", EditorButtonTone::Quiet, {},
                        TEXT::Localize("menu.workspace.scene").c_str()))
             (void)host.RequestOpen({EditorWorkspaceId::Scene});

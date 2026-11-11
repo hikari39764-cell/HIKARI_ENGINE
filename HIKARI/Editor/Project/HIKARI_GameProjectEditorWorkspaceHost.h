@@ -46,10 +46,10 @@ public:
     void DrawWorkspaceEntries(EditorWorkspaceHost& host, const char* filter);
     void DrawWorkspaceMenuItems(EditorWorkspaceHost& host);
     void Draw(EditorWorkspaceHost& host, float unscaledDeltaSeconds, AssetDatabase&, AssetRegistry&);
-    bool ActiveWorkspaceRequestsSceneViewport() const noexcept;
+    GameProjectSceneViewportUse ActiveSceneViewport() const noexcept;
     bool HasUnsavedChanges() const noexcept;
-    // 作業区ごとの視口窓をその作業区のドックへ入れる準備をし、窓の固定 ID を返す。視口窓を作業区の間で共有すると、
-    // 別の作業区のドックに入ったまま隠れて残り、他の作業区では表示されなくなる。
+    // 作業区ごとの視口窓をその作業区のドック（sceneViewportRegion）へ入れる準備をし、窓の固定 ID を返す。視口窓を
+    // 作業区の間で共有すると、別の作業区のドックに入ったまま隠れて残り、他の作業区では表示されなくなる。
     std::string PrepareSceneViewportWindow();
     void Shutdown() noexcept;
 

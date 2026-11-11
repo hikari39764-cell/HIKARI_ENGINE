@@ -60,7 +60,7 @@ try {
     Test-Cancellation
     $result.build = 'Running'
     Write-Result
-    & $buildScript -Project $workspaceDirectory -SdkRoot $sdkDirectory -Preset editor-release
+    & $buildScript -Project $workspaceDirectory -SdkRoot $sdkDirectory -Preset editor-release -SkipSourceModules
     if ($LASTEXITCODE -ne 0) { throw "Project compilation failed with exit code $LASTEXITCODE." }
     $result.build = 'Passed'
     $result.message = 'Compilation passed. Behavior has not been verified.'

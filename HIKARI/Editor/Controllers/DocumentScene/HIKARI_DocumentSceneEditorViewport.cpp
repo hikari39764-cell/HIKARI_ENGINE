@@ -384,8 +384,22 @@ void DocumentSceneEditorController::DrawGameViewportWindow(DocumentSceneBase& sc
         static_cast<int32_t>(std::lround(imageOrigin.x + imageSize.x)),
         static_cast<int32_t>(std::lround(imageOrigin.y + imageSize.y)),
     };
-    playSession.UpdateEmbeddedViewportInput(embeddedInputRegion,
-                                            viewportImageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left));
+    // 試玩中の項目の工作区（行動樹など、場景を見ながら別の物を編集する所）では、Alt + クリックで物体を選ぶ
+    // （何を観察するかを決める）。このクリックは游戏へ渡さない。
+    const bool playPick = playSession.IsRunning() && workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Project) &&
+                          viewportImageHovered && ImGui::GetIO().KeyAlt && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+    if (playPick) {
+        // 試玩中の画は游戏の相机で描かれている（編集の相机ではない）。
+        const RENDER3D::ResolvedCameraFrame& frame = scene.GetResolvedCameraFrame();
+        const ImVec2 mouse = ImGui::GetIO().MousePos;
+        if (const SceneObjectId picked = viewportSelectionService_.PickObject(
+                frame.valid ? frame.camera : scene.GetCamera(), sceneViewportRect, {mouse.x, mouse.y});
+            picked.value != 0u) {
+            SelectViewportObjects(scene, {picked}, EditorObjectSelectionMode::Replace);
+        }
+    }
+    playSession.UpdateEmbeddedViewportInput(
+        embeddedInputRegion, viewportImageHovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !playPick);
 
     // 機位を選んでいる間は、その機位の画面を右下の小窓に出す（その機位から見ている時、演出の画面、試玩中は出さない）。
     // 小窓の上のクリックは選択や手柄に使わない。
