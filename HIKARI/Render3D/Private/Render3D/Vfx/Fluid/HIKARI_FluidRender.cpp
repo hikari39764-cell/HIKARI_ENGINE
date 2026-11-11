@@ -1,9 +1,11 @@
 #include "Render3D/Vfx/Fluid/HIKARI_FluidRender.h"
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstring>
 #include <optional>
+#include <utility>
 
 #include <d3dx12.h>
 
@@ -13,6 +15,8 @@
 #include "Gfx/HIKARI_PixProfiler.h"
 #include "Render3D/Color/HIKARI_ViewExposure.h"
 #include "Render3D/Lighting/Atmosphere/HIKARI_AtmosphereParameters.h"
+#include "Render3D/Lighting/HIKARI_LocalLightList.h"
+#include "Render3D/Lighting/HIKARI_LocalLightSemantics.h"
 #include "Render3D/Lighting/HIKARI_SceneEnvironment.h"
 #include "Render3D/Lighting/HIKARI_VolumetricLightingStage.h"
 #include "Render3D/Lighting/HIKARI_SkyRenderer.h"
@@ -51,8 +55,11 @@ struct alignas(16) RenderConstants {
     float shadowBias[4];
     LIGHTING::CloudSolarVisibilityGpuData solarTable{};
     RenderDomainGpu domains[kMaximumRenderedFluidDomains];
+    // 烟を照らす局所光：x 数。記録は表面・霧と同じ形（強さは前露光済み、影・配光・クッキーの番号は外す）。
+    uint32_t localLightCount[4]{};
+    LIGHTING::LocalLightGpuData localLights[kMaximumFluidLocalLights]{};
 };
-static_assert(sizeof(RenderConstants) == 1840u);
+static_assert(sizeof(RenderConstants) == 2496u);
 
 void Set4(float (&out)[4], float x, float y, float z, float w) {
     out[0] = x;
@@ -129,6 +136,52 @@ float FarthestCorner(std::span<const FluidRenderDomain> domains, const MATH::Vec
     }
     return (std::min)(farthest, 5000.0f);
 }
+
+// 烟を照らす局所光を選んで詰める：描く域の外接球に届く灯を、最も近い域の近くでの明るさ（光度 / 距離²、域の中の灯は
+// 0.5 m として）の順に kMaximumFluidLocalLights 個まで。表面と同じ記録（BuildLocalLightGpuData）から、烟が使わない影・
+// 配光・クッキーの番号を外し、強さに前露光を掛ける。戻り値は詰めた数。
+uint32_t PackLocalLights(const LIGHTING::SceneLightingSet& lighting, std::span<const FluidRenderDomain> domains,
+                         float preExposure, LIGHTING::LocalLightGpuData (&out)[kMaximumFluidLocalLights]) {
+    struct Candidate {
+        float weight = 0.0f;
+        const LIGHTING::SceneLightProvider* light = nullptr;
+    };
+    std::array<Candidate, kMaximumFluidLocalLights> chosen{};
+    uint32_t count = 0u;
+    for (const LIGHTING::SceneLightProvider& light : lighting.lights) {
+        if (!light.enabled || !(light.intensity > 0.0f) || !LIGHTING::IsLocalLightUploadable(light))
+            continue;
+        const float reach = LIGHTING::ResolveLocalLightInfluenceRadius(light);
+        float nearest = -1.0f;
+        for (const FluidRenderDomain& domain : domains) {
+            const float h = domain.layout.cellSize;
+            const float radius = 0.5f * MATH::Length(MATH::Vec3{static_cast<float>(domain.layout.cells[0]) * h,
+                                                                static_cast<float>(domain.layout.cells[1]) * h,
+                                                                static_cast<float>(domain.layout.cells[2]) * h});
+            const float gap = MATH::Length(light.position - domain.position) - radius;
+            if (gap < reach && (nearest < 0.0f || gap < nearest))
+                nearest = (std::max)(gap, 0.5f);
+        }
+        if (nearest < 0.0f)
+            continue;
+        Candidate candidate{light.intensity / (nearest * nearest), &light};
+        for (uint32_t index = 0u; index < count; ++index)
+            if (candidate.weight > chosen[index].weight)
+                std::swap(candidate, chosen[index]);
+        if (count < kMaximumFluidLocalLights)
+            chosen[count++] = candidate;
+    }
+    for (uint32_t index = 0u; index < count; ++index) {
+        LIGHTING::LocalLightGpuData record = LIGHTING::BuildLocalLightGpuData(*chosen[index].light);
+        record.colorIntensity.w *= preExposure;
+        record.kind &= 0xffu;
+        const auto type = static_cast<LIGHTING::LocalLightType>(record.kind);
+        if (type == LIGHTING::LocalLightType::Point || type == LIGHTING::LocalLightType::Spot)
+            record.shapeTangent.w = 0.0f;
+        out[index] = record;
+    }
+    return count;
+}
 } // namespace
 
 bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& view,
@@ -178,6 +231,9 @@ bool FluidRenderer::Render(const GFX::Context& context, const FluidRenderView& v
     Set4(constants.shadowBias, bias.x, bias.y, bias.z, bias.w);
     for (size_t index = 0u; index < count; ++index)
         constants.domains[index] = PackDomain(domains[index], view);
+    if (view.lighting != nullptr)
+        constants.localLightCount[0] =
+            PackLocalLights(*view.lighting, domains.first(count), view.preExposure, constants.localLights);
     const auto allocation = upload.Allocate(sizeof(constants));
     if (!allocation)
         return false;

@@ -135,6 +135,8 @@ std::string MakeAgentsGuide(const AgentProjectFileInputs& inputs, const std::str
   决定注入的烟色（发光和散射都乘这个颜色）。火与爆炸：流体域开 `combustion`（`ignitionTemperature`、`burnRate`、
   `fuelPerBurn`、`heatPerBurn`、`smokePerBurn`、`expansionPerBurn`），流体源的 `fuelFraction` 设为 1 注入燃料、
   `temperature` 高于点燃温度；燃料燃烧放热、生出会发光的高温烟灰并膨胀，燃料烧完火自己熄灭。爆炸用 burst 一次注入燃料（burst 的数量就是每格注入的量，3～4；膨胀 0.3 左右）。
+  流体域里没有烟、也没有出烟的东西约半秒后自动休眠，不花时间；有烟时开销只跟烟占的范围有关，所以场地的烟雾域可以做大。
+  烟会被点光、聚光等局部光源照亮，但这些灯对烟不带阴影（隔着墙也会照到）。
 - 对话：`dialogue.new_asset` → `dialogue.edit`（传整份定义，`dialogue.query` 返回当前定义）→ `dialogue.save`。
 - 界面文字（HUD 等）：`ui.create`。`scene.capture_views` 只画 3D 场景，界面要在 `play.background` 的截图里看。引擎不自带字体，项目里没有字体资产时文字不显示（结果里有 `warning`），
   先用 `asset.import` 导入 .ttf/.otf，或请用户提供字体。

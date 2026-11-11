@@ -218,7 +218,8 @@ FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& auth
                                                  const FluidDomainResources& resources, uint32_t sourceCount,
                                                  double step, uint64_t stepIndex, const MATH::Vec3& up,
                                                  const MATH::Vec3& inertia, const MATH::Vec3& frameWind,
-                                                 uint32_t interactionCount, uint32_t flags) noexcept {
+                                                 const FluidPressureWindow& window, uint32_t interactionCount,
+                                                 uint32_t flags) noexcept {
     FluidDomainConstantsGpu constants{};
     constants.size[0] = resources.layout.cells[0];
     constants.size[1] = resources.layout.cells[1];
@@ -257,6 +258,11 @@ FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& auth
     constants.frameWind[1] = frameWind.y;
     constants.frameWind[2] = frameWind.z;
     constants.frameWind[3] = FluidOccupiedDensity(authored.extinction, resources.layout.cellSize);
+    if (!window.empty) {
+        std::copy(std::begin(window.origin), std::end(window.origin), constants.pressureOrigin);
+        std::copy(std::begin(window.size), std::end(window.size), constants.pressureSize);
+        constants.pressureOrigin[3] = window.closedFaces;
+    }
     return constants;
 }
 

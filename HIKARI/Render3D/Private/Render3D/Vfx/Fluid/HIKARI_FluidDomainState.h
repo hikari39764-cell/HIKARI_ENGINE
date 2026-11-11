@@ -40,6 +40,22 @@ struct SourceMotion {
     MATH::Quat rotation = MATH::Quat::Identity();
 };
 
+// このフレームに烟があり得る砖块：回読の活動を 1 砖块広げたものと、烟を入れる源・注入の届く範囲（ComputeFluidNeededBricks）。
+// 疎な域の住まい・域の休眠・圧力を解く窓が同じ見積もりを使う。
+struct FluidNeededBricks {
+    // 砖块ごとに 0 か 1（BrickCount 個）。
+    std::vector<uint8_t> bricks{};
+    // 全部（預熱、粒子の注入を受ける域、回読の形が合わない）。
+    bool everything = false;
+    // このフレームに烟を入れる源・注入がある（everything も含む）。
+    bool fed = false;
+    // 要る砖块が 1 つでもある。
+    bool any = false;
+    // 要る砖块を囲む箱（砖块、両端を含む。any が偽なら使わない）。
+    uint32_t low[3]{};
+    uint32_t high[3]{};
+};
+
 struct FluidDomainState {
     PARTICLES::ParticleEmitterInstanceKey key{};
     FluidDomainResources resources{};
@@ -74,6 +90,15 @@ struct FluidDomainState {
     // 回読の砖块ごとの活動（1：烟がある、または最後の子步で動いた。烟の 26 近傍、源・注入の届く砖块）。疎な域の住まいが
     // 読む。作り直し・再起動で全部 0。
     std::vector<uint8_t> activity{};
+    FluidNeededBricks needed{};
+    // 域の休眠：烟が無く、烟を入れるものも無い間は解かず描かない。lastFedStep は烟を入れる源・注入が最後にあった時点の
+    // 子步数（それ以後の回読が空なら烟は残っていない）、quietSeconds は静かな状態が続いたゲーム時間。
+    bool asleep = false;
+    uint64_t lastFedStep = 0u;
+    float quietSeconds = 0.0f;
+    // このフレームの圧力を解く範囲（全部の子步が同じ窓）と、域の格の数に対するその割合（次のフレームの予算の見積もりが読む）。
+    FluidPressureWindow window{};
+    float pressureFraction = 1.0f;
     // 解く空間（世界空間の域は作り直した時の変換に固定、局所空間の域は毎フレームの変換）。
     MATH::Vec3 framePosition{};
     MATH::Quat frameRotation = MATH::Quat::Identity();
@@ -111,9 +136,9 @@ struct FluidDomainState {
 };
 
 // 域の 1 フレームの解算の見積もり（単位は百万格・子步）：子步の数（フレームの時間 / 子步、maxSubsteps まで）×（活動する
-// 砖块の割合 × 2（平流・力・注入）+ V 循環 × 0.5（圧力は域全体を解く））× 格の数。
-double EstimateFluidSolveCost(const FluidGridLayout& layout, float activeFraction, double frameSeconds,
-                              double stepSeconds, uint32_t maxSubsteps, uint32_t vCycles) noexcept;
+// 砖块の割合 × 2（平流・力・注入）+ V 循環 × 0.5 × 圧力を解く範囲の割合 pressureFraction）× 格の数。
+double EstimateFluidSolveCost(const FluidGridLayout& layout, float activeFraction, float pressureFraction,
+                              double frameSeconds, double stepSeconds, uint32_t maxSubsteps, uint32_t vCycles) noexcept;
 
 // 予算の段 0〜2 ごとの見積もりと、割り振った段・止めたか（前のフレームの値から始める）。
 struct FluidBudgetEntry {

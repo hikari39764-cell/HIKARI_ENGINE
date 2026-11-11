@@ -22,6 +22,8 @@ inline constexpr uint32_t kMaximumRenderedFluidDomains = 8u;
 // 域がこの数以下の時は 4 枠の步进（MarchPS）、多い時は 8 枠の步进（MarchWidePS）で描く（Render3D_FluidVolume.hlsl の
 // HIKARI_FLUID_COMPACT_DOMAINS）。
 inline constexpr uint32_t kCompactMarchFluidDomains = 4u;
+// 烟を照らす局所光の上限（描く域に届く灯を、域の近くでの明るさの順に選ぶ。Render3D_FluidVolume.hlsl の gFluidLocalLights）。
+inline constexpr uint32_t kMaximumFluidLocalLights = 8u;
 
 // 描く域 1 つ（今の密度と速度、光照体積、格子と世界の位置、外観）。
 struct FluidRenderDomain {
@@ -99,6 +101,8 @@ private:
     // 体積霧の合成へ渡す烟の覆い（全解像度）：x 烟の平均距離 [m]、y 不透明度。
     static constexpr DXGI_FORMAT kCoverageFormat = DXGI_FORMAT_R16G16_FLOAT;
     static constexpr uint32_t kNoiseSize = 64u;
+    // 細部のノイズの段の数（64、32、16、8）。画素がノイズの texel より大きい距離では粗い段を読む（DetailedDensity）。
+    static constexpr uint32_t kNoiseMips = 4u;
     // 透明物体の相機体積：画面 16 px ごと、奥行き 32 層（near から対数）、各層 2 標本。
     static constexpr uint32_t kCameraVolumeTile = 16u;
     static constexpr uint32_t kCameraVolumeSlices = 32u;

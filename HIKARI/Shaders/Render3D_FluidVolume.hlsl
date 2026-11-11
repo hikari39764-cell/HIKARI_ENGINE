@@ -5,6 +5,7 @@
 // 場面へ重ねる：C·T + S）→ CoveragePS（烟の平均距離と不透明度を全解像度で書き、体積霧の合成へ渡す）。時間方向の履歴は
 // 持たない（抖动は画素に固定してあり、静止した相機では毎フレーム同じ絵になる）。
 #include "Include/Lighting/HIKARI_CloudSolarVisibility.hlsli"
+#include "Include/Lighting/HIKARI_LocalLightContract.hlsli"
 #include "Include/Lighting/HIKARI_ShadowCascadeContract.hlsli"
 #include "Include/Lighting/HIKARI_VolumetricCamera.hlsli"
 #include "Include/Sky/HIKARI_VolumetricCloudNoise.hlsli"
@@ -35,6 +36,10 @@ cbuffer FluidRenderCB : register(b0)
     float4 gShadowBias;
     HikariCloudSolarVisibilityData gSolarTable; // SolarVisibilityCS が書く烟の影の表の列と深さ（他の pass は読まない）
     HikariFluidDomain gDomains[HIKARI_FLUID_MAX_DOMAINS];
+    // 烟を照らす局所光（x 数、最大 8）。表面・霧と同じ記録で、強さは前露光済み。影・配光・クッキーは受けない
+    // （SolarVisibilityCS では 0 個）。
+    uint4 gFluidLocalLightCount;
+    HikariLocalLightGpuData gFluidLocalLights[8];
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -157,12 +162,15 @@ float SceneSunVisibility(float3 world)
 // 細部を足した密度：平均を変えずに模様で揺らす。薄い所（細部の模様 1 つで光学的な厚さが 1 に届かない密度
 // 1 / (消光 × detailScale) より下）ほど大きく揺らして綿のように崩し、濃い芯は 3 割だけ揺らす。体積雲のように引いて削ると
 // 大きな場地の烟（ほとんど「薄い」側）の光学的な厚さが半分になり、厚い球壳の向こうが透けた。pixelSize は画素の大きさ [m]
-// （負なら細部なし）。ノイズの 1 texel が画素より細かいと模様が揺らぎキャッシュも外れるので、その距離で読まない。
+// （負なら細部なし）。ノイズの 1 texel（1 周期 64 texel）が画素より細かい距離では、その分だけ粗い段（mip）を読む：模様は
+// 残り、画素より細かい成分だけが消える（段 0 のまま読むと模様が揺らぎ、読まずに消すと少し離れた烟がのっぺりした塊に
+// なる）。段 2（16³、模様 1 つに 4 texel）より先は模様がぼやけて標本の値打ちが無いので、段 3 までに強さを 0 へ落とす。
 float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 grid, float pixelSize)
 {
     if (pixelSize < 0.0f)
         return rho;
-    const float strength = domain.optics.w * saturate(2.0f - pixelSize * domain.detail.x * 64.0f);
+    const float lod = log2(max(pixelSize * domain.detail.x * 64.0f, 1.0f));
+    const float strength = domain.optics.w * saturate(3.0f - lod);
     if (strength <= 0.0f)
         return rho;
     // 細部の模様を流れに沿って運ぶ（位相を半周期ずらした 2 枚を交互に溶かす）。周期が長いと流れの剪断で模様が
@@ -179,14 +187,15 @@ float DetailedDensity(HikariFluidDomain domain, float rho, float3 flow, float3 g
     const float3 drift = flow * period;
     const float driftLength = length(drift);
     const float3 carried = drift * min(1.0f, 0.25f / max(domain.detail.x * driftLength, 1.0e-6f));
-    const float n0 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase0) * domain.detail.x, 0);
-    const float n1 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase1) * domain.detail.x + 0.37f, 0);
+    const float n0 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase0) * domain.detail.x, lod);
+    const float n1 = gNoise.SampleLevel(gLinearWrap, (local - carried * phase1) * domain.detail.x + 0.37f, lod);
     const float noise = lerp(n0, n1, weight);
     const float thin = 4.0f * domain.detail.x / max(domain.look.w, 1.0e-4f);
     const float edge = saturate(1.0f - rho / thin);
     const float wobble = smoothstep(0.15f, 0.85f, noise) * 2.0f - 1.0f;
     // 4 倍細かい模様は薄い縁だけを削る：格の大きさの塊（三線形補間の折れ目）が輪郭に出るのを崩し、外から見た縁を締める。
-    // ずれはその模様の大きさまで、画素より細かくなる距離では読まない（粗い模様と同じ約束）。
+    // ずれはその模様の大きさまで。こちらは画素より細かくなる距離では読まない（近くの縁だけの仕上げで、粗い段で読み続けると
+    // 標本が倍になる割に粒が増えるだけだった：KnightBoss の步进が約 4 → 5.4 ms）。
     const float fineFrequency = domain.detail.x * 4.0f;
     const float fineStrength = saturate(2.0f - pixelSize * fineFrequency * 64.0f) * edge;
     float fine = 0.0f;
@@ -247,11 +256,24 @@ void AccumulateDomain(HikariFluidDomain domain, Texture3D<float4> density, Textu
                                                                    transmittance.x * SceneSunVisibility(world), openness);
     const float3 ambient = gAmbient.rgb * (domain.optics.z * HikariFluidSkyVisibility(transmittance.y, domain.optics.y,
                                                                                        domain.optics.x, openness));
+    // 局所光（点・スポット・管・長方形）：表面と同じ減衰の式の照度を、太陽と同じ散乱（位相関数と多重散乱の近似）で受ける
+    // （同じ照度なら太陽に照らされた烟と同じ明るさ）。灯への烟の自己遮蔽は光照体積に無いので、近くの遮り（6 方向の
+    // 光学的な厚さの平均）を灯への厚さの代わりにして塊の奥を暗くする。場面の影は受けない。
+    float3 local = 0.0f.xxx;
+    for (uint index = 0u; index < gFluidLocalLightCount.x; ++index)
+    {
+        HikariLocalLightSample lightSample;
+        if (HikariResolveLocalLightSample(gFluidLocalLights[index], world, lightSample))
+            local += lightSample.radiance *
+                     HikariFluidSunScattering(dot(viewDirection, lightSample.directionToLight), domain.optics.x,
+                                              domain.optics.y, exp(-tau.z), openness);
+    }
     const float temperature = cell.w;
     // 格ごとの色は散乱色と発光の両方に掛ける（同じ域で赤と青の発光する烟が混ざらずに並ぶ）。
     const float3 tint = SmokeTint(domain, smoke);
     sigma += extinction;
-    emitted += tint * (extinction * domain.look.rgb * (sun + ambient) + rho * HikariFluidEmission(domain, temperature));
+    emitted += tint * (extinction * domain.look.rgb * (sun + ambient + local) +
+                       rho * HikariFluidEmission(domain, temperature));
 }
 
 void Medium(float3 world, float3 viewDirection, float pixelSize, uint slots, out float sigma, out float3 emitted)
@@ -453,10 +475,19 @@ void MarchDomains(float3 origin, float3 direction, DomainSpans spans, float star
 }
 
 // ---------------------------------------------------------------- 計算
-// 細部の 3D ノイズ（64³、周期でつながる Perlin-Worley。体積雲と同じ関数）。
+// 細部の 3D ノイズ（64³、周期でつながる Perlin-Worley。体積雲と同じ関数）。gPass.x が段：0 は関数から作り、1 以上は一つ
+// 細かい段（t27 にその段だけを束ねる）の 2×2×2 の平均（出力の texel の中心で三線形に読むと、ちょうど 8 texel の平均）。
 [numthreads(4, 4, 4)]
 void NoiseCS(uint3 id : SV_DispatchThreadID)
 {
+    if (gPass.x > 0u)
+    {
+        uint width, height, depth;
+        gOutput.GetDimensions(width, height, depth);
+        if (all(id < uint3(width, height, depth)))
+            gOutput[id] = gNoise.SampleLevel(gLinearWrap, (float3(id) + 0.5f) / float3(width, height, depth), 0).xxxx;
+        return;
+    }
     const float3 uv = (float3(id) + 0.5f) / 64.0f;
     const float perlin = HikariCloudPerlinFbm3D(uv, 4, 0x2545f491u);
     const float worley = 1.0f - HikariCloudWorleyFbm3D(uv, 4, 0x9e3779b9u);
@@ -466,6 +497,28 @@ void NoiseCS(uint3 id : SV_DispatchThreadID)
 // 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空への光学的な厚さ（上の円錐と水平
 // 4 方向の透過率の平均を厚さへ戻したもの）、z 近くの遮り（6 方向へ約 8 格の光学的な厚さの平均）。
 static const uint kSkyRingTexels = 48u;
+
+// 格子座標 p の砖块が域 gPass.x で動いているか。動いていない砖块は解算が密度を 0 にしているので、光照体積は読まない。
+bool LightBrickActive(float3 p, uint3 bricks)
+{
+    return BrickActive(gPass.x, min(uint3(max(p, 0.0f) / 8.0f), bricks - 1u), bricks);
+}
+
+// 光照体積の光線が読む密度（動いていない砖块は 0）。
+float LightDensity(float3 p, float3 cells, uint3 bricks)
+{
+    return LightBrickActive(p, bricks) ? gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x : 0.0f;
+}
+
+// 動いていない砖块の中の点 p から step ずつ進んで、その砖块を出るまでの歩数（1 以上）。
+uint LightBrickSkip(float3 p, float3 step)
+{
+    const float3 brick = floor(max(p, 0.0f) / 8.0f);
+    const float3 inverse = 1.0f / lerp(1.0e-7f.xxx, step, (float3)(abs(step) > 1.0e-7f));
+    const float3 leave = max((brick * 8.0f - p) * inverse, ((brick + 1.0f) * 8.0f - p) * inverse);
+    return (uint)clamp(ceil(min(min(leave.x, leave.y), leave.z)), 1.0f, 256.0f);
+}
+
 [numthreads(4, 4, 4)]
 void LightCS(uint3 id : SV_DispatchThreadID)
 {
@@ -476,6 +529,13 @@ void LightCS(uint3 id : SV_DispatchThreadID)
     const HikariFluidDomain domain = gDomains[gPass.x];
     const float3 cells = domain.cells.xyz;
     const float3 start = (float3(id) + 0.5f) * cells / float3(width, height, depth);
+    // 動いていない砖块の texel は烟が無く、步进も読まない（動いていない砖块は飛ばす）。
+    const uint3 bricks = ((uint3)cells + 7u) / 8u;
+    if (!LightBrickActive(start, bricks))
+    {
+        gOutput[id] = 0.0f.xxxx;
+        return;
+    }
     const float3 up = normalize(HikariFluidToGrid(domain, float3(0.0f, 1.0f, 0.0f)) -
                                 HikariFluidToGrid(domain, float3(0.0f, 0.0f, 0.0f)));
     // 光照体積の texel と同じ幅（格 2 つ）で進む。optical は格を単位にした密度の積分。
@@ -485,10 +545,19 @@ void LightCS(uint3 id : SV_DispatchThreadID)
     {
         const float3 step = domain.sun.xyz * stride;
         float3 p = start + step * 0.5f;
-        [loop] for (uint index = 0u; index < 256u && HikariFluidInside(p, cells); ++index)
+        [loop] for (uint index = 0u; index < 256u && HikariFluidInside(p, cells);)
         {
+            // 動いていない砖块は丸ごと飛ばす（歩の位置は飛ばさない時と同じ列に乗る）。
+            if (!LightBrickActive(p, bricks))
+            {
+                const uint skip = LightBrickSkip(p, step);
+                p += step * (float)skip;
+                index += skip;
+                continue;
+            }
             optical.x += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
             p += step;
+            ++index;
         }
     }
     // 空の光は上へ広がる円錐（半角約 35°）の 4 点で積分する（1 本だと濃い塊が真下へ柱の影を落とし縦の筋が出る）。
@@ -502,10 +571,10 @@ void LightCS(uint3 id : SV_DispatchThreadID)
             if (!HikariFluidInside(p, cells))
                 break;
             const float spread = 0.7f * travelled;
-            const float sum = gDensity0.SampleLevel(gLinearBorder, (p + side0 * spread) / cells, 0).x +
-                              gDensity0.SampleLevel(gLinearBorder, (p - side0 * spread) / cells, 0).x +
-                              gDensity0.SampleLevel(gLinearBorder, (p + side1 * spread) / cells, 0).x +
-                              gDensity0.SampleLevel(gLinearBorder, (p - side1 * spread) / cells, 0).x;
+            const float sum = LightDensity(p + side0 * spread, cells, bricks) +
+                              LightDensity(p - side0 * spread, cells, bricks) +
+                              LightDensity(p + side1 * spread, cells, bricks) +
+                              LightDensity(p - side1 * spread, cells, bricks);
             optical.y += 0.25f * sum * stride;
         }
     }
@@ -526,7 +595,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
                 const float3 p = start + direction * (((float)index + 0.5f) * stride);
                 if (!HikariFluidInside(p, cells))
                     break;
-                along += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
+                along += LightDensity(p, cells, bricks) * stride;
             }
             ring += exp(-along * scale);
         }
@@ -540,7 +609,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
         float3 direction = 0.0f.xxx;
         direction[axis >> 1u] = (axis & 1u) != 0u ? -1.0f : 1.0f;
         [unroll] for (uint index = 1u; index <= 4u; ++index)
-            local += gDensity0.SampleLevel(gLinearBorder, (start + direction * (stride * (float)index)) / cells, 0).x;
+            local += LightDensity(start + direction * (stride * (float)index), cells, bricks);
     }
     gOutput[id] = float4(optical.x * scale, sky, local * (stride / 6.0f) * scale, 0.0f);
 }

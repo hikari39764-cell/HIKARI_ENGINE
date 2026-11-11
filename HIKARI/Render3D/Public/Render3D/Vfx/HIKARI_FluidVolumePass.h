@@ -49,6 +49,25 @@ struct FluidGridLayout {
     bool combustion = false;
 };
 FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t resolution) noexcept;
+
+// 圧力を解く範囲（域の中の箱、単位は格）。烟があり得る砖块と向きの無い押し（湧き出し・汇）を囲む箱を余白ぶん広げ、砖块と
+// その箱に合う多重网格の段の倍率（2^(段 - 1)）の倍数にしたもの。箱の面が域の閉じた面に重なる所だけ壁（closedFaces、
+// FluidClosedFaces と同じ並び）、他の面は開いた面（圧力 0）。箱の外の空気は静止とみなす。域全体なら origin 0・
+// size = cells・levels = layout.levels。empty なら圧力を解かない。
+struct FluidPressureWindow {
+    uint32_t origin[3]{};
+    uint32_t size[3]{};
+    uint32_t levels = 1u;
+    uint32_t closedFaces = 0u;
+    bool empty = false;
+
+    bool operator==(const FluidPressureWindow&) const noexcept = default;
+};
+// lowBrick〜highBrick（砖块、両端を含む）を marginBricks 砖块ずつ広げた箱から窓を決める。合う段の数が域の段の数に届く
+// 箱（域とほぼ同じ大きさ）は域全体にする。
+FluidPressureWindow ResolveFluidPressureWindow(const FluidGridLayout& layout, const uint32_t (&lowBrick)[3],
+                                               const uint32_t (&highBrick)[3], uint32_t marginBricks,
+                                               uint32_t domainClosedFaces) noexcept;
 // 域の体積の記憶：全部（密な時）と、そのうち速度・密度・燃料の体積（大きな域では烟のある分块だけが住む部分）。
 uint64_t EstimateFluidDomainBytes(const FluidGridLayout& layout) noexcept;
 uint64_t EstimateFluidStateBytes(const FluidGridLayout& layout) noexcept;
@@ -114,6 +133,10 @@ struct FluidDomainStats {
     float substepSeconds = 0.0f;
     uint32_t budgetLevel = 0u;
     bool frozen = false;
+    // 眠っている：烟も烟を入れるものも無いので、このフレームは解かず描いていない（烟を入れるものが現れると起きる）。
+    bool asleep = false;
+    // このフレームに圧力を解いた範囲の格の数（域全体なら cells と同じ。眠っている・解く所が無い時は 0）。
+    uint32_t pressureCells[3]{};
     // 速度・密度・燃料を烟のある辺りの分块だけに住まわせる域か（bytes はその時の量で、烟の範囲で変わる）。
     bool sparse = false;
 };
@@ -149,6 +172,8 @@ struct FluidRenderView {
     MATH::Vec3 sunIlluminance{};
     MATH::Vec3 ambientRadiance{};
     float preExposure = 1.0f;
+    // 烟を照らす局所光（点・スポット・管・長方形）を選ぶ元。null なら局所光なし。烟は影・配光・クッキーなしで受ける。
+    const LIGHTING::SceneLightingSet* lighting = nullptr;
     bool sceneShadows = false;
     FluidSmokeQuality quality = FluidSmokeQuality::Balanced;
 };

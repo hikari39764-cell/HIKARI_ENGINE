@@ -90,15 +90,16 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
 }
 
 // slice が偽なら 3D の体積、真なら調試の切片（2D、depth は 1）。reserved なら記憶の無い予約資源（3D だけ。分块は
-// HIKARI_FluidResidency が貸し、貸していない所は読むと 0、書くと捨てられる）。
+// HIKARI_FluidResidency が貸し、貸していない所は読むと 0、書くと捨てられる）。mipLevels が 2 以上なら段を持ち、srv は全部の
+// 段、uav は段 0 を指す。
 bool CreateVolume(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
-                  FluidVolume& volume, bool slice, bool reserved) {
+                  FluidVolume& volume, bool slice, bool reserved, uint32_t mipLevels = 1u) {
     D3D12_RESOURCE_DESC description{};
     description.Dimension = slice ? D3D12_RESOURCE_DIMENSION_TEXTURE2D : D3D12_RESOURCE_DIMENSION_TEXTURE3D;
     description.Width = width;
     description.Height = height;
     description.DepthOrArraySize = static_cast<UINT16>(depth);
-    description.MipLevels = 1;
+    description.MipLevels = static_cast<UINT16>(mipLevels);
     description.Format = format;
     description.SampleDesc.Count = 1;
     description.Flags = D3D12_RESOURCE_FLAG_ALLOW_UNORDERED_ACCESS;
@@ -113,7 +114,7 @@ bool CreateVolume(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint
     if (!HIKARI_DX_CHECK(result, "FluidSolver::CreateVolume"))
         return false;
     volume.srv = slice ? AllocateTexture2DSrvDescriptor(volume.resource.Get(), format)
-                       : AllocateTexture3DSrvDescriptor(volume.resource.Get(), format);
+                       : AllocateTexture3DSrvDescriptor(volume.resource.Get(), format, 0u, mipLevels);
     volume.uav = slice ? AllocateTexture2DUavDescriptor(volume.resource.Get(), format)
                        : AllocateTexture3DUavDescriptor(volume.resource.Get(), format, 0, 0, depth);
     volume.state = D3D12_RESOURCE_STATE_UNORDERED_ACCESS;
@@ -138,8 +139,8 @@ bool CreateFluidBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t 
 }
 
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
-                              FluidVolume& volume) {
-    return CreateVolume(device, format, width, height, depth, volume, false, false);
+                              FluidVolume& volume, uint32_t mipLevels) {
+    return CreateVolume(device, format, width, height, depth, volume, false, false, mipLevels);
 }
 
 bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
@@ -357,7 +358,8 @@ void FluidRecorder::Clear(FluidVolume& volume) {
 }
 
 void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D12_GPU_VIRTUAL_ADDRESS sources,
-                            D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles) {
+                            D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles,
+                            const FluidPressureWindow& window) {
     auto& v = domain_.velocity;
     auto& d = domain_.density;
     auto& fuel = domain_.fuel;
@@ -403,48 +405,68 @@ void FluidRecorder::Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D
         Dispatch(FluidEntry::ForceField, forces, cells, none, cellGroups);
         Dispatch(FluidEntry::ApplyForces, {{&v[c], &v[a]}, {&v[b]}}, faces, none, faceGroups);
     }
-    {
+    // 圧力は窓の中だけ解く（窓の格は圧力と右辺の体積の原点から詰めて置く）。窓の外の速度は ApplyForcesCS が 0 にしてある。
+    if (!window.empty) {
         GFX::GPU_PROFILE::ScopedGpuTimer timer(commands_, GFX::GPU_PROFILE::Pass::FluidSolvePressure);
+        const uint32_t size[3] = {window.size[0], window.size[1], window.size[2]};
+        const uint32_t sizeGroups[3] = {Groups(size[0], 4u), Groups(size[1], 4u), Groups(size[2], 4u)};
+        // 窓が変わった子步は前の解が別の場所のものなので、段 0 を 0 から始めて V 循環を 1 回足す。
+        const bool moved = window != domain_.pressureWindow;
+        if (moved) {
+            FluidPassBindings clear{};
+            clear.outputs[0] = &domain_.pressure[0];
+            Dispatch(FluidEntry::Clear, clear, size, none, sizeGroups);
+            domain_.pressureWindow = window;
+        }
         FluidPassBindings divergence{{&v[b], &fuel[0]}, {&domain_.rhs[0]}};
         divergence.sources = sources;
         divergence.interactions = interactions;
-        Dispatch(FluidEntry::Divergence, divergence, cells, none, cellGroups);
-        for (uint32_t cycle = 0u; cycle < vCycles; ++cycle)
-            VCycle();
-        Dispatch(FluidEntry::Project, {{&domain_.pressure[0]}, {&v[b]}}, faces, none, faceGroups);
+        Dispatch(FluidEntry::Divergence, divergence, size, none, sizeGroups);
+        for (uint32_t cycle = 0u; cycle < vCycles + (moved ? 1u : 0u); ++cycle)
+            VCycle(window);
+        Dispatch(FluidEntry::Project, {{&domain_.pressure[0]}, {&v[b]}}, size, none,
+                 {Groups(size[0] + 1u, 4u), Groups(size[1] + 1u, 4u), Groups(size[2] + 1u, 4u)});
     }
     velocityIndex = b;
     densityIndex = g;
 }
 
-void FluidRecorder::VCycle() {
-    const uint32_t levels = domain_.layout.levels;
+void FluidRecorder::VCycle(const FluidPressureWindow& window) {
+    const uint32_t levels = window.levels;
+    // 段 level の窓の格の数と、その dispatch の組の数。
+    struct LevelSize {
+        uint32_t size[3];
+        uint32_t groups[3];
+    };
+    const auto at = [&](uint32_t level) {
+        LevelSize result{};
+        for (int axis = 0; axis < 3; ++axis) {
+            result.size[axis] = (std::max)(window.size[axis] >> level, 1u);
+            result.groups[axis] = Groups(result.size[axis], 4u);
+        }
+        return result;
+    };
     const auto smooth = [&](uint32_t level) {
-        const FluidVolume& p = domain_.pressure[level];
-        const uint32_t size[3] = {p.size[0], p.size[1], p.size[2]};
-        const uint32_t groups[3] = {Groups(size[0], 4u), Groups(size[1], 4u), Groups(size[2], 4u)};
+        const LevelSize fine = at(level);
         for (uint32_t color = 0u; color < 2u; ++color)
-            Dispatch(FluidEntry::Smooth, {{&domain_.rhs[level]}, {&domain_.pressure[level]}}, size, {color, 0u, 0u, 0u},
-                     groups);
+            Dispatch(FluidEntry::Smooth, {{&domain_.rhs[level]}, {&domain_.pressure[level]}}, fine.size,
+                     {color, 0u, 0u, 0u}, fine.groups);
     };
     for (uint32_t level = 0u; level + 1u < levels; ++level) {
         smooth(level);
-        const FluidVolume& coarse = domain_.pressure[level + 1u];
-        const uint32_t size[3] = {coarse.size[0], coarse.size[1], coarse.size[2]};
+        const LevelSize coarse = at(level + 1u);
         Dispatch(FluidEntry::ResidualRestrict,
                  {{&domain_.pressure[level], &domain_.rhs[level]},
                   {&domain_.rhs[level + 1u], &domain_.pressure[level + 1u]}},
-                 size, {0u, 0u, 0u, 0u}, {Groups(size[0], 4u), Groups(size[1], 4u), Groups(size[2], 4u)});
+                 coarse.size, {0u, 0u, 0u, 0u}, coarse.groups);
     }
-    const FluidVolume& coarsest = domain_.pressure[levels - 1u];
-    const uint32_t coarsestSize[3] = {coarsest.size[0], coarsest.size[1], coarsest.size[2]};
-    Dispatch(FluidEntry::CoarsestSolve, {{&domain_.rhs[levels - 1u]}, {&domain_.pressure[levels - 1u]}}, coarsestSize,
+    const LevelSize coarsest = at(levels - 1u);
+    Dispatch(FluidEntry::CoarsestSolve, {{&domain_.rhs[levels - 1u]}, {&domain_.pressure[levels - 1u]}}, coarsest.size,
              {0u, 0u, 0u, 0u}, {1u, 1u, 1u});
     for (uint32_t level = levels - 1u; level-- > 0u;) {
-        const FluidVolume& fine = domain_.pressure[level];
-        const uint32_t size[3] = {fine.size[0], fine.size[1], fine.size[2]};
-        Dispatch(FluidEntry::Prolong, {{&domain_.pressure[level + 1u]}, {&domain_.pressure[level]}}, size,
-                 {0u, 0u, 0u, 0u}, {Groups(size[0], 4u), Groups(size[1], 4u), Groups(size[2], 4u)});
+        const LevelSize fine = at(level);
+        Dispatch(FluidEntry::Prolong, {{&domain_.pressure[level + 1u]}, {&domain_.pressure[level]}}, fine.size,
+                 {0u, 0u, 0u, 0u}, fine.groups);
         smooth(level);
     }
 }

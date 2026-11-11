@@ -80,6 +80,8 @@ nlohmann::json DescribeStats(const FLUID::FluidDomainStats& stats) {
         {"substepSeconds", stats.substepSeconds},
         {"budgetLevel", stats.budgetLevel},
         {"frozen", stats.frozen},
+        {"asleep", stats.asleep},
+        {"pressureCells", {stats.pressureCells[0], stats.pressureCells[1], stats.pressureCells[2]}},
         {"sparse", stats.sparse},
     };
 }
@@ -170,7 +172,9 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
         row("Grid", std::to_string(stats->cells[0]) + " x " + std::to_string(stats->cells[1]) + " x " +
                         std::to_string(stats->cells[2]) + "  (" + std::to_string(stats->levels) + ")");
         row("GPU memory", number(static_cast<double>(stats->bytes) / (1024.0 * 1024.0), 1) + " MiB");
-        row("Substeps", std::to_string(stats->stepsThisFrame) + " / " + std::to_string(stats->completedSteps));
+        row("Substeps", stats->asleep
+                            ? VfxUiText("Asleep (no smoke)")
+                            : std::to_string(stats->stepsThisFrame) + " / " + std::to_string(stats->completedSteps));
         row("Simulation LOD", std::to_string(stats->lod) + "  (" + number(stats->substepSeconds * 1000.0, 1) + " ms)");
         row("Solve budget",
             stats->frozen ? VfxUiText("Frozen (drawing last smoke)") : "+" + std::to_string(stats->budgetLevel));
@@ -178,6 +182,9 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
             row("Prewarm remaining", number(stats->prewarmRemainingSeconds, 2) + " s");
         }
         row("Occupied bricks", std::to_string(stats->activeBricks) + " / " + std::to_string(stats->totalBricks));
+        row("Pressure region", std::to_string(stats->pressureCells[0]) + " x " +
+                                   std::to_string(stats->pressureCells[1]) + " x " +
+                                   std::to_string(stats->pressureCells[2]));
         if (stats->diagnosticsValid) {
             row("Max divergence", number(stats->maxDivergence, 4) + " 1/s");
             row("Density total", number(stats->densityTotal, 1));

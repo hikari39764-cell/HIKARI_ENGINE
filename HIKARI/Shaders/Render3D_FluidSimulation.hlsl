@@ -22,6 +22,10 @@ cbuffer FluidDomainCB : register(b0)
     float4 gCombustion1;
     uint4 gInjectionCells;  // xyz 粒子からの注入の緩衝（u6）の半分の分辨率の格の数（0 で無し）
     float4 gFrameWind;      // xyz 相対風：平流に足す一様な流れ（域の局所 [m/s]、静止した空気が動く域から見て流れる分）、w 砖块を烟があるとみなす最大密度（砖块を横切る光学的な厚さ 0.002）
+    // 圧力を解く窓（域の中の箱。烟があり得る砖块と向きの無い押しを余白ごと囲む）：xyz 原点（格）、w 窓の閉じた面の印
+    // （窓の面が域の閉じた面に重なる所だけ。他の面は開いた面で圧力 0）/ xyz 格の数（0 なら解かない）。
+    uint4 gPressureOrigin;
+    uint4 gPressureSize;
 };
 
 cbuffer FluidPassCB : register(b1)
@@ -53,7 +57,15 @@ SamplerState gLinearBorder : register(s1);
 // 粗い段の修正が細かい段と食い違って発散する）。
 uint ClosedFaces() { return (uint)(gMotion.x + 0.5f); }
 bool ClosedFace(uint axis, bool upper) { return ((ClosedFaces() >> (axis * 2u + (upper ? 1u : 0u))) & 1u) != 0u; }
-bool AllClosed() { return ClosedFaces() == 63u; }
+// 圧力の境界は窓の面で決める（gPressureOrigin.w。多重網格のどの段でも同じ印）。散度・圧力・投影は窓の中の格だけを回し、
+// 圧力と右辺の体積には窓の格を原点から詰めて置く。窓の外の空気は静止とみなす（ApplyForcesCS が速度を 0 にする）。
+bool PressureClosedFace(uint axis, bool upper) { return ((gPressureOrigin.w >> (axis * 2u + (upper ? 1u : 0u))) & 1u) != 0u; }
+bool PressureAllClosed() { return (gPressureOrigin.w & 63u) == 63u; }
+bool InPressureWindow(int3 cell)
+{
+    const int3 local = cell - int3(gPressureOrigin.xyz);
+    return all(local >= 0) && all(local < int3(gPressureSize.xyz));
+}
 bool Combusting() { return gCombustion1.z > 0.5f; }
 
 // 格の中心の烟を格子座標 p で読む（x 密度、yzw 密度 × 色。格ごとの色を持たない域は R16 なので yzw は 0）。閉じた面は
@@ -78,7 +90,7 @@ bool InsideFaces(uint3 face) { return all(face <= gSize.xyz); }
 
 // ---------------------------------------------------------------- 疎な解算
 // 砖块（8³ 格）ごとの活動状態（ActivityCS が子步ごとに書く、1 で動いている）。動いていない砖块では重い処理（MacCormack の
-// 平流、旋度、源と力）を飛ばし、速度は前のまま写し、密度は 0 にする。散度・圧力・投影は域全体で解くので、烟の無い所の
+// 平流、旋度、源と力）を飛ばし、速度は前のまま写し、密度は 0 にする。散度・圧力・投影は烟の砖块を囲む窓（圧力窓、窓の外の空気は静止）で解くので、窓の中の烟の無い所の
 // 空気も圧力で押されて非圧縮のまま動く（自分の流れでは運ばれず、力も受けない）。
 static const uint kWorkPassive = 0u;
 static const uint kWorkCompute = 1u;
@@ -516,14 +528,14 @@ bool HikariFluidIsPush(HikariFluidInteraction interaction)
 }
 
 // 力（2）が格 p の烟を消す率 [1/s]（中心から二乗で弱まる）。x 吸い込み：向きの無い負の力（汇）の Expansion の負の項
-// （全部の面が閉じた箱では湧き出しを入れないので 0）。半拉格朗日の平流は集まる流れで濃さを変えないので、吸い込んだ体積
+// （圧力の窓の面が全部閉じている時は湧き出しを入れないので 0）。半拉格朗日の平流は集まる流れで濃さを変えないので、吸い込んだ体積
 // ぶんの烟は消えるが、流れ込む烟は濃さを保ち、濃い烟の中の汇は烟を薄くしない。y 吸収（absorption）：半径の中の烟・
 // 温度・燃料をこの率で直接減らす（NVIDIA Flow の目標 0 への結合、Blender の Outflow と同じ役）。
 float2 HikariFluidRemovalRates(HikariFluidInteraction interaction, float3 p)
 {
     if (HikariFluidInteractionKind(interaction) != 2u)
         return 0.0f;
-    const float sink = HikariFluidPushDirected(interaction) || AllClosed()
+    const float sink = HikariFluidPushDirected(interaction) || PressureAllClosed()
                            ? 0.0f
                            : max(-interaction.push.w, 0.0f) * 30.0f / max(interaction.extents.x, 1.0e-4f);
     return float2(sink, interaction.sweep.x) * HikariFluidPushFalloff(interaction, p);
@@ -747,11 +759,17 @@ void ApplyForcesCS(uint3 id : SV_DispatchThreadID)
     {
         int3 below = int3(id);
         below[axis] -= 1;
+        // 圧力を解く窓の格に接しない面は 0（窓の外は投影されないので、速度を残すと古い流れが後で窓へ入る）。
+        if (!InPressureWindow(int3(id)) && !InPressureWindow(below))
+        {
+            velocity[axis] = 0.0f;
+            continue;
+        }
         const float a = gIn1.Load(int4(cell, 0))[axis];
         const float b = gIn1.Load(int4(clamp(below, 0, limit), 0))[axis];
         velocity[axis] += gCell.z * 0.5f * (a + b);
     }
-    velocity.w = InsideCells(id) ? gIn1.Load(int4(id, 0)).w : 0.0f;
+    velocity.w = InsideCells(id) && InPressureWindow(int3(id)) ? gIn1.Load(int4(id, 0)).w : 0.0f;
     gOut0[id] = velocity;
 }
 
@@ -775,13 +793,15 @@ float Divergence(Texture3D<float4> velocity, uint3 cell)
 [numthreads(4, 4, 4)]
 void DivergenceCS(uint3 id : SV_DispatchThreadID)
 {
-    if (!InsideCells(id))
+    // gPassSize は窓の格の数、id は窓の中の格。
+    if (any(id >= gPassSize.xyz))
         return;
+    const uint3 cell = id + gPressureOrigin.xyz;
     // 全部の面が閉じた箱は湧き出しを入れない（圧力が勾配 0 だけの境界では湧き出しの総和が 0 でないと解が無い）。
-    float expansion = AllClosed() ? 0.0f : Expansion(DomainPosition(float3(id) + 0.5f));
-    if (!AllClosed() && Combusting())
-        expansion += gCombustion1.y * gIn1.Load(int4(id, 0)).y;
-    gOut0[id] = (Divergence(gIn0, id) - expansion) * gCell.x * gCell.x;
+    float expansion = PressureAllClosed() ? 0.0f : Expansion(DomainPosition(float3(cell) + 0.5f));
+    if (!PressureAllClosed() && Combusting())
+        expansion += gCombustion1.y * gIn1.Load(int4(cell, 0)).y;
+    gOut0[id] = (Divergence(gIn0, cell) - expansion) * gCell.x * gCell.x;
 }
 
 // 近傍の圧力の和と、数える近傍の数。閉じた壁の外は数えない（勾配 0）。開いた境界は面の上で圧力 0：外の幽霊の格を
@@ -798,7 +818,7 @@ void Neighbors(Texture3D<float4> pressure, RWTexture3D<float4> pressureRw, bool 
         const int3 neighbor = cell + offset;
         if (any(neighbor < 0) || any(neighbor >= size))
         {
-            count += ClosedFace(n >> 1u, (n & 1u) != 0u) ? 0.0f : 2.0f;
+            count += PressureClosedFace(n >> 1u, (n & 1u) != 0u) ? 0.0f : 2.0f;
             continue;
         }
         sum += useRw ? pressureRw[neighbor].x : pressure.Load(int4(neighbor, 0)).x;
@@ -850,7 +870,7 @@ float CoarseCorrection(int3 c, int3 size)
         {
             const bool upper = c[axis] >= size[axis];
             c[axis] = clamp(c[axis], 0, size[axis] - 1);
-            sign = ClosedFace(axis, upper) ? sign : -sign;
+            sign = PressureClosedFace(axis, upper) ? sign : -sign;
         }
     }
     return sign * gIn0.Load(int4(c, 0)).x;
@@ -901,7 +921,7 @@ void CoarsestSolveCS(uint3 id : SV_GroupThreadID)
                 neighbor[n >> 1u] += (n & 1u) != 0u ? 1 : -1;
                 if (any(neighbor < 0) || any(neighbor >= size))
                 {
-                    count += ClosedFace(n >> 1u, (n & 1u) != 0u) ? 0.0f : 2.0f;
+                    count += PressureClosedFace(n >> 1u, (n & 1u) != 0u) ? 0.0f : 2.0f;
                     continue;
                 }
                 sum += gCoarse[neighbor.x + 8 * (neighbor.y + 8 * neighbor.z)];
@@ -921,10 +941,12 @@ void CoarsestSolveCS(uint3 id : SV_GroupThreadID)
 [numthreads(4, 4, 4)]
 void ProjectCS(uint3 id : SV_DispatchThreadID)
 {
-    if (!InsideFaces(id))
+    // gPassSize は窓の格の数、id は窓の中の面（圧力は窓の中の添字、速度は域の添字 face で読み書きする）。
+    const int3 size = int3(gPassSize.xyz);
+    if (any(int3(id) > size))
         return;
-    float4 velocity = gOut0[id];
-    const int3 size = int3(gSize.xyz);
+    const uint3 face = id + gPressureOrigin.xyz;
+    float4 velocity = gOut0[face];
     [unroll] for (uint axis = 0u; axis < 3u; ++axis)
     {
         int3 below = int3(id);
@@ -933,7 +955,8 @@ void ProjectCS(uint3 id : SV_DispatchThreadID)
         extent[axis] += 1;
         if (any(int3(id) >= extent))
             continue;
-        if ((id[axis] == 0u && ClosedFace(axis, false)) || (int(id[axis]) == size[axis] && ClosedFace(axis, true)))
+        if ((id[axis] == 0u && PressureClosedFace(axis, false)) ||
+            (int(id[axis]) == size[axis] && PressureClosedFace(axis, true)))
         {
             velocity[axis] = 0.0f;
             continue;
@@ -946,7 +969,7 @@ void ProjectCS(uint3 id : SV_DispatchThreadID)
         const float there = thereInside ? thereValue : -hereValue;
         velocity[axis] -= (here - there) * gCell.y;
     }
-    gOut0[id] = velocity;
+    gOut0[face] = velocity;
 }
 
 #include "Include/Vfx/HIKARI_FluidSimulationStats.hlsli"

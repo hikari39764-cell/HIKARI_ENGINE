@@ -85,7 +85,10 @@ groupshared float2 gBrickStats[512];
 [numthreads(8, 8, 8)]
 void DiagnosticsCS(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint flat : SV_GroupIndex)
 {
-    gBrickStats[flat] = InsideCells(id) ? float2(abs(Divergence(gIn0, id)), gIn1.Load(int4(id, 0)).x) : 0.0f.xx;
+    // 散度は圧力を解く窓の中だけ数える（窓の外は投影しない静止した空気で、窓の面のすぐ外の格には流れの出入りが残る）。
+    gBrickStats[flat] = InsideCells(id) ? float2(InPressureWindow(int3(id)) ? abs(Divergence(gIn0, id)) : 0.0f,
+                                                 gIn1.Load(int4(id, 0)).x)
+                                        : 0.0f.xx;
     GroupMemoryBarrierWithGroupSync();
     [unroll] for (uint stride = 256u; stride > 0u; stride >>= 1u)
     {
