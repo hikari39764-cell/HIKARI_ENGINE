@@ -279,7 +279,7 @@ void ModelComponent::SetRuntimeMaterialOverride(uint32_t slotIndex, std::unique_
 
     for (RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
         if (slot.materialIndex == slotIndex) {
-            slot.material = std::move(material);
+            slot = RuntimeMaterialOverrideSlot{slotIndex, std::move(material)};
             NotifyRenderStateDirty();
             return;
         }
@@ -302,6 +302,49 @@ void ModelComponent::ClearRuntimeMaterialOverrides() {
 
 const std::vector<RuntimeMaterialOverrideSlot>& ModelComponent::GetRuntimeMaterialOverrides() const noexcept {
     return runtimeMaterialOverrides_;
+}
+
+Material* ModelComponent::BeginRuntimeMaterialColorOverride(uint32_t slotIndex, std::unique_ptr<Material> copy) {
+    if (GetRuntimeMaterialOverride(slotIndex) == nullptr) {
+        if (copy == nullptr) {
+            return nullptr;
+        }
+        SetRuntimeMaterialOverride(slotIndex, std::move(copy));
+    }
+    for (RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
+        if (slot.materialIndex != slotIndex || slot.material == nullptr) {
+            continue;
+        }
+        if (!slot.colorBeforeOverride) {
+            const Material& material = *slot.material;
+            slot.colorBeforeOverride = RuntimeMaterialColor{material.GetBaseColor(), material.GetEmissiveFactor(),
+                                                            material.GetEmissiveStrength(), material.GetFeatureBits()};
+        }
+        return slot.material.get();
+    }
+    return nullptr;
+}
+
+void ModelComponent::ClearRuntimeMaterialColorOverride(uint32_t slotIndex) {
+    for (RuntimeMaterialOverrideSlot& slot : runtimeMaterialOverrides_) {
+        if (slot.materialIndex != slotIndex || !slot.colorBeforeOverride || slot.material == nullptr) {
+            continue;
+        }
+        const RuntimeMaterialColor color = *slot.colorBeforeOverride;
+        slot.colorBeforeOverride.reset();
+        slot.material->SetBaseColor(color.baseColor);
+        slot.material->SetEmissiveFactor(color.emissiveFactor);
+        slot.material->SetEmissiveStrength(color.emissiveStrength);
+        // 元から光る材質だけ特性の印（画面基準の発光など）も戻す。光らない材質は印があっても見た目が同じなので
+        // そのまま残し、光らせるたび・戻すたびに描き分けの鍵を変えて描画の経路を組み直さない。
+        const bool glowed =
+            color.emissiveStrength > 0.0f &&
+            (color.emissiveFactor.x > 0.0f || color.emissiveFactor.y > 0.0f || color.emissiveFactor.z > 0.0f);
+        if (glowed) {
+            slot.material->SetFeatureBits(color.featureBits);
+        }
+        return;
+    }
 }
 
 bool ModelComponent::SetRuntimeNodeVisibilityOverride(std::string_view nodeName, bool visible,

@@ -45,6 +45,19 @@ struct GameProjectModelAppearance {
     char materialSetAssetGuid[kGameProjectModelAssetGuidCapacity]{};
 };
 
+// ModelView の材質槽 1 つが今描いている色。実行時の色の上書きがあればその値、無ければ制作時の材質の値。
+// 受けた攻撃で一瞬光らせるなどの前に読み、元の色を渡すか ClearMaterialColorOverride で戻す。
+// 発光の単位：emissiveRelativeToScreen が 1 なら画面基準（1 = 露出後の白）、0 なら材質の物理量（明るさの絶対値）。
+struct GameProjectModelMaterialColor {
+    uint32_t structSize = sizeof(GameProjectModelMaterialColor);
+    uint32_t version = 1u;
+    GameProjectFloat3 baseColor{1.0f, 1.0f, 1.0f};
+    float opacity = 1.0f;
+    GameProjectFloat3 emissiveColor{};
+    float emissiveStrength = 1.0f;
+    uint32_t emissiveRelativeToScreen = 0u;
+};
+
 struct GameProjectPresentationModelRequest {
     uint64_t ownerObjectHandle = 0u;
     uint64_t instanceId = 0u;

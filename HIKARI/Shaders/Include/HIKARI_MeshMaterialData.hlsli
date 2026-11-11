@@ -10,6 +10,8 @@ static const uint HIKARI_MATERIAL_FLAG_EMISSIVE = 1u << 2u;
 static const uint HIKARI_MATERIAL_FLAG_ALPHA_BLEND = 1u << 3u;
 static const uint HIKARI_MATERIAL_FLAG_LEGACY_SPECULAR = 1u << 4u;
 static const uint HIKARI_MATERIAL_FLAG_PAINTERLY_SHELL = 1u << 5u;
+// 発光は画面基準（1 = 露出後の白）。実行時の色の上書き（受けた攻撃の発光など）だけが付ける。
+static const uint HIKARI_MATERIAL_FLAG_SCREEN_RELATIVE_EMISSIVE = 1u << 6u;
 
 // Keep this layout in sync with C++ MaterialGpuData.
 struct HikariMeshMaterialData

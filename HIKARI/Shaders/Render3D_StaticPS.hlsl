@@ -501,6 +501,11 @@ float4 main(PSInput input) : SV_TARGET
     {
         emissive = max(0.0f.xxx, materialExpression.emissive);
     }
+    // 画面基準の発光は露出に依らず同じ明るさに見えるよう、このビューの露出で絶対量へ換算する。
+    if ((materialData.materialFlags & HIKARI_MATERIAL_FLAG_SCREEN_RELATIVE_EMISSIVE) != 0u)
+    {
+        emissive = HikariDisplayReferredToRadiance(emissive, gViewExposure);
+    }
     if (gDebugView == 10)
     {
         return HikariPreExposeView(float4(emissive, albedo.a));
