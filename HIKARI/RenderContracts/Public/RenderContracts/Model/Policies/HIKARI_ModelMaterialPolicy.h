@@ -16,6 +16,8 @@ constexpr uint32_t ThinTransparentSurface = 1u << 3;
 constexpr uint32_t SpecularGlossCompatibility = 1u << 4;
 // 筆触の殻（Painterly Shell）。描画パスは筆触マスク・法線と殻の被覆を固定経路で評価する。
 constexpr uint32_t PainterlyShell = 1u << 5;
+// 発光は画面基準（1 = 露出後の白、露出に依らず同じ明るさ）。実行時の色の上書きだけが付け、取り込みや材質資産は付けない。
+constexpr uint32_t ScreenRelativeEmissive = 1u << 6;
 } // namespace MATERIAL_FEATURES
 
 namespace MATERIAL_POLICY {

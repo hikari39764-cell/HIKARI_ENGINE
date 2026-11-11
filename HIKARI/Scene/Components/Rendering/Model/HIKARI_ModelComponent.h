@@ -106,6 +106,7 @@ struct RuntimeMaterialColor {
     MATH::Vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
     MATH::Vec3 emissiveFactor{};
     float emissiveStrength = 1.0f;
+    uint32_t featureBits = 0u;
 };
 
 struct RuntimeMaterialOverrideSlot {

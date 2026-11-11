@@ -55,7 +55,8 @@ public:
     ApplyAppearance(const GameProjectModelAppearance& appearance) const noexcept;
     // 材質槽 materialIndex の色を実行時だけ変える（受けた攻撃で一瞬光らせる等）。制作時の上書きが無い槽は、
     // 取り込んだ材質の写し（テクスチャはモデルのまま）を作ってから変える。資産と Scene 文書は変えない。
-    // 色は 0〜64、opacity は 0〜1 に丸める。槽が無い・モデルが読めていない時は InvalidRequest / Unsupported。
+    // 発光は画面基準：emissiveColor × emissiveStrength の 1 が露出後の白で、昼でも夜でも同じ明るさに見える（周りは
+    // 照らさない）。色は 0〜64、opacity は 0〜1 に丸める。槽が無い・モデルが読めていない時は InvalidRequest / Unsupported。
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetMaterialColorOverride(uint32_t materialIndex,
                                                                                 GameProjectFloat3 baseColor,
                                                                                 float opacity,

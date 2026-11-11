@@ -318,7 +318,7 @@ Material* ModelComponent::BeginRuntimeMaterialColorOverride(uint32_t slotIndex, 
         if (!slot.colorBeforeOverride) {
             const Material& material = *slot.material;
             slot.colorBeforeOverride = RuntimeMaterialColor{material.GetBaseColor(), material.GetEmissiveFactor(),
-                                                            material.GetEmissiveStrength()};
+                                                            material.GetEmissiveStrength(), material.GetFeatureBits()};
         }
         return slot.material.get();
     }
@@ -335,6 +335,14 @@ void ModelComponent::ClearRuntimeMaterialColorOverride(uint32_t slotIndex) {
         slot.material->SetBaseColor(color.baseColor);
         slot.material->SetEmissiveFactor(color.emissiveFactor);
         slot.material->SetEmissiveStrength(color.emissiveStrength);
+        // 元から光る材質だけ特性の印（画面基準の発光など）も戻す。光らない材質は印があっても見た目が同じなので
+        // そのまま残し、光らせるたび・戻すたびに描き分けの鍵を変えて描画の経路を組み直さない。
+        const bool glowed =
+            color.emissiveStrength > 0.0f &&
+            (color.emissiveFactor.x > 0.0f || color.emissiveFactor.y > 0.0f || color.emissiveFactor.z > 0.0f);
+        if (glowed) {
+            slot.material->SetFeatureBits(color.featureBits);
+        }
         return;
     }
 }

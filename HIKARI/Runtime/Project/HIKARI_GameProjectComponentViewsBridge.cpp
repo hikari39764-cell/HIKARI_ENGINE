@@ -332,10 +332,12 @@ GameProjectWorldResult ModelView::SetMaterialColorOverride(uint32_t materialInde
             {Color(baseColor.x), Color(baseColor.y), Color(baseColor.z), std::clamp(opacity, 0.0f, 1.0f)});
         material->SetEmissiveFactor({Color(emissiveColor.x), Color(emissiveColor.y), Color(emissiveColor.z)});
         material->SetEmissiveStrength(std::clamp(emissiveStrength, 0.0f, 64.0f));
-        // 発光は特性の印がある材質だけが描く（発光の無い取り込み材質は印が無い）。印は描き分けの鍵に入るので、
-        // 一度付けたら外さない（発光 0 なら何も足さない）。付け外しのたびに描画の経路を組み直さないため。
-        if ((material->GetFeatureBits() & MATERIAL_FEATURES::Emissive) == 0u) {
-            material->SetFeatureBits(material->GetFeatureBits() | MATERIAL_FEATURES::Emissive);
+        // ここで渡す発光は画面基準（1 = 露出後の白）。昼でも夜でも同じ明るさに光る。発光は特性の印がある材質だけが
+        // 描く（発光の無い取り込み材質は印が無い）。印は描き分けの鍵に入るので、戻す時も元が光らない材質では外さない
+        // （ModelComponent::ClearRuntimeMaterialColorOverride）。
+        constexpr uint32_t kOverrideEmissive = MATERIAL_FEATURES::Emissive | MATERIAL_FEATURES::ScreenRelativeEmissive;
+        if ((material->GetFeatureBits() & kOverrideEmissive) != kOverrideEmissive) {
+            material->SetFeatureBits(material->GetFeatureBits() | kOverrideEmissive);
         }
         return Code::Success;
     });
@@ -358,6 +360,8 @@ bool ModelView::TryGetMaterialColor(uint32_t materialIndex, GameProjectModelMate
             base = material->GetBaseColor();
             emissive = material->GetEmissiveFactor();
             snapshot.emissiveStrength = material->GetEmissiveStrength();
+            snapshot.emissiveRelativeToScreen =
+                (material->GetFeatureBits() & MATERIAL_FEATURES::ScreenRelativeEmissive) != 0u ? 1u : 0u;
         } else {
             const MaterialAsset& imported = asset->materials[materialIndex];
             base = imported.baseColorFactor;
