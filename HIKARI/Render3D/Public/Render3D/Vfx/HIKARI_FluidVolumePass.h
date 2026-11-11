@@ -114,6 +114,8 @@ struct FluidDomainStats {
     float substepSeconds = 0.0f;
     uint32_t budgetLevel = 0u;
     bool frozen = false;
+    // 眠っている：烟も烟を入れるものも無いので、このフレームは解かず描いていない（烟を入れるものが現れると起きる）。
+    bool asleep = false;
     // 速度・密度・燃料を烟のある辺りの分块だけに住まわせる域か（bytes はその時の量で、烟の範囲で変わる）。
     bool sparse = false;
 };

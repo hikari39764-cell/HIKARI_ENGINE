@@ -3402,6 +3402,7 @@
     {"ui.vfx.text.Prewarm remaining", "剩余预热"}, {"ui.vfx.text.Occupied bricks", "有烟的砖块"},
     {"ui.vfx.text.Simulation LOD", "解算 LOD"}, {"ui.vfx.text.Solve budget", "解算预算"},
     {"ui.vfx.text.Frozen (drawing last smoke)", "已冻结（显示上一刻的烟）"}, {"ui.vfx.text.Max divergence", "最大散度"},
+    {"ui.vfx.text.Asleep (no smoke)", "休眠中（没有烟）"},
     {"ui.vfx.text.Density total", "密度总量"}, {"ui.vfx.text.GPU simulation", "GPU 解算"},
     {"ui.vfx.text.GPU render", "GPU 渲染"}, {"ui.vfx.text.Debug slice", "调试切片"},
     {"ui.vfx.text.Show slice", "显示切片"}, {"ui.vfx.text.Field", "量"}, {"ui.vfx.text.Axis", "轴"},

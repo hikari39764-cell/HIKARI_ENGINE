@@ -336,21 +336,15 @@ void InitializeFluidResidency(ID3D12Device* device, FluidDomainResources& resour
     residency.residentTiles = 0u;
 }
 
-void UpdateFluidDomainResidency(const GFX::Context& context, FluidTilePool& pool, FluidDomainState& domain,
-                                std::span<const FluidSourceSubmission> sources, std::span<const SourceMotion> motion,
-                                bool everything) {
-    FluidDomainResources& resources = domain.resources;
-    if (!resources.residency.sparse || context.queue == nullptr)
-        return;
-    ID3D12Resource* zero = pool.Zero(context.device);
-    if (zero == nullptr)
-        return;
+void ComputeFluidNeededBricks(FluidDomainState& domain, std::span<const FluidSourceSubmission> sources,
+                              std::span<const SourceMotion> motion, bool everything) {
+    const FluidDomainResources& resources = domain.resources;
     const FluidGridLayout& layout = resources.layout;
     std::vector<ReachSphere> spheres;
     const auto add = [&](const MATH::Vec3& center, float radius) {
         spheres.push_back({{center.x, center.y, center.z}, radius});
     };
-    everything = everything || resources.injection != nullptr;
+    everything = everything || resources.injection != nullptr || domain.activity.size() != resources.BrickCount();
     for (size_t index = 0u; index < sources.size() && !everything; ++index) {
         const FluidSourceSubmission& source = sources[index];
         const SourceTrack* track =
@@ -370,12 +364,24 @@ void UpdateFluidDomainResidency(const GFX::Context& context, FluidTilePool& pool
         if (event.interaction.kind == FluidInteractionKind::Emit)
             add(RotateToFluidLocal(domain.frameRotation, event.interaction.worldPosition - domain.framePosition),
                 event.interaction.extents.x + MATH::Length(event.interaction.displacement) + 2.0f * layout.cellSize);
-    std::vector<uint8_t> needed;
-    if (everything || domain.activity.size() != resources.BrickCount())
-        needed.assign(resources.BrickCount(), 1u);
+    FluidNeededBricks& needed = domain.needed;
+    needed.everything = everything;
+    needed.fed = everything || !spheres.empty();
+    if (everything)
+        needed.bricks.assign(resources.BrickCount(), 1u);
     else
-        MarkFluidNeededBricks(layout.cells, layout.cellSize, domain.activity, 1u, spheres, needed);
-    UpdateFluidResidency(context, pool, resources, needed, zero);
+        MarkFluidNeededBricks(layout.cells, layout.cellSize, domain.activity, 1u, spheres, needed.bricks);
+    needed.any = std::find(needed.bricks.begin(), needed.bricks.end(), uint8_t{1u}) != needed.bricks.end();
+}
+
+void UpdateFluidDomainResidency(const GFX::Context& context, FluidTilePool& pool, FluidDomainState& domain) {
+    FluidDomainResources& resources = domain.resources;
+    if (!resources.residency.sparse || context.queue == nullptr)
+        return;
+    ID3D12Resource* zero = pool.Zero(context.device);
+    if (zero == nullptr)
+        return;
+    UpdateFluidResidency(context, pool, resources, domain.needed.bricks, zero);
     resources.bytes = resources.denseBytes + uint64_t{resources.residency.residentTiles} * kTileBytes;
 }
 

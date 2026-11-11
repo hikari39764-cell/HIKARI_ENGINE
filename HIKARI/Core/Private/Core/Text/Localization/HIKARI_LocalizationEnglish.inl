@@ -3897,6 +3897,7 @@
     {"ui.vfx.text.Prewarm remaining", "Prewarm remaining"}, {"ui.vfx.text.Occupied bricks", "Occupied bricks"},
     {"ui.vfx.text.Simulation LOD", "Simulation LOD"}, {"ui.vfx.text.Solve budget", "Solve budget"},
     {"ui.vfx.text.Frozen (drawing last smoke)", "Frozen (drawing last smoke)"},
+    {"ui.vfx.text.Asleep (no smoke)", "Asleep (no smoke)"},
     {"ui.vfx.text.Max divergence", "Max divergence"}, {"ui.vfx.text.Density total", "Density total"},
     {"ui.vfx.text.GPU simulation", "GPU simulation"}, {"ui.vfx.text.GPU render", "GPU render"},
     {"ui.vfx.text.Debug slice", "Debug slice"}, {"ui.vfx.text.Show slice", "Show slice"},

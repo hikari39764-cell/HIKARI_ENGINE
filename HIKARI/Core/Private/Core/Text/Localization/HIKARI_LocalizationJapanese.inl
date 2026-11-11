@@ -3908,6 +3908,7 @@
     {"ui.vfx.text.Prewarm remaining", "事前シミュレーションの残り"},
     {"ui.vfx.text.Occupied bricks", "煙のあるブリック"}, {"ui.vfx.text.Simulation LOD", "解算の LOD"},
     {"ui.vfx.text.Solve budget", "解算の予算"}, {"ui.vfx.text.Frozen (drawing last smoke)", "停止中（直前の煙を表示）"},
+    {"ui.vfx.text.Asleep (no smoke)", "休眠中（煙なし）"},
     {"ui.vfx.text.Max divergence", "最大の発散"}, {"ui.vfx.text.Density total", "密度の総量"},
     {"ui.vfx.text.GPU simulation", "GPU シミュレーション"}, {"ui.vfx.text.GPU render", "GPU 描画"},
     {"ui.vfx.text.Debug slice", "デバッグスライス"}, {"ui.vfx.text.Show slice", "スライスを表示"},

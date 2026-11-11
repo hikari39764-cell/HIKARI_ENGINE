@@ -261,6 +261,25 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     // 子步ごとの V 循環 2 回で残る散度は 64 格で速度 / 格の約 0.5%（0.13 / s）。発散すると 1e6 を超える。
     assert(stats.diagnosticsValid && maxDivergence < 0.25f && maxSpeed < 8.0f);
     assert(stats.densityTotal > minimumDensity && stats.activeBricks > 1u);
+    // 休眠：源を止めて烟を速く消すと、烟が消えた後に域は眠って子步を進めない。源が戻ると起きて烟が出る。
+    const FluidSourceSubmission feeding = input.fluids[0].sources[0];
+    input.fluids[0].sources[0].ratePerSecond = 0.0f;
+    input.fluids[0].sources[0].settings.velocity = {};
+    input.fluids[0].sources[0].settings.radialSpeed = 0.0f;
+    input.fluids[0].settings.densityDissipation = 20.0f;
+    bool asleep = false;
+    for (uint32_t frame = 0u; frame < 600u && !asleep; ++frame) {
+        fluid.Frame(pass, input, settings);
+        asleep = DomainStats(pass).asleep;
+    }
+    assert(asleep && DomainStats(pass).stepsThisFrame == 0u);
+    input.fluids[0].sources[0] = feeding;
+    for (uint32_t frame = 0u; frame < 30u; ++frame)
+        fluid.Frame(pass, input, settings);
+    const FluidDomainStats& woken = DomainStats(pass);
+    std::fprintf(stderr, "fluid sleep %u: woke with density %.3f steps %u\n", resolution, woken.densityTotal,
+                 woken.stepsThisFrame);
+    assert(!woken.asleep && woken.stepsThisFrame > 0u && woken.densityTotal > 0.0f);
     pass.Shutdown();
 }
 

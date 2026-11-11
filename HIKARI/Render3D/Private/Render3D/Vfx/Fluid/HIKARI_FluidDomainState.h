@@ -40,6 +40,19 @@ struct SourceMotion {
     MATH::Quat rotation = MATH::Quat::Identity();
 };
 
+// このフレームに烟があり得る砖块：回読の活動を 1 砖块広げたものと、烟を入れる源・注入の届く範囲（ComputeFluidNeededBricks）。
+// 疎な域の住まいと域の休眠が同じ見積もりを使う。
+struct FluidNeededBricks {
+    // 砖块ごとに 0 か 1（BrickCount 個）。
+    std::vector<uint8_t> bricks{};
+    // 全部（預熱、粒子の注入を受ける域、回読の形が合わない）。
+    bool everything = false;
+    // このフレームに烟を入れる源・注入がある（everything も含む）。
+    bool fed = false;
+    // 要る砖块が 1 つでもある。
+    bool any = false;
+};
+
 struct FluidDomainState {
     PARTICLES::ParticleEmitterInstanceKey key{};
     FluidDomainResources resources{};
@@ -74,6 +87,12 @@ struct FluidDomainState {
     // 回読の砖块ごとの活動（1：烟がある、または最後の子步で動いた。烟の 26 近傍、源・注入の届く砖块）。疎な域の住まいが
     // 読む。作り直し・再起動で全部 0。
     std::vector<uint8_t> activity{};
+    FluidNeededBricks needed{};
+    // 域の休眠：烟が無く、烟を入れるものも無い間は解かず描かない。lastFedStep は烟を入れる源・注入が最後にあった時点の
+    // 子步数（それ以後の回読が空なら烟は残っていない）、quietSeconds は静かな状態が続いたゲーム時間。
+    bool asleep = false;
+    uint64_t lastFedStep = 0u;
+    float quietSeconds = 0.0f;
     // 解く空間（世界空間の域は作り直した時の変換に固定、局所空間の域は毎フレームの変換）。
     MATH::Vec3 framePosition{};
     MATH::Quat frameRotation = MATH::Quat::Identity();

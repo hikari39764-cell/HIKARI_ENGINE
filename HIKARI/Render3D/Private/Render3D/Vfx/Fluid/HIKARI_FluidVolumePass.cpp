@@ -44,6 +44,8 @@ constexpr uint32_t kUnfinishedRestartWarning = 4u;
 // 見積もりを止め、烟を押さない。
 constexpr float kMotionSmoothingSeconds = 0.1f;
 constexpr float kMaximumFrameVelocityChange = 12.0f;
+// 烟も烟を入れるものも無い状態がこのゲーム時間 [s] 続いたら域を眠らせる。
+constexpr float kSleepQuietSeconds = 0.5f;
 
 // 速度・密度・燃料の体積がこれ以上の域は、烟のある辺りの分块だけを住まわせる（Tiled Resources Tier 3 の装置）。
 // 128³ の域（約 64 MiB）から。小さな域は密なまま（分块の貸し借りの手間に見合わない）。
@@ -307,6 +309,9 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         domain.carried.clear();
         domain.stats = {};
         domain.activity.assign(domain.resources.BrickCount(), 0u);
+        domain.asleep = false;
+        domain.lastFedStep = 0u;
+        domain.quietSeconds = 0.0f;
         // 再起動の前に記録した回読（大きな子步数）が新しい統計を上書きしないよう、輪ごと捨てる。
         domain.readbackPending = {};
     }
@@ -464,19 +469,37 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         }
     }
 
+    // このフレームに烟があり得る砖块（預熱は 1 フレームに多くの子步を進めるので全部）。
+    INTERNAL::ComputeFluidNeededBricks(domain, frameSources, frameMotion, advance && domain.prewarmSteps > 0u);
+    const INTERNAL::FluidNeededBricks& needed = domain.needed;
+    // 域の休眠：烟を入れるものが無く、それが最後にあった子步より後の回読が空（烟も活動も無い）の状態が続いたら眠る。
+    // 粒子から注入を受けるフレームは注入の位置が分からないので眠らない。眠る時に体積を 0 に戻し（起きた時の空気は静止）、
+    // 眠っている間は解かず描かない。烟を入れるものが現れたフレームに起きる。
+    const bool quiet = !needed.everything && !needed.fed && !needed.any && domain.carried.empty() &&
+                       !domain.needsClear && domain.prewarmSteps == 0u && !injectionWanted &&
+                       domain.stats.totalBricks > 0u && domain.stats.readbackSteps >= domain.lastFedStep;
+    bool enteringSleep = false;
+    if (advance) {
+        domain.quietSeconds = quiet ? domain.quietSeconds + submission.deltaSeconds : 0.0f;
+        const bool sleep = quiet && domain.quietSeconds >= kSleepQuietSeconds;
+        enteringSleep = sleep && !domain.asleep;
+        domain.asleep = sleep;
+    }
     uint32_t prewarmSteps = 0u;
     if (advance && domain.prewarmSteps > 0u) {
         prewarmSteps = static_cast<uint32_t>((std::min<uint64_t>)(domain.prewarmSteps, PrewarmStepsPerFrame(layout)));
         domain.prewarmSteps -= prewarmSteps;
         domain.clock.completedSteps += prewarmSteps;
     }
-    const uint32_t steps =
-        prewarmSteps + (domain.prewarmSteps > 0u ? 0u
-                                                 : domain.clock.Advance(advance ? submission.deltaSeconds : 0.0, step,
-                                                                        (std::max)(authored.maxSubsteps, 1u)));
-    // 疎な域の住まい：子步の前に、この子步たちが烟を書く分块を貸す（預熱は 1 フレームに多くの子步を進めるので全部）。
-    if (steps > 0u)
-        INTERNAL::UpdateFluidDomainResidency(context, tilePool, domain, frameSources, frameMotion, prewarmSteps > 0u);
+    if (domain.asleep)
+        domain.clock.pendingSeconds = 0.0;
+    const uint32_t steps = prewarmSteps + (domain.prewarmSteps > 0u || domain.asleep
+                                               ? 0u
+                                               : domain.clock.Advance(advance ? submission.deltaSeconds : 0.0, step,
+                                                                      (std::max)(authored.maxSubsteps, 1u)));
+    // 疎な域の住まい：子步の前に、この子步たちが烟を書く分块を貸す。眠っている域は貸した分块を返し切るまで続ける。
+    if (steps > 0u || (domain.asleep && domain.resources.residency.residentTiles > 0u))
+        INTERNAL::UpdateFluidDomainResidency(context, tilePool, domain);
     domain.stats.key = submission.key;
     std::copy(std::begin(layout.cells), std::end(layout.cells), domain.stats.cells);
     domain.stats.levels = layout.levels;
@@ -485,8 +508,11 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     domain.stats.completedSteps = domain.clock.completedSteps;
     domain.stats.stepsThisFrame = steps;
     domain.stats.prewarmRemainingSeconds = static_cast<float>(static_cast<double>(domain.prewarmSteps) * step);
+    domain.stats.asleep = domain.asleep;
     domain.simulationSeconds =
         static_cast<float>(std::fmod(static_cast<double>(domain.clock.completedSteps) * step, 4096.0));
+    if (domain.asleep && !enteringSleep)
+        return;
 
     auto& upload = uploads[context.frameIndex % GFX::kFrameResourceCount];
     ID3D12GraphicsCommandList* commands = context.cmdList;
@@ -578,7 +604,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     FluidRecorder recorder(commands, pipeline, domain.resources, baseConstants);
     if (injectionCreated)
         recorder.ClearInjection();
-    if (domain.needsClear) {
+    if (domain.needsClear || enteringSleep) {
         for (auto& volume : domain.resources.velocity)
             recorder.Clear(volume);
         for (auto& volume : domain.resources.density)
@@ -632,6 +658,9 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
             track.pendingBurst = 0.0f;
         }
     }
+    // 烟を入れるものがあったフレーム：その子步を含む回読が届くまでは眠らない（子步がまだ走っていなければ次の子步から）。
+    if (needed.fed || !domain.carried.empty())
+        domain.lastFedStep = domain.clock.completedSteps + (steps > 0u ? 0u : 1u);
 
     // 占有・診断・汇の吸い込み量の回読は、子步を進めたフレームだけ（止まっている間は密度が変わらない）。
     const uint32_t slot = context.frameIndex % GFX::kFrameResourceCount;
@@ -829,9 +858,13 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         entry.frozen = domain.frozen;
         for (uint32_t level = 0u; level < 3u; ++level) {
             const uint32_t lod = (std::min)(domain.lod + level, 2u);
-            entry.cost[level] = INTERNAL::EstimateFluidSolveCost(
-                domain.resources.layout, active, submission.deltaSeconds, FluidSubstepSeconds(submission.settings, lod),
-                submission.settings.maxSubsteps, FluidVCycles(policy, lod));
+            // 眠っている域は解かない。
+            entry.cost[level] =
+                domain.asleep
+                    ? 0.0
+                    : INTERNAL::EstimateFluidSolveCost(domain.resources.layout, active, submission.deltaSeconds,
+                                                       FluidSubstepSeconds(submission.settings, lod),
+                                                       submission.settings.maxSubsteps, FluidVCycles(policy, lod));
         }
     }
     INTERNAL::AssignFluidBudget(impl.budget, impl.calibration.BudgetUnits(policy.solveBudgetMs));
@@ -855,6 +888,12 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
             domain->lastSimulatedFrame = input->frameIndex;
             unmodeled = unmodeled || domain->prewarmSteps > 0u;
             impl.Solve(*domain, submission, input->fluidSources, policy, settings, advance);
+            if (domain->asleep) {
+                // 眠った域は描かない。光っていた域の光源は消す（一度だけ 0 を送る）。
+                if (submission.reportGlow && domain->glowLit)
+                    impl.PushGlow(*domain, {submission.key, submission.worldPosition, {}, submission.localSpace, {}});
+                continue;
+            }
             if (advance)
                 solvedUnits += impl.budget[index].cost[impl.budget[index].level];
             ++solved;

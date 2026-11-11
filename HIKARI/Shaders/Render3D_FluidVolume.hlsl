@@ -466,6 +466,28 @@ void NoiseCS(uint3 id : SV_DispatchThreadID)
 // 域 gPass.x の光照体積（格子の半分の分辨率）：x 太陽への光学的な厚さ（自己影）、y 空への光学的な厚さ（上の円錐と水平
 // 4 方向の透過率の平均を厚さへ戻したもの）、z 近くの遮り（6 方向へ約 8 格の光学的な厚さの平均）。
 static const uint kSkyRingTexels = 48u;
+
+// 格子座標 p の砖块が域 gPass.x で動いているか。動いていない砖块は解算が密度を 0 にしているので、光照体積は読まない。
+bool LightBrickActive(float3 p, uint3 bricks)
+{
+    return BrickActive(gPass.x, min(uint3(max(p, 0.0f) / 8.0f), bricks - 1u), bricks);
+}
+
+// 光照体積の光線が読む密度（動いていない砖块は 0）。
+float LightDensity(float3 p, float3 cells, uint3 bricks)
+{
+    return LightBrickActive(p, bricks) ? gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x : 0.0f;
+}
+
+// 動いていない砖块の中の点 p から step ずつ進んで、その砖块を出るまでの歩数（1 以上）。
+uint LightBrickSkip(float3 p, float3 step)
+{
+    const float3 brick = floor(max(p, 0.0f) / 8.0f);
+    const float3 inverse = 1.0f / lerp(1.0e-7f.xxx, step, (float3)(abs(step) > 1.0e-7f));
+    const float3 leave = max((brick * 8.0f - p) * inverse, ((brick + 1.0f) * 8.0f - p) * inverse);
+    return (uint)clamp(ceil(min(min(leave.x, leave.y), leave.z)), 1.0f, 256.0f);
+}
+
 [numthreads(4, 4, 4)]
 void LightCS(uint3 id : SV_DispatchThreadID)
 {
@@ -476,6 +498,13 @@ void LightCS(uint3 id : SV_DispatchThreadID)
     const HikariFluidDomain domain = gDomains[gPass.x];
     const float3 cells = domain.cells.xyz;
     const float3 start = (float3(id) + 0.5f) * cells / float3(width, height, depth);
+    // 動いていない砖块の texel は烟が無く、步进も読まない（動いていない砖块は飛ばす）。
+    const uint3 bricks = ((uint3)cells + 7u) / 8u;
+    if (!LightBrickActive(start, bricks))
+    {
+        gOutput[id] = 0.0f.xxxx;
+        return;
+    }
     const float3 up = normalize(HikariFluidToGrid(domain, float3(0.0f, 1.0f, 0.0f)) -
                                 HikariFluidToGrid(domain, float3(0.0f, 0.0f, 0.0f)));
     // 光照体積の texel と同じ幅（格 2 つ）で進む。optical は格を単位にした密度の積分。
@@ -485,10 +514,19 @@ void LightCS(uint3 id : SV_DispatchThreadID)
     {
         const float3 step = domain.sun.xyz * stride;
         float3 p = start + step * 0.5f;
-        [loop] for (uint index = 0u; index < 256u && HikariFluidInside(p, cells); ++index)
+        [loop] for (uint index = 0u; index < 256u && HikariFluidInside(p, cells);)
         {
+            // 動いていない砖块は丸ごと飛ばす（歩の位置は飛ばさない時と同じ列に乗る）。
+            if (!LightBrickActive(p, bricks))
+            {
+                const uint skip = LightBrickSkip(p, step);
+                p += step * (float)skip;
+                index += skip;
+                continue;
+            }
             optical.x += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
             p += step;
+            ++index;
         }
     }
     // 空の光は上へ広がる円錐（半角約 35°）の 4 点で積分する（1 本だと濃い塊が真下へ柱の影を落とし縦の筋が出る）。
@@ -502,10 +540,10 @@ void LightCS(uint3 id : SV_DispatchThreadID)
             if (!HikariFluidInside(p, cells))
                 break;
             const float spread = 0.7f * travelled;
-            const float sum = gDensity0.SampleLevel(gLinearBorder, (p + side0 * spread) / cells, 0).x +
-                              gDensity0.SampleLevel(gLinearBorder, (p - side0 * spread) / cells, 0).x +
-                              gDensity0.SampleLevel(gLinearBorder, (p + side1 * spread) / cells, 0).x +
-                              gDensity0.SampleLevel(gLinearBorder, (p - side1 * spread) / cells, 0).x;
+            const float sum = LightDensity(p + side0 * spread, cells, bricks) +
+                              LightDensity(p - side0 * spread, cells, bricks) +
+                              LightDensity(p + side1 * spread, cells, bricks) +
+                              LightDensity(p - side1 * spread, cells, bricks);
             optical.y += 0.25f * sum * stride;
         }
     }
@@ -526,7 +564,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
                 const float3 p = start + direction * (((float)index + 0.5f) * stride);
                 if (!HikariFluidInside(p, cells))
                     break;
-                along += gDensity0.SampleLevel(gLinearBorder, p / cells, 0).x * stride;
+                along += LightDensity(p, cells, bricks) * stride;
             }
             ring += exp(-along * scale);
         }
@@ -540,7 +578,7 @@ void LightCS(uint3 id : SV_DispatchThreadID)
         float3 direction = 0.0f.xxx;
         direction[axis >> 1u] = (axis & 1u) != 0u ? -1.0f : 1.0f;
         [unroll] for (uint index = 1u; index <= 4u; ++index)
-            local += gDensity0.SampleLevel(gLinearBorder, (start + direction * (stride * (float)index)) / cells, 0).x;
+            local += LightDensity(start + direction * (stride * (float)index), cells, bricks);
     }
     gOutput[id] = float4(optical.x * scale, sky, local * (stride / 6.0f) * scale, 0.0f);
 }
