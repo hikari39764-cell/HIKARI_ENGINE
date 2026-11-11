@@ -255,7 +255,7 @@ function Write-HikariIdePresets {
     $buildDirectory = & $toPresetPath (Join-Path $ProjectRoot 'Library\Build\CMake\ide')
     $outputDirectory = & $toPresetPath (Join-Path $ProjectRoot 'Library\Build\ide')
     $hikariDirectory = & $toPresetPath $PackageDirectory
-    $moduleIncludes = (@($ModuleIncludeDirectories | Where-Object { $_ }) | ForEach-Object { & $toPresetPath $_ }) -join ';'
+    $moduleIncludes = ($ModuleIncludeDirectories | ForEach-Object { & $toPresetPath $_ }) -join ';'
     $presetsText = @"
 {
   "version": 6,
@@ -820,10 +820,10 @@ foreach ($candidate in @(
         break
     }
 }
-$moduleIncludeDirectories = @(Get-HikariModuleIncludeDirectories `
-        -ProjectRoot $projectRoot `
-        -Descriptor $descriptor `
-        -EngineModulesRoot $engineModulesPath)
+$moduleIncludeDirectories = Get-HikariModuleIncludeDirectories `
+    -ProjectRoot $projectRoot `
+    -Descriptor $descriptor `
+    -EngineModulesRoot $engineModulesPath
 if ($Preset -ne 'game-shipping') {
     Write-HikariIdePresets `
         -ManifestRoot $manifestRoot `
