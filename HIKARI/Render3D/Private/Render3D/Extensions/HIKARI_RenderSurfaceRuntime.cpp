@@ -117,6 +117,7 @@ struct RuntimeState {
     GFX::Context graphics{};
     uint64_t deviceGeneration = 0u;
     std::vector<IRenderSurfaceExtension*> extensions{};
+    std::vector<RenderSurfaceShadowCasterBounds> shadowCasterBounds{};
     std::map<RenderSurfaceResourceId, SurfaceResource> resources{};
     std::map<RenderSurfaceResourceId, RayProxy> rayProxies{};
     std::vector<RAYTRACING::RuntimeRayTracingProxy> publishedRayProxies{};
@@ -963,6 +964,18 @@ bool HasDepthAwareWork() noexcept {
         CallModule("HasDepthAwareWork", [&] { any = any || extension->HasDepthAwareWork(); });
     }
     return any;
+}
+
+std::span<const RenderSurfaceShadowCasterBounds> GetShadowCasterBounds() noexcept {
+    RuntimeState& state = State();
+    state.shadowCasterBounds.clear();
+    for (IRenderSurfaceExtension* extension : state.extensions) {
+        CallModule("GetShadowCasterBounds", [&] {
+            const auto bounds = extension->GetShadowCasterBounds();
+            state.shadowCasterBounds.insert(state.shadowCasterBounds.end(), bounds.begin(), bounds.end());
+        });
+    }
+    return state.shadowCasterBounds;
 }
 
 std::span<const RAYTRACING::RuntimeRayTracingProxy> GetRayProxies() noexcept { return State().publishedRayProxies; }

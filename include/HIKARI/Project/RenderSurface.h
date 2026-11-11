@@ -124,6 +124,12 @@ struct RenderSurfaceView {
     float cameraPosition[3]{};
 };
 
+// 太陽の影を落とす世界座標の球。主相机の外にあっても、影を受ける範囲と重なれば影の奥行きを延ばす。
+struct RenderSurfaceShadowCasterBounds {
+    float center[3]{};
+    float radius = 0.0f;
+};
+
 // instances と constants は Draw の中で写される。program は CreateSurfaceProgram の番号で、その着色器は
 // 使う pass に応じて入口 SurfaceVS / SurfaceGeometryPS / SurfaceGeometryFeaturePS / SurfaceForwardPS /
 // SurfaceDepthAwarePS を持つこと。indexBuffer が 0 なら SurfaceVS の代わりに SurfaceMS で描く：indexCount は実例一つ
@@ -158,6 +164,8 @@ public:
     virtual bool HasDepthAwareWork() const { return false; }
     // 機器の作り直しなどで資源が消えた時。番号を忘れて次の PrepareFrame で作り直す。
     virtual void OnRenderResourcesLost() {}
+    // 次の PrepareFrame まで有効。相机で刈る前の投影物を返す。空なら奥行きの延長を要求しない。
+    virtual std::span<const RenderSurfaceShadowCasterBounds> GetShadowCasterBounds() const { return {}; }
 };
 
 } // namespace HIKARI
