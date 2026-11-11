@@ -81,6 +81,7 @@ nlohmann::json DescribeStats(const FLUID::FluidDomainStats& stats) {
         {"budgetLevel", stats.budgetLevel},
         {"frozen", stats.frozen},
         {"asleep", stats.asleep},
+        {"pressureCells", {stats.pressureCells[0], stats.pressureCells[1], stats.pressureCells[2]}},
         {"sparse", stats.sparse},
     };
 }
@@ -181,6 +182,9 @@ void VfxWorkspaceController::DrawFluidSimulation(const VFX::VfxEmitterData& doma
             row("Prewarm remaining", number(stats->prewarmRemainingSeconds, 2) + " s");
         }
         row("Occupied bricks", std::to_string(stats->activeBricks) + " / " + std::to_string(stats->totalBricks));
+        row("Pressure region", std::to_string(stats->pressureCells[0]) + " x " +
+                                   std::to_string(stats->pressureCells[1]) + " x " +
+                                   std::to_string(stats->pressureCells[2]));
         if (stats->diagnosticsValid) {
             row("Max divergence", number(stats->maxDivergence, 4) + " 1/s");
             row("Density total", number(stats->densityTotal, 1));

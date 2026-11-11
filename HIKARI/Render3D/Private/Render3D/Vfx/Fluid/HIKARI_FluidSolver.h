@@ -93,6 +93,8 @@ struct FluidDomainResources {
     // 速度・密度・燃料の体積を予約資源で作り、烟のある辺りの分块だけに記憶を貸すか（HIKARI_FluidResidency.h）と、その住まい。
     // bytes は密な部分（圧力・光照体積・統計・注入）と住んでいる分块の合計。
     FluidResidency residency{};
+    // 圧力の体積に今入っている解の窓（窓の中の格を体積の原点から詰めて置く）。窓が変わった子步は段 0 を 0 から解き直す。
+    FluidPressureWindow pressureWindow{};
     uint64_t denseBytes = 0u;
     uint32_t bricks = 0u;
     uint32_t statsBytes = 0u;
@@ -136,8 +138,11 @@ struct alignas(16) FluidDomainConstantsGpu {
     // 相対風：xyz 平流に足す一様な流れ（域の局所 [m/s]、-relativeWind × 域の速さ）。w 砖块を烟があるとみなす最大密度
     // （FluidOccupiedDensity）。
     float frameWind[4];
+    // 圧力を解く窓（FluidPressureWindow）：xyz 原点（格）、w 窓の閉じた面の印 / xyz 格の数（解かない時は 0）。
+    uint32_t pressureOrigin[4];
+    uint32_t pressureSize[4];
 };
-static_assert(sizeof(FluidDomainConstantsGpu) == 176u);
+static_assert(sizeof(FluidDomainConstantsGpu) == 208u);
 // 砖块を「烟がある」とみなす最大密度：砖块を横切る光学的な厚さが 0.002 になる密度。固定の 1e-3 だと大きな域の薄い霞
 // （160 m・192 格の烟壳で 1e-3 でも 100 m の視線では光学的な厚さ 0.6）が不活動として消え、描画でも飛ばされて砖块の
 // 四角い縁が見えた。解算の活動・描画の飛ばし・占有の回読が同じ値を使う。
@@ -145,12 +150,14 @@ inline float FluidOccupiedDensity(float extinction, float cellSize) noexcept {
     return 0.002f / (std::max)(extinction * static_cast<float>(kFluidBrickCells) * cellSize, 1.0e-6f);
 }
 // 子步 stepIndex の域の定数：格子、子步の時間、閉じた面・涡度・浮力・重さ、消散、上向き、挂点の慣性（域の局所）、押すものの
-// 数と統計の位置、flags（1 汇の吸い込み量を 0 に、2 吸い込みを数える、4 粒子からの注入を受け取る）、燃焼、注入の緩衝の形。
+// 数と統計の位置、flags（1 汇の吸い込み量を 0 に、2 吸い込みを数える、4 粒子からの注入を受け取る）、燃焼、注入の緩衝の形、
+// 圧力を解く窓。
 FluidDomainConstantsGpu PackFluidDomainConstants(const FluidDomainSettings& authored,
                                                  const FluidDomainResources& resources, uint32_t sourceCount,
                                                  double step, uint64_t stepIndex, const MATH::Vec3& up,
                                                  const MATH::Vec3& inertia, const MATH::Vec3& frameWind,
-                                                 uint32_t interactionCount, uint32_t flags) noexcept;
+                                                 const FluidPressureWindow& window, uint32_t interactionCount,
+                                                 uint32_t flags) noexcept;
 // HIKARI_FluidGrid.hlsli の HikariFluidSource と同じ並び（源の表 t6 の 1 行）。
 struct FluidSourceGpu {
     float rows[19][4];
@@ -184,8 +191,9 @@ bool CreateFluidDomainResources(ID3D12Device* device, const FluidGridLayout& lay
                                 bool sparse);
 // 粒子からの注入の緩衝を作る（もう有れば何もしない）。created は作ったか（作った時は ClearInjection で 0 にする）。
 bool EnsureFluidInjection(ID3D12Device* device, FluidDomainResources& resources, bool& created);
+// mipLevels が 2 以上なら段を持つ体積（srv は全部の段、uav は段 0）。
 bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height, uint32_t depth,
-                              FluidVolume& volume);
+                              FluidVolume& volume, uint32_t mipLevels = 1u);
 // 流体の緩衝（DEFAULT は UAV 可）。VIDEO_MEMORY の Vfx として数える。
 bool CreateFluidBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t bytes, D3D12_RESOURCE_STATES state,
                        Microsoft::WRL::ComPtr<ID3D12Resource>& buffer);
@@ -213,9 +221,10 @@ public:
                   const uint32_t (&passParams)[4], const uint32_t (&groups)[3]);
     void Clear(FluidVolume& volume);
     // 1 子步。velocityIndex / densityIndex は今の速度・密度の体積で、終わると新しい方へ進む。sources と interactions は
-    // 源と押すものの表（数は域の定数）。頭で占有を数え直して砖块の活動状態を決め、動いていない砖块は解かない。
+    // 源と押すものの表（数は域の定数）。頭で占有を数え直して砖块の活動状態を決め、動いていない砖块は解かない。圧力は
+    // window の中だけ解く（域の定数の窓と同じもの）。
     void Substep(uint32_t& velocityIndex, uint32_t& densityIndex, D3D12_GPU_VIRTUAL_ADDRESS sources,
-                 D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles);
+                 D3D12_GPU_VIRTUAL_ADDRESS interactions, uint32_t vCycles, const FluidPressureWindow& window);
     void Occupancy(uint32_t densityIndex);
     void Diagnostics(uint32_t velocityIndex, uint32_t densityIndex);
     // 発光を砖块ごとに数える（火の光源の回読）。起亮温度と熱い端の温度は描画の色帯と同じ値。
@@ -228,7 +237,7 @@ public:
 
 private:
     void Transition(FluidVolume& volume, D3D12_RESOURCE_STATES state);
-    void VCycle();
+    void VCycle(const FluidPressureWindow& window);
     uint32_t Groups(uint32_t threads, uint32_t groupSize) const noexcept {
         return (threads + groupSize - 1u) / groupSize;
     }

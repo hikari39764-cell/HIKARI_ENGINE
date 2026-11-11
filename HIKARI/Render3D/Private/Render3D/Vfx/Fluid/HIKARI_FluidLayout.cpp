@@ -42,6 +42,49 @@ FluidGridLayout ResolveFluidGridLayout(const MATH::Vec3& domainSize, uint32_t re
     return layout;
 }
 
+FluidPressureWindow ResolveFluidPressureWindow(const FluidGridLayout& layout, const uint32_t (&lowBrick)[3],
+                                               const uint32_t (&highBrick)[3], uint32_t marginBricks,
+                                               uint32_t domainClosedFaces) noexcept {
+    FluidPressureWindow whole{};
+    std::copy(std::begin(layout.cells), std::end(layout.cells), whole.size);
+    whole.levels = layout.levels;
+    whole.closedFaces = domainClosedFaces;
+    uint32_t low[3]{};
+    uint32_t high[3]{};
+    for (int axis = 0; axis < 3; ++axis) {
+        low[axis] = (lowBrick[axis] - (std::min)(lowBrick[axis], marginBricks)) * kFluidBrickCells;
+        high[axis] = (std::min)((highBrick[axis] + 1u + marginBricks) * kFluidBrickCells, layout.cells[axis]);
+    }
+    // 段を足しながら、箱を砖块と段の倍率の倍数へ広げて最も粗い段の各辺が 8 以下になる所を探す（域の各辺は域の段の倍率の
+    // 倍数なので、それより少ない段の倍率へ広げても域を出ない）。
+    for (uint32_t levels = 1u; levels < layout.levels; ++levels) {
+        const uint32_t unit = (std::max)(kFluidBrickCells, 1u << (levels - 1u));
+        FluidPressureWindow window{};
+        window.levels = levels;
+        bool fits = true;
+        bool everything = true;
+        for (int axis = 0; axis < 3; ++axis) {
+            window.origin[axis] = low[axis] / unit * unit;
+            window.size[axis] =
+                (std::min)((high[axis] + unit - 1u) / unit * unit, layout.cells[axis]) - window.origin[axis];
+            fits = fits && (window.size[axis] >> (levels - 1u)) <= 8u;
+            everything = everything && window.size[axis] == layout.cells[axis];
+        }
+        if (!fits)
+            continue;
+        if (everything)
+            break;
+        for (uint32_t axis = 0u; axis < 3u; ++axis) {
+            if (window.origin[axis] == 0u)
+                window.closedFaces |= domainClosedFaces & (1u << (axis * 2u));
+            if (window.origin[axis] + window.size[axis] == layout.cells[axis])
+                window.closedFaces |= domainClosedFaces & (1u << (axis * 2u + 1u));
+        }
+        return window;
+    }
+    return whole;
+}
+
 uint64_t EstimateFluidStateBytes(const FluidGridLayout& layout) noexcept {
     const uint64_t nx = layout.cells[0], ny = layout.cells[1], nz = layout.cells[2];
     const uint64_t densityBytes = layout.cellColor ? 8u : 2u;

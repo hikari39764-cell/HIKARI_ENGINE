@@ -87,6 +87,7 @@ bool ExecuteFluidVolumes(const GRAPH::RenderGraphPassContext& graphPass, void* u
         view.renderHeight = frame.renderHeight;
         view.sceneDepthSrv = frame.scene.depth.srv;
         view.sceneColorFormat = frame.scene.color.format;
+        view.lighting = &context.features.lighting;
         if (view.sceneColorFormat == DXGI_FORMAT_UNKNOWN || !frame.targetAccess.BeginDepthRead()) {
             return true;
         }

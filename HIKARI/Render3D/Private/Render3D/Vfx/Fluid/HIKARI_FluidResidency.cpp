@@ -371,7 +371,20 @@ void ComputeFluidNeededBricks(FluidDomainState& domain, std::span<const FluidSou
         needed.bricks.assign(resources.BrickCount(), 1u);
     else
         MarkFluidNeededBricks(layout.cells, layout.cellSize, domain.activity, 1u, spheres, needed.bricks);
-    needed.any = std::find(needed.bricks.begin(), needed.bricks.end(), uint8_t{1u}) != needed.bricks.end();
+    const uint32_t bricks[3] = {(layout.cells[0] + 7u) / 8u, (layout.cells[1] + 7u) / 8u, (layout.cells[2] + 7u) / 8u};
+    needed.any = false;
+    for (uint32_t z = 0u; z < bricks[2]; ++z)
+        for (uint32_t y = 0u; y < bricks[1]; ++y)
+            for (uint32_t x = 0u; x < bricks[0]; ++x) {
+                if (needed.bricks[x + bricks[0] * (y + bricks[1] * z)] == 0u)
+                    continue;
+                const uint32_t at[3] = {x, y, z};
+                for (int axis = 0; axis < 3; ++axis) {
+                    needed.low[axis] = needed.any ? (std::min)(needed.low[axis], at[axis]) : at[axis];
+                    needed.high[axis] = needed.any ? (std::max)(needed.high[axis], at[axis]) : at[axis];
+                }
+                needed.any = true;
+            }
 }
 
 void UpdateFluidDomainResidency(const GFX::Context& context, FluidTilePool& pool, FluidDomainState& domain) {

@@ -280,6 +280,7 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
         fluidView.renderHeight = screenHeight;
         fluidView.sceneDepthSrv = passResources.sceneDepth.srv;
         fluidView.sceneColorFormat = settings.sceneColorFormat;
+        fluidView.lighting = &lighting;
         (void)RenderFluidVolumes(graphics, fluidView, settings.targetAccess);
         settings.targetAccess.EndDepthRead();
         if (!settings.targetAccess.Rebind()) {

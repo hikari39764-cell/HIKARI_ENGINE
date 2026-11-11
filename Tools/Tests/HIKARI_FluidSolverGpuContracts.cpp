@@ -215,8 +215,9 @@ float FloorBoundary(FluidGpu& fluid, uint64_t playbackNamespace, FluidBoundary b
     return kept;
 }
 
+// expectSmallPressureRegion：烟柱が域の一部だけを占める大きな域で、圧力を解く窓が域より小さいことも確かめる。
 void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution, float minimumDensity,
-               MATH::Vec3 domainSize = {4.0f, 4.0f, 4.0f}) {
+               MATH::Vec3 domainSize = {4.0f, 4.0f, 4.0f}, bool expectSmallPressureRegion = false) {
     FluidVolumePass pass;
     RENDER3D::PARTICLES::ParticleRenderInput input{};
     input.fluids.push_back(MakePlume(playbackNamespace, resolution));
@@ -261,6 +262,12 @@ void OpenPlume(FluidGpu& fluid, uint64_t playbackNamespace, uint32_t resolution,
     // 子步ごとの V 循環 2 回で残る散度は 64 格で速度 / 格の約 0.5%（0.13 / s）。発散すると 1e6 を超える。
     assert(stats.diagnosticsValid && maxDivergence < 0.25f && maxSpeed < 8.0f);
     assert(stats.densityTotal > minimumDensity && stats.activeBricks > 1u);
+    // 圧力は烟があり得る範囲（窓）だけ解く。上の散度は窓の中の値で、窓が域より小さくても投影は保たれている。
+    const uint64_t pressureCells = uint64_t{stats.pressureCells[0]} * stats.pressureCells[1] * stats.pressureCells[2];
+    const uint64_t allCells = uint64_t{stats.cells[0]} * stats.cells[1] * stats.cells[2];
+    std::fprintf(stderr, "fluid pressure window %u: %u x %u x %u of %u x %u x %u\n", resolution, stats.pressureCells[0],
+                 stats.pressureCells[1], stats.pressureCells[2], stats.cells[0], stats.cells[1], stats.cells[2]);
+    assert(pressureCells > 0u && pressureCells <= allCells && (!expectSmallPressureRegion || pressureCells < allCells));
     // 休眠：源を止めて烟を速く消すと、烟が消えた後に域は眠って子步を進めない。源が戻ると起きて烟が出る。
     const FluidSourceSubmission feeding = input.fluids[0].sources[0];
     input.fluids[0].sources[0].ratePerSecond = 0.0f;
@@ -417,8 +424,9 @@ void PushedPlumes(FluidGpu& fluid) {
     assert(plainRise > 0.3f && blockedSpeed < 0.15f * plainRise);
     assert(plainDensity > 0.05f && blockedDensity < 0.3f * plainDensity);
     assert(std::abs(divergence - expected) < 0.3f * expected);
-    // 疎な解算では烟が動くと解く砖块も変わり流れがわずかに違う（0.02 m/s 程度。引導を加速度で入れた時は 0.5 m/s 超）。
-    assert(std::abs(sinkDivergence + 5.0f) < 1.5f && velocityChange < 0.05f && densityChange > 1.0f);
+    // 疎な解算では烟が動くと解く砖块と圧力の窓も変わり流れがわずかに違う（0.02〜0.06 m/s 程度。引導を加速度で入れた時は
+    // 0.5 m/s 超）。
+    assert(std::abs(sinkDivergence + 5.0f) < 1.5f && velocityChange < 0.15f && densityChange > 1.0f);
     assert(blownSide > 0.5f && blownSide - plainSide > 0.4f);
     assert(std::abs(lumpyTotal - evenTotal) < 0.35f * evenTotal && lumpChange > 0.1f * evenTotal);
 }
@@ -562,18 +570,19 @@ void SinkAndEmit(FluidGpu& fluid) {
     pass.Shutdown();
 }
 
-// 域の数の上限（Balanced で 4）：6 つの域のうち、遠くても優先度の高い域は必ず解き、同じ優先度では相機から遠い 2 つが
-// 外れて統計に印が付く。
+// 域の数の上限（画質の maxDomains）：上限 + 2 個の域のうち、遠くても優先度の高い域は必ず解き、同じ優先度では相機から
+// 遠い 2 つが外れて統計に印が付く。
 void DomainLimit(FluidGpu& fluid) {
     FluidVolumePass pass;
     RENDER3D::PARTICLES::ParticleRenderInput input{};
-    for (uint32_t index = 0u; index < 6u; ++index) {
+    const uint32_t limit = ResolveFluidQualityPolicy(FluidFrameSettings{}.quality).maxDomains;
+    for (uint32_t index = 0u; index < limit + 2u; ++index) {
         FluidDomainSubmission domain = MakeDomain(100u + index, FluidBoundary::Open, 0.0f);
         domain.worldPosition = {0.0f, 0.0f, 10.0f * static_cast<float>(index + 1u)};
         domain.deltaSeconds = 1.0f / 60.0f;
         input.fluids.push_back(domain);
     }
-    input.fluids[5].settings.priority = 10u;
+    input.fluids[limit + 1u].settings.priority = 10u;
     FluidFrameSettings settings{};
     settings.viewerPosition = {};
     fluid.Frame(pass, input, settings);
@@ -584,10 +593,11 @@ void DomainLimit(FluidGpu& fluid) {
         assert(false);
         return true;
     };
-    std::fprintf(stderr, "fluid domain limit: skipped %u, far priority domain skipped %d\n",
-                 pass.GetStats().skippedDomains, skipped(105u) ? 1 : 0);
-    assert(pass.GetStats().skippedDomains == 2u && !skipped(105u) && !skipped(100u) && !skipped(101u) &&
-           !skipped(102u) && skipped(103u) && skipped(104u));
+    std::fprintf(stderr, "fluid domain limit %u: skipped %u, far priority domain skipped %d\n", limit,
+                 pass.GetStats().skippedDomains, skipped(100u + limit + 1u) ? 1 : 0);
+    assert(pass.GetStats().skippedDomains == 2u && !skipped(100u + limit + 1u));
+    for (uint32_t index = 0u; index <= limit; ++index)
+        assert(skipped(100u + index) == (index + 1u >= limit));
     pass.Shutdown();
 }
 
@@ -634,6 +644,35 @@ void CheckFluidSolver() {
         const uint32_t unit = (std::max)(8u, 1u << (layout.levels - 1u));
         for (const uint32_t cells : layout.cells)
             assert(cells % unit == 0u && (cells >> (layout.levels - 1u)) <= 8u);
+    }
+    // 圧力を解く窓：砖块と窓の段の倍率の倍数で、最も粗い段は各辺 8 以下、要る砖块を余白ごと含み、域を出ない。域の面に
+    // 重なる面だけが域の閉じた印を引き継ぐ。域とほぼ同じ箱は域全体（域の段の数）になる。
+    {
+        const FluidGridLayout layout = ResolveFluidGridLayout({16.0f, 3.0f, 16.0f}, 176u);
+        struct BrickBox {
+            uint32_t low[3];
+            uint32_t high[3];
+            bool whole;
+        };
+        const uint32_t last[3] = {layout.cells[0] / 8u - 1u, layout.cells[1] / 8u - 1u, layout.cells[2] / 8u - 1u};
+        for (const BrickBox& box :
+             {BrickBox{{0u, 0u, 0u}, {0u, 0u, 0u}, false}, BrickBox{{10u, 2u, 11u}, {12u, 3u, 13u}, false},
+              BrickBox{{0u, 0u, 0u}, {last[0], last[1], last[2]}, true}}) {
+            const uint32_t margin = 2u;
+            const FluidPressureWindow window =
+                ResolveFluidPressureWindow(layout, box.low, box.high, margin, kFluidAllFaces);
+            const uint32_t unit = (std::max)(8u, 1u << (window.levels - 1u));
+            assert(!window.empty && window.levels <= layout.levels && (window.levels == layout.levels) == box.whole);
+            for (uint32_t axis = 0u; axis < 3u; ++axis) {
+                const uint32_t end = window.origin[axis] + window.size[axis];
+                assert(window.origin[axis] % unit == 0u && window.size[axis] % unit == 0u &&
+                       (window.size[axis] >> (window.levels - 1u)) <= 8u && end <= layout.cells[axis]);
+                assert(window.origin[axis] <= (box.low[axis] - (std::min)(box.low[axis], margin)) * 8u &&
+                       end >= (std::min)((box.high[axis] + 1u + margin) * 8u, layout.cells[axis]));
+                assert(((window.closedFaces >> (axis * 2u)) & 1u) == (window.origin[axis] == 0u ? 1u : 0u) &&
+                       ((window.closedFaces >> (axis * 2u + 1u)) & 1u) == (end == layout.cells[axis] ? 1u : 0u));
+            }
+        }
     }
 
     FluidGpu fluid;
@@ -698,6 +737,8 @@ void CheckFluidSolver() {
     OpenPlume(fluid, 40u, 32u, 500.0f);
     OpenPlume(fluid, 41u, 64u, 4000.0f);
     OpenPlume(fluid, 42u, 128u, 20000.0f, {1.0f, 4.0f, 1.0f});
+    // 烟柱が中央の一部だけを占める広い域（32 格の域と同じ格の大きさ、160 × 32 × 160 格で 6 段）：圧力の窓は域より小さい。
+    OpenPlume(fluid, 43u, 160u, 500.0f, {20.0f, 4.0f, 20.0f}, true);
     PushedPlumes(fluid);
     LocalSpaceInertia(fluid);
     LongPrewarm(fluid, 80u, 60.0f, 6.0f, 360u);

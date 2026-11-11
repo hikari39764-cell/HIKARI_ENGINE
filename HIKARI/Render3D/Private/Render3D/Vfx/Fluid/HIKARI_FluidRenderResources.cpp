@@ -238,17 +238,58 @@ void FluidRenderer::TransitionVolume(ID3D12GraphicsCommandList* commands, FluidV
 bool FluidRenderer::EnsureNoise(const GFX::Context& context, D3D12_GPU_VIRTUAL_ADDRESS constants) {
     if (noiseReady_)
         return true;
-    if (!noiseVolume_.resource && !CreateFluidVolumeTexture(context.device, DXGI_FORMAT_R8_UNORM, kNoiseSize,
-                                                            kNoiseSize, kNoiseSize, noiseVolume_))
+    constexpr DXGI_FORMAT kNoiseFormat = DXGI_FORMAT_R8_UNORM;
+    if (!noiseVolume_.resource && !CreateFluidVolumeTexture(context.device, kNoiseFormat, kNoiseSize, kNoiseSize,
+                                                            kNoiseSize, noiseVolume_, kNoiseMips))
         return false;
+    ID3D12Resource* noise = noiseVolume_.resource.Get();
+    // 段 1 以降を作る間だけ使う記述子：段 m - 1 だけを読む srv と、段 m へ書く uav。
+    std::array<RenderResourceView, kNoiseMips - 1u> sources{};
+    std::array<RenderResourceView, kNoiseMips - 1u> targets{};
+    bool allocated = true;
+    for (uint32_t mip = 1u; mip < kNoiseMips; ++mip) {
+        sources[mip - 1u] = AllocateTexture3DSrvDescriptor(noise, kNoiseFormat, mip - 1u, 1u);
+        targets[mip - 1u] = AllocateTexture3DUavDescriptor(noise, kNoiseFormat, mip, 0u, kNoiseSize >> mip);
+        allocated = allocated && sources[mip - 1u].IsValid() && targets[mip - 1u].IsValid();
+    }
+    const auto retire = [&] {
+        for (uint32_t index = 0u; index + 1u < kNoiseMips; ++index) {
+            RetireRenderResourceDescriptor(sources[index], context, "FluidRenderer.NoiseMipSrv");
+            RetireRenderResourceDescriptor(targets[index], context, "FluidRenderer.NoiseMipUav");
+        }
+    };
+    if (!allocated) {
+        retire();
+        return false;
+    }
     ID3D12GraphicsCommandList* commands = context.cmdList;
     TransitionVolume(commands, noiseVolume_, D3D12_RESOURCE_STATE_UNORDERED_ACCESS);
     commands->SetComputeRootSignature(root_.Get());
     commands->SetPipelineState(noise_.Get());
     commands->SetComputeRootConstantBufferView(kConstants, constants);
+    // 段 0 は関数から作る（NoiseCS は t27 を読まないが、根の表は空の体積で埋める）。
+    uint32_t pass[4] = {0u, 0u, 0u, 0u};
+    commands->SetComputeRoot32BitConstants(kPassConstants, 4, pass, 0);
+    commands->SetComputeRootDescriptorTable(kFirstInput + kNoise, fallbackVolume_.srv.gpu);
     commands->SetComputeRootDescriptorTable(kOutput, noiseVolume_.uav.gpu);
     commands->Dispatch(kNoiseSize / 4u, kNoiseSize / 4u, kNoiseSize / 4u);
-    TransitionVolume(commands, noiseVolume_, kRead);
+    // 段 m は段 m - 1 の 2×2×2 の平均（平均の明るさが段で変わらない）：細かい段だけを読める状態にして t27 に束ね、次の段へ書く。
+    for (uint32_t mip = 1u; mip < kNoiseMips; ++mip) {
+        const auto toRead =
+            CD3DX12_RESOURCE_BARRIER::Transition(noise, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kRead, mip - 1u);
+        commands->ResourceBarrier(1, &toRead);
+        pass[0] = mip;
+        commands->SetComputeRoot32BitConstants(kPassConstants, 4, pass, 0);
+        commands->SetComputeRootDescriptorTable(kFirstInput + kNoise, sources[mip - 1u].gpu);
+        commands->SetComputeRootDescriptorTable(kOutput, targets[mip - 1u].gpu);
+        const uint32_t groups = ((kNoiseSize >> mip) + 3u) / 4u;
+        commands->Dispatch(groups, groups, groups);
+    }
+    const auto lastToRead =
+        CD3DX12_RESOURCE_BARRIER::Transition(noise, D3D12_RESOURCE_STATE_UNORDERED_ACCESS, kRead, kNoiseMips - 1u);
+    commands->ResourceBarrier(1, &lastToRead);
+    noiseVolume_.state = kRead;
+    retire();
     noiseReady_ = true;
     return true;
 }

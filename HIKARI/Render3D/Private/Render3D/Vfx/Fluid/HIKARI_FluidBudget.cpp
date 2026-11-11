@@ -7,13 +7,15 @@
 // 流体の解算の予算：域ごとの 1 フレームの見積もりと、重要でない域から子步を長くし、それでも超えれば止める割り振り。
 namespace HIKARI::RENDER3D::FLUID::INTERNAL {
 
-double EstimateFluidSolveCost(const FluidGridLayout& layout, float activeFraction, double frameSeconds,
-                              double stepSeconds, uint32_t maxSubsteps, uint32_t vCycles) noexcept {
+double EstimateFluidSolveCost(const FluidGridLayout& layout, float activeFraction, float pressureFraction,
+                              double frameSeconds, double stepSeconds, uint32_t maxSubsteps,
+                              uint32_t vCycles) noexcept {
     if (!(stepSeconds > 0.0) || !(frameSeconds > 0.0))
         return 0.0;
     const double steps = (std::min)(frameSeconds / stepSeconds, static_cast<double>(maxSubsteps));
     const double cells = static_cast<double>(layout.cells[0]) * layout.cells[1] * layout.cells[2] * 1.0e-6;
-    return cells * steps * (2.0 * std::clamp(activeFraction, 0.0f, 1.0f) + 0.5 * vCycles);
+    return cells * steps *
+           (2.0 * std::clamp(activeFraction, 0.0f, 1.0f) + 0.5 * vCycles * std::clamp(pressureFraction, 0.0f, 1.0f));
 }
 
 void AssignFluidBudget(std::span<FluidBudgetEntry> entries, double budget) noexcept {

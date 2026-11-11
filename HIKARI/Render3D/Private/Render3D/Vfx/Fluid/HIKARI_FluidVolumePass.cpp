@@ -46,6 +46,8 @@ constexpr float kMotionSmoothingSeconds = 0.1f;
 constexpr float kMaximumFrameVelocityChange = 12.0f;
 // 烟も烟を入れるものも無い状態がこのゲーム時間 [s] 続いたら域を眠らせる。
 constexpr float kSleepQuietSeconds = 0.5f;
+// 圧力を解く窓を、烟があり得る砖块（烟のある砖块から既に 2 砖块外まで）の更に外へ広げる余白 [m]（砖块 1 つより狭くはしない）。
+constexpr float kPressureWindowMarginMeters = 1.0f;
 
 // 速度・密度・燃料の体積がこれ以上の域は、烟のある辺りの分块だけを住まわせる（Tiled Resources Tier 3 の装置）。
 // 128³ の域（約 64 MiB）から。小さな域は密なまま（分块の貸し借りの手間に見合わない）。
@@ -93,6 +95,62 @@ void WarnDomainLimit(const FluidDomainSubmission& submission, uint32_t limit, fl
 float DomainDistance(const FluidDomainSubmission& submission, const MATH::Vec3& viewer) noexcept {
     return (std::max)(0.0f, MATH::Length(submission.worldPosition - viewer) -
                                 0.5f * MATH::Length(submission.settings.domainSize));
+}
+
+// このフレームの圧力を解く窓：烟があり得る砖块（domain.needed）と、向きの無い押し（湧き出し・汇。烟の無い所からも圧力で
+// 流れを作る）の球を囲む箱を余白ぶん広げる。余白は kPressureWindowMarginMeters 以上（回読が数フレーム遅れる間に烟が窓を
+// 出ないように）。全部の砖块が要る域（預熱、粒子の注入を受ける域）は域全体、何も無ければ解かない。
+FluidPressureWindow ResolvePressureWindow(const DomainState& domain, std::span<const FluidInteraction> steady,
+                                          uint32_t closedFaces) {
+    const FluidGridLayout& layout = domain.resources.layout;
+    uint32_t bricks[3]{};
+    uint32_t low[3]{};
+    uint32_t high[3]{};
+    for (int axis = 0; axis < 3; ++axis) {
+        bricks[axis] = (layout.cells[axis] + kFluidBrickCells - 1u) / kFluidBrickCells;
+        high[axis] = bricks[axis] - 1u;
+    }
+    const INTERNAL::FluidNeededBricks& needed = domain.needed;
+    if (needed.everything)
+        return ResolveFluidPressureWindow(layout, low, high, 0u, closedFaces);
+    bool any = needed.any;
+    if (any) {
+        std::copy(std::begin(needed.low), std::end(needed.low), low);
+        std::copy(std::begin(needed.high), std::end(needed.high), high);
+    }
+    const auto include = [&](const FluidInteraction& interaction) {
+        const bool push =
+            interaction.kind == FluidInteractionKind::Force || interaction.kind == FluidInteractionKind::Impulse;
+        if (!push || MATH::Length(interaction.direction) > 0.0f)
+            return;
+        const MATH::Vec3 center =
+            INTERNAL::RotateToFluidLocal(domain.frameRotation, interaction.worldPosition - domain.framePosition);
+        for (int axis = 0; axis < 3; ++axis) {
+            const float grid = (&center.x)[axis] / layout.cellSize + 0.5f * static_cast<float>(layout.cells[axis]);
+            const float reach = interaction.extents.x / layout.cellSize;
+            const float last = static_cast<float>(bricks[axis] - 1u);
+            const float brickCells = static_cast<float>(kFluidBrickCells);
+            const uint32_t from =
+                static_cast<uint32_t>(std::clamp(std::floor((grid - reach) / brickCells), 0.0f, last));
+            const uint32_t to = static_cast<uint32_t>(std::clamp(std::floor((grid + reach) / brickCells), 0.0f, last));
+            low[axis] = any ? (std::min)(low[axis], from) : from;
+            high[axis] = any ? (std::max)(high[axis], to) : to;
+        }
+        any = true;
+    };
+    for (const FluidInteraction& interaction : steady)
+        include(interaction);
+    for (const CarriedInteraction& event : domain.carried)
+        include(event.interaction);
+    if (!any) {
+        FluidPressureWindow none{};
+        none.empty = true;
+        return none;
+    }
+    const uint32_t margin =
+        (std::max)(1u, static_cast<uint32_t>(std::ceil(kPressureWindowMarginMeters /
+                                                       (static_cast<float>(kFluidBrickCells) * layout.cellSize))));
+    return ResolveFluidPressureWindow(layout, low, high, margin, closedFaces);
 }
 
 } // namespace
@@ -312,6 +370,7 @@ bool FluidVolumePass::Impl::PrepareDomain(DomainState& domain, const FluidDomain
         domain.asleep = false;
         domain.lastFedStep = 0u;
         domain.quietSeconds = 0.0f;
+        domain.pressureFraction = 1.0f;
         // 再起動の前に記録した回読（大きな子步数）が新しい統計を上書きしないよう、輪ごと捨てる。
         domain.readbackPending = {};
     }
@@ -509,6 +568,18 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     domain.stats.stepsThisFrame = steps;
     domain.stats.prewarmRemainingSeconds = static_cast<float>(static_cast<double>(domain.prewarmSteps) * step);
     domain.stats.asleep = domain.asleep;
+    // 圧力を解く窓（このフレームの子步すべてが同じ窓）。眠っている域は解かない。
+    domain.window = ResolvePressureWindow(domain, steadyInteractions, FluidClosedFaces(authored.boundary));
+    if (domain.asleep) {
+        domain.window = {};
+        domain.window.empty = true;
+    }
+    const FluidPressureWindow& window = domain.window;
+    for (int axis = 0; axis < 3; ++axis)
+        domain.stats.pressureCells[axis] = window.empty ? 0u : window.size[axis];
+    domain.pressureFraction = static_cast<float>(
+        static_cast<double>(domain.stats.pressureCells[0]) * domain.stats.pressureCells[1] *
+        domain.stats.pressureCells[2] / (static_cast<double>(layout.cells[0]) * layout.cells[1] * layout.cells[2]));
     domain.simulationSeconds =
         static_cast<float>(std::fmod(static_cast<double>(domain.clock.completedSteps) * step, 4096.0));
     if (domain.asleep && !enteringSleep)
@@ -520,9 +591,9 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     // flags：1 でこの子步の頭に汇の吸い込み量を 0 に戻す（フレームの最初の子步）、2 でこの子步の吸い込みを数える（預熱は数えない）。
     const auto uploadConstants = [&](uint64_t stepIndex, uint32_t interactionCount, const MATH::Vec3& inertia,
                                      uint32_t flags) -> D3D12_GPU_VIRTUAL_ADDRESS {
-        const INTERNAL::FluidDomainConstantsGpu constants =
-            INTERNAL::PackFluidDomainConstants(authored, domain.resources, static_cast<uint32_t>(frameSources.size()),
-                                               step, stepIndex, up, inertia, frameWind, interactionCount, flags);
+        const INTERNAL::FluidDomainConstantsGpu constants = INTERNAL::PackFluidDomainConstants(
+            authored, domain.resources, static_cast<uint32_t>(frameSources.size()), step, stepIndex, up, inertia,
+            frameWind, window, interactionCount, flags);
         const auto allocation = upload.Allocate(sizeof(constants));
         if (!allocation)
             return 0u;
@@ -613,6 +684,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
             recorder.Clear(volume);
         for (auto& volume : domain.resources.pressure)
             recorder.Clear(volume);
+        domain.resources.pressureWindow = {};
         domain.needsClear = false;
         ++domain.densityVersion;
     }
@@ -634,7 +706,7 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
         if (constants == 0u || sources == 0u || interactions == 0u)
             break;
         FluidRecorder stepRecorder(commands, pipeline, domain.resources, constants);
-        stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, vCycles);
+        stepRecorder.Substep(domain.velocityIndex, domain.densityIndex, sources, interactions, vCycles, window);
         if (index == 0u)
             domain.pendingInertia = {};
         for (CarriedInteraction& event : domain.carried)
@@ -859,12 +931,12 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         for (uint32_t level = 0u; level < 3u; ++level) {
             const uint32_t lod = (std::min)(domain.lod + level, 2u);
             // 眠っている域は解かない。
-            entry.cost[level] =
-                domain.asleep
-                    ? 0.0
-                    : INTERNAL::EstimateFluidSolveCost(domain.resources.layout, active, submission.deltaSeconds,
-                                                       FluidSubstepSeconds(submission.settings, lod),
-                                                       submission.settings.maxSubsteps, FluidVCycles(policy, lod));
+            entry.cost[level] = domain.asleep
+                                    ? 0.0
+                                    : INTERNAL::EstimateFluidSolveCost(
+                                          domain.resources.layout, active, domain.pressureFraction,
+                                          submission.deltaSeconds, FluidSubstepSeconds(submission.settings, lod),
+                                          submission.settings.maxSubsteps, FluidVCycles(policy, lod));
         }
     }
     INTERNAL::AssignFluidBudget(impl.budget, impl.calibration.BudgetUnits(policy.solveBudgetMs));
