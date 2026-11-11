@@ -1,5 +1,6 @@
 #pragma once
 
+#include <cstdint>
 #include <string_view>
 
 #include "RenderContracts/Material/HIKARI_MaterialAssetData.h"
@@ -9,6 +10,7 @@ namespace HIKARI {
 
 class AssetRegistry;
 class Material;
+class ModelAsset;
 
 class MaterialRuntimeBuilder {
 public:
@@ -22,6 +24,12 @@ public:
                               RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry, Material& outMaterial,
                               std::string_view debugName,
                               RENDER3D::MATERIAL::MaterialProgramResolution* outResolution = nullptr) const;
+
+    // 取り込んだモデルの材質 materialIndex の写し。テクスチャはモデルから継承し、描き分け（シェーダー・特性・
+    // 透明の扱い・両面）も元のまま。実行時に色だけ変える時（ModelView::SetMaterialColorOverride）の起点。
+    bool BuildModelMaterialCopy(const ModelAsset& model, uint32_t materialIndex,
+                                RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
+                                Material& outMaterial) const;
 };
 
 } // namespace HIKARI

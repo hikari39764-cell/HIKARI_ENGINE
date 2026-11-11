@@ -53,12 +53,20 @@ public:
     HIKARI_GAME_PROJECT_SDK_API bool TryGetAppearance(GameProjectModelAppearance& outAppearance) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     ApplyAppearance(const GameProjectModelAppearance& appearance) const noexcept;
-    // 既存の実行時マテリアル上書きを更新する。マテリアルや元資産は作らない。
+    // 材質槽 materialIndex の色を実行時だけ変える（受けた攻撃で一瞬光らせる等）。制作時の上書きが無い槽は、
+    // 取り込んだ材質の写し（テクスチャはモデルのまま）を作ってから変える。資産と Scene 文書は変えない。
+    // 色は 0〜64、opacity は 0〜1 に丸める。槽が無い・モデルが読めていない時は InvalidRequest / Unsupported。
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult SetMaterialColorOverride(uint32_t materialIndex,
                                                                                 GameProjectFloat3 baseColor,
                                                                                 float opacity,
                                                                                 GameProjectFloat3 emissiveColor,
                                                                                 float emissiveStrength) const noexcept;
+    // 材質槽が今描いている色を読む。outColor の size/version を初期化してから呼ぶ。槽が無ければ false。
+    HIKARI_GAME_PROJECT_SDK_API bool TryGetMaterialColor(uint32_t materialIndex,
+                                                         GameProjectModelMaterialColor& outColor) const noexcept;
+    // SetMaterialColorOverride の前の色へ戻す。上書きしていない槽は何もせず Success。
+    HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
+    ClearMaterialColorOverride(uint32_t materialIndex) const noexcept;
     // 名前が完全一致する最初のノードの描画可否。アニメーション・衝突・変換は変えない。
     HIKARI_GAME_PROJECT_SDK_API GameProjectWorldResult
     SetNodeVisibility(std::string_view nodeName, bool visible,

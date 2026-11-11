@@ -8,6 +8,9 @@
 
 #include "HIKARI/Project/WorldView.h"
 #include "Render3D/Core/HIKARI_Material.h"
+#include "Render3D/Material/HIKARI_MaterialRuntimeBuilder.h"
+#include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectComponentAccess.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectFixedText.h"
 #include "Scene/Components/Lighting/HIKARI_LightComponent.h"
@@ -303,20 +306,82 @@ GameProjectWorldResult ModelView::SetMaterialColorOverride(uint32_t materialInde
             !std::isfinite(emissiveStrength)) {
             return Code::InvalidRequest;
         }
-        Material* material = model.GetRuntimeMaterialOverride(materialIndex);
-        if (material == nullptr) {
+        const ModelAsset* asset = model.GetModelAsset();
+        if (asset == nullptr) {
             return Code::Unsupported;
         }
-        const uint64_t revisionBefore = material->GetRevision();
+        if (materialIndex >= asset->materials.size()) {
+            return Code::InvalidRequest;
+        }
+        // 制作時の上書きが無い槽は、取り込んだ材質の写しから始める（写さない時の描画と同じ見た目）。
+        std::unique_ptr<Material> copy{};
+        if (model.GetRuntimeMaterialOverride(materialIndex) == nullptr) {
+            copy = std::make_unique<Material>();
+            if (!MaterialRuntimeBuilder{}.BuildModelMaterialCopy(
+                    *asset, materialIndex, RENDER3D::MATERIAL::GetRuntimeMaterialProgramRegistry(), *copy)) {
+                return Code::MutationRejected;
+            }
+        }
+        Material* material = model.BeginRuntimeMaterialColorOverride(materialIndex, std::move(copy));
+        if (material == nullptr) {
+            return Code::MutationRejected;
+        }
+        // 材質の変更は ModelComponent が受け取り、描画の同期へ届ける。
         const auto Color = [](float value) { return std::clamp(value, 0.0f, 64.0f); };
         material->SetBaseColor(
             {Color(baseColor.x), Color(baseColor.y), Color(baseColor.z), std::clamp(opacity, 0.0f, 1.0f)});
         material->SetEmissiveFactor({Color(emissiveColor.x), Color(emissiveColor.y), Color(emissiveColor.z)});
         material->SetEmissiveStrength(std::clamp(emissiveStrength, 0.0f, 64.0f));
-        GameObject* owner = model.GetOwner();
-        if (material->GetRevision() != revisionBefore && owner != nullptr && owner->GetWorld() != nullptr) {
-            owner->GetWorld()->MarkRenderObjectDirty(owner);
+        // 発光は特性の印がある材質だけが描く（発光の無い取り込み材質は印が無い）。印は描き分けの鍵に入るので、
+        // 一度付けたら外さない（発光 0 なら何も足さない）。付け外しのたびに描画の経路を組み直さないため。
+        if ((material->GetFeatureBits() & MATERIAL_FEATURES::Emissive) == 0u) {
+            material->SetFeatureBits(material->GetFeatureBits() | MATERIAL_FEATURES::Emissive);
         }
+        return Code::Success;
+    });
+}
+
+bool ModelView::TryGetMaterialColor(uint32_t materialIndex, GameProjectModelMaterialColor& outColor) const noexcept {
+    if (outColor.structSize != sizeof(GameProjectModelMaterialColor) || outColor.version != 1u) {
+        return false;
+    }
+    GameProjectModelMaterialColor snapshot{};
+    outColor = snapshot;
+    return ReadComponent<ModelComponent>(object_, [&](const ModelComponent& model) {
+        const ModelAsset* asset = model.GetModelAsset();
+        if (asset == nullptr || materialIndex >= asset->materials.size()) {
+            return false;
+        }
+        MATH::Vec4 base{};
+        MATH::Vec3 emissive{};
+        if (const Material* material = model.GetRuntimeMaterialOverride(materialIndex)) {
+            base = material->GetBaseColor();
+            emissive = material->GetEmissiveFactor();
+            snapshot.emissiveStrength = material->GetEmissiveStrength();
+        } else {
+            const MaterialAsset& imported = asset->materials[materialIndex];
+            base = imported.baseColorFactor;
+            emissive = imported.emissiveFactor;
+            snapshot.emissiveStrength = imported.emissiveStrength;
+        }
+        snapshot.baseColor = {base.x, base.y, base.z};
+        snapshot.opacity = base.w;
+        snapshot.emissiveColor = {emissive.x, emissive.y, emissive.z};
+        outColor = snapshot;
+        return true;
+    });
+}
+
+GameProjectWorldResult ModelView::ClearMaterialColorOverride(uint32_t materialIndex) const noexcept {
+    return MutateComponent<ModelComponent>(object_, [materialIndex](ModelComponent& model) {
+        const ModelAsset* asset = model.GetModelAsset();
+        if (asset == nullptr) {
+            return Code::Unsupported;
+        }
+        if (materialIndex >= asset->materials.size()) {
+            return Code::InvalidRequest;
+        }
+        model.ClearRuntimeMaterialColorOverride(materialIndex);
         return Code::Success;
     });
 }

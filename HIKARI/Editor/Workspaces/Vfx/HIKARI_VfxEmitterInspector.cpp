@@ -398,10 +398,13 @@ void VfxWorkspaceController::DrawEmitterTiming(AssetDatabase& database, const VF
             VfxUiText("Off: particles retain their spawn transform. Forces use the simulation space.").c_str());
         basicEditor.FloatDistribution("Lifetime", "lifetime", emitter.basic.lifetime, 0.01f, 0.001f, 3600.0f);
     } else if (emitter.kind == VFX::VfxLayerKind::Fluid) {
-        basicEditor.Bool(VfxUiText("Follow Emitter (Local Space)").c_str(), "localSimulation",
+        basicEditor.Bool(VfxUiText("Domain Follows Layer (Local Space)").c_str(), "localSimulation",
                          emitter.basic.localSimulation);
-        ImGui::TextWrapped("%s", VfxUiText("On: the domain moves with the layer and its acceleration pushes the smoke "
-                                           "back (inertia). Off: the domain stays where it was rebuilt.")
+        ImGui::TextWrapped("%s", VfxUiText("On: the domain moves with the layer. Relative Wind sets how much of the "
+                                           "smoke stays in the world (1: it stays behind while the domain moves, for a "
+                                           "field that follows a character; 0: it travels with the domain and only "
+                                           "acceleration pushes it). Off: the domain stays where the effect started, "
+                                           "even if the effect moves later; only its sources move.")
                                      .c_str());
     }
     ImGui::SeparatorText(TEXT::Localize("ui.vfx.layer.offset").c_str());

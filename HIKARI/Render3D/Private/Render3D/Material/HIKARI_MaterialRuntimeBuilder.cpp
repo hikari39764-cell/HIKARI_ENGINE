@@ -10,6 +10,8 @@
 #include "Core/HIKARI_Logger.h"
 #include "Render3D/Core/HIKARI_Material.h"
 #include "RenderContracts/Model/HIKARI_ModelAsset.h"
+#include "RenderContracts/Model/Policies/HIKARI_ModelMaterialPolicy.h"
+#include "RenderContracts/Model/Policies/HIKARI_ModelSurfacePolicy.h"
 #include "Render3D/Material/HIKARI_DefaultPbrResources.h"
 #include "Render3D/Material/HIKARI_GpuMaterialTypes.h"
 #include "Render3D/Material/HIKARI_MaterialTextureUsage.h"
@@ -233,6 +235,55 @@ bool MaterialRuntimeBuilder::BuildRuntimeMaterial(const MaterialAssetData& data,
         *outResolution = resolution;
     }
     return resolution.id.IsValid();
+}
+
+bool MaterialRuntimeBuilder::BuildModelMaterialCopy(const ModelAsset& model, uint32_t materialIndex,
+                                                    RENDER3D::MATERIAL::MaterialProgramRegistry& programRegistry,
+                                                    Material& outMaterial) const {
+    if (materialIndex >= model.materials.size()) {
+        return false;
+    }
+    const MaterialAsset& source = model.materials[materialIndex];
+    // 両面は取り込んだ描画と同じく面ごとの規則で決める（材質 1 つなので、どれかの面が両面なら両面）。
+    bool doubleSided = false;
+    bool used = false;
+    for (const MeshAsset& mesh : model.meshes) {
+        for (const MeshPrimitive& primitive : mesh.primitives) {
+            if (primitive.materialIndex == materialIndex) {
+                used = true;
+                doubleSided = doubleSided || SURFACE_POLICY::ShouldRenderDoubleSided(source, primitive);
+            }
+        }
+    }
+    if (!used) {
+        doubleSided = MATERIAL_POLICY::ShouldRenderDoubleSided(source);
+    }
+    // 写しはテクスチャも資源も持たない（モデルから継承する）ので、資産の表は引かれない。
+    static const AssetRegistry kNoAssets{};
+    PbrMaterialAssetData pbr{};
+    pbr.materialName = source.name;
+    pbr.baseColorFactor = source.baseColorFactor;
+    pbr.metallicFactor = source.metallicFactor;
+    pbr.roughnessFactor = source.roughnessFactor;
+    pbr.specularFactor = source.specularFactor;
+    pbr.specularColorFactor = source.specularColorFactor;
+    pbr.normalScale = source.normalTexture.scale;
+    pbr.occlusionStrength = source.occlusionTexture.strength;
+    pbr.emissiveFactor = source.emissiveFactor;
+    pbr.emissiveStrength = source.emissiveStrength;
+    pbr.doubleSided = doubleSided;
+    pbr.unlit = (source.featureBits & MATERIAL_FEATURES::Unlit) != 0u;
+    if (!BuildRuntimeMaterial(pbr, kNoAssets, programRegistry, outMaterial, source.name)) {
+        return false;
+    }
+    outMaterial.SetShaderProfileId(source.shaderProfileId);
+    outMaterial.SetFeatureBits(source.featureBits);
+    outMaterial.SetMaterialAlphaMode(source.alphaMode == AlphaMode::Mask    ? RuntimeMaterialAlphaMode::Mask
+                                     : source.alphaMode == AlphaMode::Blend ? RuntimeMaterialAlphaMode::Blend
+                                                                            : RuntimeMaterialAlphaMode::Opaque);
+    outMaterial.SetAlphaCutoff(source.alphaCutoff);
+    outMaterial.SetInheritModelTextures(true);
+    return true;
 }
 
 } // namespace HIKARI

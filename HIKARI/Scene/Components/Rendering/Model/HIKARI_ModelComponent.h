@@ -101,9 +101,17 @@ struct ModelMaterialOverrideSlot {
     AssetGuid materialAssetGuid{};
 };
 
+// 実行時の色の上書き（ゲームコードの受けた攻撃の発光など）を始める前の色。解くとこの色へ戻す。
+struct RuntimeMaterialColor {
+    MATH::Vec4 baseColor{1.0f, 1.0f, 1.0f, 1.0f};
+    MATH::Vec3 emissiveFactor{};
+    float emissiveStrength = 1.0f;
+};
+
 struct RuntimeMaterialOverrideSlot {
     uint32_t materialIndex = 0;
     std::unique_ptr<Material> material{};
+    std::optional<RuntimeMaterialColor> colorBeforeOverride{};
 };
 
 struct RuntimeModelNodeVisibilityOverride {
@@ -165,6 +173,11 @@ public:
     void ClearRuntimeMaterialOverride(MaterialSlotId slotId);
     void ClearRuntimeMaterialOverrides();
     const std::vector<RuntimeMaterialOverrideSlot>& GetRuntimeMaterialOverrides() const noexcept;
+    // 色の上書きを始め、変える材質を返す。上書きの無い槽は copy（取り込んだ材質の写し）で始める。copy も無ければ null。
+    // 写しは解いた後も残す（同じ見た目の写しを付け外しするたびに描画の経路を組み直さない）。
+    Material* BeginRuntimeMaterialColorOverride(uint32_t slotIndex, std::unique_ptr<Material> copy);
+    // 色の上書きを始める前の色へ戻す。上書きしていなければ何もしない。
+    void ClearRuntimeMaterialColorOverride(uint32_t slotIndex);
     bool SetRuntimeNodeVisibilityOverride(std::string_view nodeName, bool visible, bool includeDescendants);
     bool ClearRuntimeNodeVisibilityOverride(std::string_view nodeName);
     void ClearRuntimeNodeVisibilityOverrides();
