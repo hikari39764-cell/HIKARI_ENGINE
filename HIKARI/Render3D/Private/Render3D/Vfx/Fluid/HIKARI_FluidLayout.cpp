@@ -11,8 +11,10 @@ FluidQualityPolicy ResolveFluidQualityPolicy(FluidSmokeQuality quality) noexcept
     switch (quality) {
     case FluidSmokeQuality::Low: return {0.75f, 1u, 48u, 2u, 2.0f, 3.0f, 1.6f};
     case FluidSmokeQuality::High: return {1.0f, 3u, 96u, 8u, 0.5f, 12.0f, 0.8f};
+    // 均衡も域の数は描画の表の上限（kMaximumRenderedFluidDomains）まで。場地の霧と炎・技ごとの域・砲撃の域が重なる
+    // 戦闘では 6 では足りず、外れた域は急に消える。重さは域の数ではなく解算の予算（6 ms）で抑える。
     case FluidSmokeQuality::Balanced:
-    default: return {1.0f, 2u, 64u, 6u, 1.0f, 6.0f, 1.2f};
+    default: return {1.0f, 2u, 64u, 8u, 1.0f, 6.0f, 1.2f};
     }
 }
 
