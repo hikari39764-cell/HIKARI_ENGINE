@@ -64,12 +64,18 @@ void ResolveFluidObstacles(const World& world, const GameObject& object, const F
     if (!settings.enabled)
         return;
     const RuntimeObjectHandle handle = object.GetRuntimeHandle();
+    const size_t first = out.size();
+    const auto setChannels = [&] {
+        for (size_t index = first; index < out.size(); ++index)
+            out[index].interaction.channels = RENDER3D::FLUID::FluidChannelMask(settings.channel);
+    };
     for (size_t index = 0; index < settings.shapes.size(); ++index) {
         const FluidObstacleShape& authored = settings.shapes[index];
         VFX::VfxWorldTransform anchor{};
         if (VFX::ResolveVfxAnimationAttachment(world, handle, authored.socket, anchor))
             out.push_back({index + 1u, Place(ToColliderShape(authored), anchor)});
     }
+    setChannels();
     if (!settings.useColliders)
         return;
     VFX::VfxWorldTransform anchor{};
@@ -83,6 +89,7 @@ void ResolveFluidObstacles(const World& world, const GameObject& object, const F
         for (const ResolvedColliderShape& shape : collider.ResolveShapes())
             out.push_back({instance++, Place(shape, anchor)});
     });
+    setChannels();
 }
 
 void FluidObstacleSystem::PreRender(World& world, const FrameContext& frame) {

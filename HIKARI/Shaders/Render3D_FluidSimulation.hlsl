@@ -597,14 +597,19 @@ float HikariFluidEmitFalloff(HikariFluidInteraction interaction, float3 p)
 }
 
 // 注入（3）：動いた線分を掃いた球の中（二乗で弱まる）へ毎秒 strength の密度を足し（色は白）、温度を extents.y へ寄せ、
-// 向きがあれば注入する烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。
+// 向きがあれば注入する烟をその速さ（velocity.xyz、域の局所 [m/s]）へ寄せる（源の注入と同じ寄せ方）。sweep.w が立った
+// 注入は、同じ量を烟ではなく燃料へ足す（燃えない域へは CPU が渡さない）。
 void ApplyEmit(HikariFluidInteraction interaction, float3 p, float3 velocity, inout float3 acceleration,
-               inout float4 smoke, inout float temperature)
+               inout float4 smoke, inout float fuel, inout float temperature)
 {
     const float weight = HikariFluidEmitFalloff(interaction, p);
     if (weight <= 0.0f)
         return;
-    smoke += (max(interaction.push.w, 0.0f) * weight * gCell.z).xxxx;
+    const float added = max(interaction.push.w, 0.0f) * weight * gCell.z;
+    if (interaction.sweep.w > 0.5f)
+        fuel += added;
+    else
+        smoke += added.xxxx;
     temperature += (interaction.extents.y - temperature) * saturate(weight * 8.0f * gCell.z);
     if (HikariFluidPushDirected(interaction))
         acceleration += (interaction.velocity.xyz - velocity) * (8.0f * weight);
@@ -714,7 +719,7 @@ void ForceFieldCS(uint3 id : SV_DispatchThreadID)
         ApplySource(gSources[index], p, velocity, acceleration, smoke, fuel, temperature);
     for (uint emit = 0u; emit < gInteractionCount.x; ++emit)
         if (HikariFluidInteractionKind(gInteractions[emit]) == 3u)
-            ApplyEmit(gInteractions[emit], p, velocity, acceleration, smoke, temperature);
+            ApplyEmit(gInteractions[emit], p, velocity, acceleration, smoke, fuel, temperature);
     ApplyParticleInjection(id, velocity, acceleration, smoke, temperature);
     // 燃焼は注入の後、浮力の前（燃えて上がった温度がこの子步で浮く）。
     const float burning = Burn(smoke, fuel, temperature);

@@ -396,9 +396,12 @@ void FluidVolumePass::Impl::GatherSources(DomainState& domain, const FluidDomain
         if (frameSources.size() < kMaximumFluidSourcesPerDomain)
             frameSources.push_back(source);
     const float domainRadius = 0.5f * MATH::Length(domain.layoutSize);
+    const uint32_t domainChannels = FluidChannelMask(submission.settings.channel);
     for (const FluidSourceSubmission& source : sceneSources) {
         if (frameSources.size() >= kMaximumFluidSourcesPerDomain)
             break;
+        if ((FluidChannelMask(source.settings.channel) & domainChannels) == 0u)
+            continue;
         // 今の位置か、まだ掃いていない始点から届けば入れる（域を横切って出ていく速い源の尾迹も残す）。
         const float reach = domainRadius + INTERNAL::FluidSourceReach(source, domain.resources.layout.cellSize);
         const int track = find(source.id);
@@ -489,7 +492,11 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     const bool newInteractions = settings.interactionFrame != domain.lastInteractionFrame;
     domain.lastInteractionFrame = settings.interactionFrame;
     steadyInteractions.clear();
+    const uint32_t domainChannels = FluidChannelMask(authored.channel);
     for (const FluidInteraction& interaction : settings.interactions) {
+        // 通道の重ならないものと、燃えない域への燃料は届かない。
+        if ((interaction.channels & domainChannels) == 0u || (interaction.fuel && !layout.combustion))
+            continue;
         const MATH::Vec3& extents = interaction.extents;
         const bool obstacle = interaction.kind == FluidInteractionKind::Obstacle;
         const float reach = obstacle && interaction.shape == FluidInteractionShape::Capsule ? extents.x + extents.y

@@ -7,6 +7,12 @@ namespace HIKARI {
 inline constexpr uint32_t kGameProjectFluidApiVersion = 1u;
 // Per World and frame. Each fluid smoke domain uses at most 32 of the ones that reach it.
 inline constexpr uint32_t kGameProjectFluidMaximumInteractions = 64u;
+// Channels separate what reaches which fluid domain. A domain listens on one channel (set on the VFX fluid domain
+// layer: Default, Channel 1-7, All or None); a submission goes to the set of channels in its `channels` mask (bit i =
+// channel i, bit 0 = Default) and reaches a domain when the two overlap. Use them to keep overlapping domains apart,
+// for example fuel for a fire domain that shares the arena with a long-lived fog domain.
+inline constexpr uint32_t kGameProjectFluidDefaultChannel = 1u;
+inline constexpr uint32_t kGameProjectFluidAllChannels = 0xffu;
 
 // What a submission does to the VFX fluid smoke layers it reaches.
 enum class GameProjectFluidInteractionKind : uint32_t {
@@ -34,6 +40,12 @@ enum class GameProjectFluidInteractionKind : uint32_t {
     // Emit (the same (owner, instanceId) as the previous frame) is spread along the segment it moved since then, so a fast
     // trail stays continuous; a move faster than 60 m/s within one frame counts as a teleport and is not spread.
     Emit = 3u,
+    // Adds fuel instead of smoke, otherwise exactly like Emit (amount, falloff, velocity, extents.y temperature,
+    // spreading along the moved segment). Only domains with combustion receive it; others ignore it. Fuel burns where
+    // the temperature is above the ignition temperature of the domain, so give it a temperature above that to light
+    // it, or add it cold and heat it later with an Emit (a detonation). A sink or absorbing Force removes fuel like
+    // smoke.
+    Fuel = 4u,
 };
 
 // Obstacle shapes. Impulses and forces always act on a sphere of radius extents.x.
@@ -47,16 +59,18 @@ struct GameProjectFluidInteraction {
     GameProjectFloat3 position{};     // world metres, each axis within ±1000000
     GameProjectQuaternion rotation{}; // world, non-degenerate (normalized internally); capsule axis is local +Y
     // Sphere: x radius. Capsule: x radius, y half length of the axis segment between the caps. Box: half extents.
-    // Impulse / Force / Emit: x radius of influence, strongest at the centre and zero at the radius (squared
-    // falloff); Emit: y temperature. x is 0.001–1000 m, y and z 0–1000 m.
+    // Impulse / Force / Emit / Fuel: x radius of influence, strongest at the centre and zero at the radius (squared
+    // falloff); Emit / Fuel: y temperature. x is 0.001–1000 m, y and z 0–1000 m.
     GameProjectFloat3 extents{0.5f, 0.5f, 0.5f};
-    // Impulse / Force: world direction; zero expands from position (see the kinds). Emit: world velocity in m/s.
+    // Impulse / Force: world direction; zero expands from position (see the kinds). Emit / Fuel: world velocity
+    // in m/s.
     GameProjectFloat3 direction{};
     float strength = 0.0f; // see the kinds; within ±10000
     // Force only (0 for the other kinds): smoke, heat and fuel inside the radius fade at this rate per second
     // (0–1000 1/s, strongest at the centre, squared falloff), with or without a direction. 0 leaves smoke alone.
     float absorption = 0.0f;
-    uint32_t reserved = 0u;
+    // Channels this submission reaches (bits within kGameProjectFluidAllChannels). 0 means the Default channel.
+    uint32_t channels = 0u;
 };
 
 static_assert(sizeof(GameProjectFluidInteraction) == 80u);
