@@ -373,6 +373,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
     RAYTRACING::RuntimeRayLightingFrame rayLighting;
     MESHRENDERER::MeshMaterialGpuFrameView materials{};
     std::optional<LIGHTPROBE::ScopedDynamicGiVolumes> dynamicGiScope;
+    D3D12_GPU_DESCRIPTOR_HANDLE raySceneView{};
     {
         const auto& source = MESHRENDERER::GetActiveGpuDrivenSceneSource();
         const auto& clock = TIME::GetFrameContext();
@@ -405,6 +406,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             gRuntimeRayScene.Reset(frame.graphics);
             gRuntimeRayLighting.Reset(frame.graphics);
         }
+        raySceneView = rayScene.accelerationStructureView;
         rayLighting = gRuntimeRayLighting.Prepare(
             frame.graphics, rayScene, materials, environment, lighting,
             {TIME::GetUnscaledElapsedSeconds(), clock.unscaledDt, clock.gameDt, static_cast<float>(clock.frameIndex)},
@@ -602,6 +604,7 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
         sceneTextures, GRAPH::RenderGraphSemanticPhase::PreOpaque, screenResult.fallbackAoTextureHandle);
     opaqueResources.visibilityDepthPyramid = screenResult.visibilityDepthPyramid;
     opaqueResources.rayTracedShadow = screenResult.rayTracedShadow;
+    opaqueResources.rayScene = raySceneView;
     opaqueResources.opaqueDepthComplete = screenResult.geometryAuxDepthComplete;
     MESHRENDERER::MeshPassResources postOpaqueResources = opaqueResources;
     // 可視率は不透明面の画素のもの。半透明はカスケード影を読む。

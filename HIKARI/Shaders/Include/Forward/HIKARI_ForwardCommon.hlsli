@@ -84,6 +84,8 @@ static const uint HIKARI_SCREEN_SPACE_SCENE_COLOR_CAPTURE_VALID = 1u << 1;
 static const uint HIKARI_SCREEN_SPACE_RAY_SHADOW_VALID = 1u << 2;
 // 深度ピラミッドが現フレームの場面深度（接触影が辿れる）。不透明の Forward でも立つ。
 static const uint HIKARI_SCREEN_SPACE_CONTACT_DEPTH_VALID = 1u << 3;
+// モジュールの面の通道に、場面の加速構造が張られている（Include/Surface/HIKARI_SurfaceRayScene.hlsli）。
+static const uint HIKARI_SCREEN_SPACE_SURFACE_RAY_SCENE_VALID = 1u << 4;
 SamplerState gLinearWrap : register(s0);
 SamplerComparisonState gShadowSampler : register(s1);
 SamplerState gLinearClamp : register(s2);

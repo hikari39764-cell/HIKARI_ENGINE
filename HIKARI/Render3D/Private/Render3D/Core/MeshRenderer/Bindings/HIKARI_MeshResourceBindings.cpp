@@ -343,17 +343,33 @@ void BindScreenSpaceTraceResources(const MeshBindingContext& ctx) {
     if (rayShadowSrv.ptr != 0) {
         BindDescriptorTableCached(ctx, ROOT_PARAM::RayTracedShadow, rayShadowSrv);
     }
+    // モジュールの面の root だけが持つ枠：場面の加速構造。無いフレームは旗が 0 で読まれないので、heap の中の
+    // 固定の枠を張っておく（OceanSpectrumData と同じ扱い）。
+    const bool raySceneValid = ctx.surfaceExtensionRoot && ctx.passResources.rayScene.ptr != 0;
+    if (ctx.surfaceExtensionRoot && ctx.graphics != nullptr && ctx.graphics->device != nullptr &&
+        ctx.graphics->srvHeap != nullptr) {
+        const UINT descriptorSize =
+            ctx.graphics->device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
+        BindDescriptorTableCached(
+            ctx, ROOT_PARAM::MeshletOcclusionDepth,
+            raySceneValid
+                ? ctx.passResources.rayScene
+                : GFX::DESCRIPTOR::GpuAt(ctx.graphics->srvHeap, descriptorSize,
+                                         GFX::DESCRIPTOR::ToIndex(GFX::DESCRIPTOR::SystemSrv::SceneColorFrame0)));
+    }
 
     const bool boundTraceValid = traceInputValid && depthPyramidSrv.ptr != 0 && packedSurfaceSrv.ptr != 0;
     constexpr uint32_t kDepthTraceValid = 1u << 0;
     constexpr uint32_t kSceneColorCaptureValid = 1u << 1;
     constexpr uint32_t kRayShadowValid = 1u << 2;
     constexpr uint32_t kContactDepthValid = 1u << 3;
+    constexpr uint32_t kSurfaceRaySceneValid = 1u << 4;
     const bool sceneColorCaptureValid = ctx.passResources.opaqueSceneColor.IsSampleable();
     const uint32_t constants[2] = {(boundTraceValid ? kDepthTraceValid : 0u) |
                                        (sceneColorCaptureValid ? kSceneColorCaptureValid : 0u) |
                                        (rayShadowValid && rayShadowSrv.ptr != 0 ? kRayShadowValid : 0u) |
-                                       (contactDepthValid && depthPyramidSrv.ptr != 0 ? kContactDepthValid : 0u),
+                                       (contactDepthValid && depthPyramidSrv.ptr != 0 ? kContactDepthValid : 0u) |
+                                       (raySceneValid ? kSurfaceRaySceneValid : 0u),
                                    boundTraceValid ? depthPyramid.mipCount : 0u};
     ctx.cmd->SetGraphicsRoot32BitConstants(ROOT_PARAM::ScreenSpaceTraceControl, 2u, constants, 0u);
     if (ctx.cache != nullptr) {

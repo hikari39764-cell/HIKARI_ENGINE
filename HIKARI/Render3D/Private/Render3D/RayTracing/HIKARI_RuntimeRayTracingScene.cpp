@@ -27,6 +27,7 @@
 #include "Render3D/Lighting/HIKARI_LightmapRuntime.h"
 #include "Render3D/Material/Program/HIKARI_MaterialProgramRegistry.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingInputs.h"
+#include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "RenderCore/Resources/HIKARI_RenderResourceSystem.h"
 
 namespace HIKARI::RENDER3D::RAYTRACING {
@@ -39,6 +40,16 @@ struct Group {
     std::vector<std::pair<uint32_t, uint32_t>> surfaces; // material slot, flags
     uint32_t index = 0;                                  // instance を並べた順の番号（GroupUse の位置）
 };
+// 影を落とす不透明な面（材質の slot があり、影を落とし、透過しない）を持つ塊は、簡単な影の光線にも当たる。
+template <class Ranges>
+uint8_t SceneInstanceMask(const Ranges& ranges, const std::vector<std::pair<uint32_t, uint32_t>>& surfaces) {
+    const bool solid = std::any_of(ranges.begin(), ranges.end(), [&](const auto& range) {
+        const auto [material, flags] = surfaces[range.surfaceIndex];
+        return material != 0xffffffffu && (flags & 2u) != 0u && (flags & kRuntimeRayTracingHitTransmissive) == 0u;
+    });
+    return solid ? static_cast<uint8_t>(kRuntimeRayTracingSceneMask | kRuntimeRayTracingSolidCasterMask)
+                 : kRuntimeRayTracingSceneMask;
+}
 template <class T>
 bool SameBytes(const std::vector<T>& a, const std::vector<T>& b) {
     return a.size() == b.size() && (a.empty() || std::memcmp(a.data(), b.data(), a.size() * sizeof(T)) == 0);
@@ -75,6 +86,9 @@ void RuntimeRayTracingScene::State::RetireTop(const GFX::Context& graphics, bool
     if (topLevel)
         topLevel->Reset(&graphics);
     topLevel.reset();
+    if (topLevelView.IsValid())
+        RetireRenderResourceDescriptor(topLevelView, graphics, "RT.Scene.TopLevelView");
+    topLevelViewAddress = 0;
     if (!keepHits) {
         hitUploads.Reset(graphics, "RT.Scene.Hits");
         lastHits.clear();
@@ -82,6 +96,24 @@ void RuntimeRayTracingScene::State::RetireTop(const GFX::Context& graphics, bool
     lastInstances.clear();
     gpuPrefixValid = false;
     massDescsOnGpu = false;
+}
+D3D12_GPU_DESCRIPTOR_HANDLE RuntimeRayTracingScene::State::TopLevelView(const GFX::Context& graphics) {
+    const D3D12_GPU_VIRTUAL_ADDRESS address = topLevel->GetGpuAddress();
+    if (address == topLevelViewAddress)
+        return topLevelView.gpu;
+    if (topLevelView.IsValid())
+        RetireRenderResourceDescriptor(topLevelView, graphics, "RT.Scene.TopLevelView");
+    topLevelViewAddress = 0;
+    topLevelView = AllocateRenderResourceDescriptor();
+    if (!topLevelView.IsValid())
+        return {};
+    D3D12_SHADER_RESOURCE_VIEW_DESC description{};
+    description.ViewDimension = D3D12_SRV_DIMENSION_RAYTRACING_ACCELERATION_STRUCTURE;
+    description.Shader4ComponentMapping = D3D12_DEFAULT_SHADER_4_COMPONENT_MAPPING;
+    description.RaytracingAccelerationStructure.Location = address;
+    graphics.device->CreateShaderResourceView(nullptr, &description, topLevelView.cpu);
+    topLevelViewAddress = address;
+    return topLevelView.gpu;
 }
 uint64_t RuntimeRayTracingScene::State::Available(const RuntimeRayTracingBudget& budget) {
     stats.residentBytes = hitUploads.AllocationBytes() + (topLevel ? topLevel->GetAllocationBytes() : 0) +
@@ -169,6 +201,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::State::Publish(const GFX::Context
                       version, graphics.currentFrameRetireFenceValue, true, false, graphics.frameFence,
                       graphics.deviceGeneration, sourceIdentity, layoutVersion, materialVersion});
     frame.deformedVertices = deformed.empty() ? 0 : deformation.PoolAddress();
+    frame.accelerationStructureView = TopLevelView(graphics);
     frame.changedMinimum = changes.minimum;
     frame.changedMaximum = changes.maximum;
     return frame;
@@ -564,7 +597,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             D3D12_RAYTRACING_INSTANCE_DESC instance{};
             WriteTransform(instance, group.world);
             instance.InstanceID = static_cast<uint32_t>(hits.size());
-            instance.InstanceMask = kRuntimeRayTracingSceneMask;
+            instance.InstanceMask = SceneInstanceMask(chunk.ranges, group.surfaces);
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
             instance.AccelerationStructure = asset.bottomLevels[c]->GetGpuAddress();
             instances.push_back(instance);
@@ -604,7 +637,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             const bool used = std::any_of(chunk.ranges.begin(), chunk.ranges.end(), [&](const auto& range) {
                 return entry.surfaces[range.surfaceIndex].first != 0xffffffffu;
             });
-            instance.InstanceMask = used ? kRuntimeRayTracingSceneMask : 0x00;
+            instance.InstanceMask = used ? SceneInstanceMask(chunk.ranges, entry.surfaces) : 0x00;
             instance.Flags = D3D12_RAYTRACING_INSTANCE_FLAG_TRIANGLE_CULL_DISABLE;
             instance.AccelerationStructure = entry.bottomLevels[c]->GetGpuAddress();
             instances.push_back(instance);

@@ -46,6 +46,7 @@ struct MeshPipelineStore {
     Microsoft::WRL::ComPtr<ID3D12RootSignature> skinnedRootSig;
     // モジュールの面（HIKARI/Project/RenderSurface.h、着色器はモジュールが持つ）。番号と予算は同じで、次の三つの型だけ違う：
     // JointPalette -> t0 space10、MeshletVisibleRanges -> b3、ClusterGeometryPool -> t1..t4 space10。
+    // MeshletOcclusionDepth は場面の加速構造（t0 space11）で、ScreenSpaceTraceControl と ShadowCB は全段から読める。
     Microsoft::WRL::ComPtr<ID3D12RootSignature> surfaceExtensionRootSig;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> pso;
     Microsoft::WRL::ComPtr<ID3D12PipelineState> skinnedPso;

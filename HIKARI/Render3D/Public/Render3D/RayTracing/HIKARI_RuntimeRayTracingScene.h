@@ -141,7 +141,10 @@ inline constexpr uint32_t kRuntimeRayTracingHitTransmissive = 8u;
 // モジュールの代理。不透明で頂点を読まず、面の値は reserved から作る。
 inline constexpr uint32_t kRuntimeRayTracingHitProxy = 16u;
 // instance の mask。普通の光線は 0xff で全部に当たり、代理だけを見る長い影の光線は代理の bit だけを使う。
-inline constexpr uint8_t kRuntimeRayTracingSceneMask = 0xfeu;
+inline constexpr uint8_t kRuntimeRayTracingSceneMask = 0x7cu;
+// 影を落とす不透明な面を持つ scene の instance に足す。材質を読まない簡単な影の光線（モジュールの面の shader が
+// HIKARI_SurfaceRayScene.hlsli から飛ばす）は、このビットと大量配置と代理だけを見る。
+inline constexpr uint8_t kRuntimeRayTracingSolidCasterMask = 0x80u;
 // 大量配置はこのビットだけで、遠景模型の面からの影の光線（HIKARI_RAY_SKIP_MASS）に当たらない。
 inline constexpr uint8_t kRuntimeRayTracingMassMask = 0x02u;
 inline constexpr uint8_t kRuntimeRayTracingProxyMask = 0x01u;
@@ -212,6 +215,8 @@ struct RuntimeRayTracingFrame {
     // 変形した頂点の pool（無ければ 0）。命中の解決が読む。
     D3D12_GPU_VIRTUAL_ADDRESS deformedVertices = 0;
     MATH::Vec4 changedMinimum{0, 0, 0, 0}, changedMaximum{0, 0, 0, 0};
+    // 加速構造の SRV（descriptor table に張る用）。Forward がモジュールの面の shader へ渡す。無ければ ptr = 0。
+    D3D12_GPU_DESCRIPTOR_HANDLE accelerationStructureView{};
 };
 
 bool IsRuntimeRayTracingFrameCurrent(const RuntimeRayTracingFrame& frame, const GFX::Context& graphics,
