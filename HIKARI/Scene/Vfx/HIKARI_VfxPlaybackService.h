@@ -39,8 +39,12 @@ struct VfxSeekCapacity {
 
 using VfxProgramResolver = std::function<std::shared_ptr<const VfxProgram>(const AssetGuid&, std::string&)>;
 
+class VfxFluidShapeCache;
+
 class VfxPlaybackService final {
 public:
+    // 流体源の模型の形が読む距離の体積の出どころ（描画の提交の側が持つ。無ければ模型の形の源は何も入れない）。
+    void SetFluidShapeCache(VfxFluidShapeCache* cache) noexcept { fluidShapes_ = cache; }
     explicit VfxPlaybackService(uint64_t playbackNamespace = 0u);
     ~VfxPlaybackService();
 
@@ -148,6 +152,7 @@ private:
     std::vector<Instance> instances_{};
     std::vector<RENDER3D::PARTICLES::ParticleEmitterInstanceKey> pendingRetiredEmitters_{};
     RENDER3D::PARTICLES::ParticleRenderInput renderInput_{};
+    VfxFluidShapeCache* fluidShapes_ = nullptr;
     // 流体域ごとの最後に届いた発光（ReceiveFluidGlow）。
     struct FluidGlow {
         VfxPlaybackHandle handle{};

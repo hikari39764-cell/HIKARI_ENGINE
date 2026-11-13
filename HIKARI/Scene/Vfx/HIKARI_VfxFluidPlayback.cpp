@@ -1,6 +1,7 @@
 #include "Scene/Vfx/HIKARI_VfxPlaybackState.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackSchedule.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
+#include "Scene/Vfx/HIKARI_VfxFluidShapeCache.h"
 
 #include <algorithm>
 #include <limits>
@@ -82,6 +83,12 @@ bool VfxPlaybackService::MakeFluidSource(Instance& instance, uint32_t layerIndex
     out.color = {tint.x * multiplier.x, tint.y * multiplier.y, tint.z * multiplier.z};
     out.settings = layer.fluidSource;
     out.settings.temperature *= overrides.fluidTemperatureMultiplier;
+    // 模型の形：距離の体積は模型ごとに共有する。まだ用意できない間（模型が読めていない）は体積なしで出し、描画の側が外す。
+    if (!out.settings.shapeModel.empty()) {
+        out.shape = FLUID::FluidSourceShape::Model;
+        out.shapeVolume = fluidShapes_ != nullptr ? fluidShapes_->Resolve(out.settings.shapeModel) : nullptr;
+        out.shapeFill = out.settings.shapeFill * overrides.fluidShapeFillMultiplier;
+    }
     out.field.turbulence *= overrides.fluidTurbulenceMultiplier;
     out.wind = out.wind * overrides.gravityMultiplier;
     return true;

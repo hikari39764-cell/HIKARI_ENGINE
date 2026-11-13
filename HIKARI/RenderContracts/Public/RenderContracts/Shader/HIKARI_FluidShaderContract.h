@@ -12,10 +12,10 @@ namespace HIKARI::ASSETS::SHADER {
 
 inline constexpr std::string_view kFluidSimulationShaderProgram = "HIKARI.EngineShader.Render3D_FluidSimulation";
 inline constexpr std::string_view kFluidSimulationShaderRootCanonical =
-    "HIKARI.FluidSimulation.Root.v4|0:CBV(b0,Compute)|1:RootConstants(b1,space0,8,Compute)|"
+    "HIKARI.FluidSimulation.Root.v5|0:CBV(b0,Compute)|1:RootConstants(b1,space0,8,Compute)|"
     "2..5:SRVTable(t0..t3,count1,Compute)|6:SRV(t6,Compute)|7:UAVTable(u0,count1,Compute)|"
     "8:UAVTable(u1,count1,Compute)|9:UAVTable(u4,count1,Compute)|10:UAV(u5,Compute)|11:SRV(t7,Compute)|"
-    "12:UAVTable(u2,count1,Compute)|13:UAV(u6,Compute)|"
+    "12:UAVTable(u2,count1,Compute)|13:UAV(u6,Compute)|14:SRVTable(t4,count1,Compute)|"
     "StaticSampler(s0,LinearClamp,Compute)|StaticSampler(s1,LinearBorderTransparentBlack,Compute)|Flags(None)";
 inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
     "FluidDomainCB:208;uint4 size(cells,sourceCount),float4 cell(h,invH,dt,time),motion(boundary,vorticity,"
@@ -26,7 +26,10 @@ inline constexpr std::string_view kFluidSimulationShaderInterfaceCanonical =
     "window,diagnostics divergence counts window cells only);FluidPassCB:32;uint4 passSize,"
     "passParams(color|glowCellColor,sliceField|glowIgnition,sliceAxis|glowHot,sliceIndex|statsOffset);FluidSource:304 rows toSource[3],toDomain[3],"
     "shape,shape2,emission,velocity,field0,field1,field2,wind,guide,flow(expansion,noise,1/noiseScale,circle arc rad from +X to +Z 0 full),sweep(back),"
-    "bounds(center,radius 0 all),color(rgb,fuelFraction) sphere inner radius shell,shape guide advects density only (not projected),"
+    "bounds(center,radius 0 all),color(rgb,fuelFraction) sphere inner radius shell,shape 8 model outline reads t4 R8_SNORM distance volume "
+    "(value*band m inside the box,+box distance outside,-offset; toDomain w box center,shape y offset z fill softness w fill axis 0..5 +x-x+y-y+z-z,"
+    "shape2 xyz box half w fill 0..1 over the box minus band,sweep w band; distance=max(surface,fill front*soft/max(fill softness,soft))),"
+    "shape guide advects density only (not projected),"
     "mask/emission/field/wind/drag are averaged over n=clamp(ceil(|s|/max(soft,feature/3)),1,8) shapes at substep mid-times with s=sweep+(cell velocity+frameWind)*dt in source axes (air flowing past; domain-shape sources use sweep 0), activity uses the nearest of n+1 swept shapes, sources skip cells outside bounds;FluidInteraction:112 toLocal[3],extents(kind 0 obstacle 1 impulse 2 force 3 emit; emit y temperature),"
     "velocity(shape),push(center,strength),sweep(emit segment|force x absorption 1/s) obstacle Brinkman after forces,directed push accel falloff^2,"
     "force absorption scales density,temperature,fuel by exp(-absorption*falloff^2*dt),sink rate 0 in all-closed pressure windows,"
@@ -44,9 +47,9 @@ inline ShaderAssetContractExpectation MakeFluidSimulationShaderContract(
     ShaderRuntimeDeviceCapabilities availableCaps) noexcept {
     ShaderAssetContractExpectation contract{};
     contract.engineInterfaceId = "HIKARI.FluidSimulation";
-    contract.engineInterfaceVersion = 21u;
+    contract.engineInterfaceVersion = 22u;
     contract.rootLayoutId = "HIKARI.FluidSimulation.Root";
-    contract.rootLayoutVersion = 4u;
+    contract.rootLayoutVersion = 5u;
     contract.availableDeviceCaps = availableCaps;
     if (!HASH::ComputeSha256(kFluidSimulationShaderInterfaceCanonical, contract.engineInterfaceHash) ||
         !HASH::ComputeSha256(kFluidSimulationShaderRootCanonical, contract.rootLayoutHash)) {
@@ -63,7 +66,7 @@ inline bool IsFluidSimulationBindingAllowed(const ShaderResourceBinding& binding
     switch (binding.kind) {
     case Kind::ConstantBuffer: return binding.registerIndex <= 1u;
     case Kind::ShaderResource:
-        return binding.registerIndex <= 3u || binding.registerIndex == 6u || binding.registerIndex == 7u;
+        return binding.registerIndex <= 4u || binding.registerIndex == 6u || binding.registerIndex == 7u;
     case Kind::UnorderedAccess:
         return binding.registerIndex <= 2u || (binding.registerIndex >= 4u && binding.registerIndex <= 6u);
     case Kind::Sampler: return binding.registerIndex <= 1u;

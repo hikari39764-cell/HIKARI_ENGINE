@@ -40,6 +40,7 @@ enum class VfxRuntimeBindingSemantic : uint8_t {
     RingEndAngleDegrees,
     FluidTemperatureMultiplier,
     FluidTurbulenceMultiplier,
+    FluidShapeFillMultiplier,
 };
 
 inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNames[]{
@@ -55,6 +56,7 @@ inline constexpr TEXT::EnumName<VfxRuntimeBindingSemantic> kVfxRuntimeBindingNam
     {VfxRuntimeBindingSemantic::RingEndAngleDegrees, "RingEndAngleDegrees"},
     {VfxRuntimeBindingSemantic::FluidTemperatureMultiplier, "FluidTemperatureMultiplier"},
     {VfxRuntimeBindingSemantic::FluidTurbulenceMultiplier, "FluidTurbulenceMultiplier"},
+    {VfxRuntimeBindingSemantic::FluidShapeFillMultiplier, "FluidShapeFillMultiplier"},
 };
 
 struct VfxPropertyRange {
@@ -93,7 +95,7 @@ inline bool IsVfxInputTypeCompatible(VfxValueType inputType, const VfxPropertySc
     return IsVfxInputTypeCompatible(inputType, property.valueType);
 }
 
-inline constexpr std::array<VfxPropertySchema, 12u> kVfxPropertySchemas{
+inline constexpr std::array<VfxPropertySchema, 13u> kVfxPropertySchemas{
     VfxPropertySchema{
         VfxModuleKind::Basic,
         "enabled",
@@ -214,6 +216,15 @@ inline constexpr std::array<VfxPropertySchema, 12u> kVfxPropertySchemas{
                       VfxRuntimeBindingSemantic::FluidTurbulenceMultiplier,
                       {true, true, 0.0f, 64.0f},
                       "multiplier"},
+    VfxPropertySchema{VfxModuleKind::FluidSource,
+                      "shapeFillMultiplier",
+                      "vfx.property.fluid_shape_fill_multiplier",
+                      VfxValueType::Float,
+                      true,
+                      true,
+                      VfxRuntimeBindingSemantic::FluidShapeFillMultiplier,
+                      {true, true, 0.0f, 64.0f},
+                      "multiplier"},
 };
 
 inline std::string_view ToString(VfxModuleKind value) noexcept {
@@ -289,14 +300,16 @@ inline bool IsVfxPropertyApplicable(const VfxEmitterData& emitter, const VfxProp
                schema.runtimeSemantic == Semantic::GravityMultiplier ||
                schema.runtimeSemantic == Semantic::ColorMultiplier ||
                schema.runtimeSemantic == Semantic::FluidTemperatureMultiplier ||
-               schema.runtimeSemantic == Semantic::FluidTurbulenceMultiplier;
+               schema.runtimeSemantic == Semantic::FluidTurbulenceMultiplier ||
+               schema.runtimeSemantic == Semantic::FluidShapeFillMultiplier;
     case VfxLayerKind::Fluid:
         return schema.runtimeSemantic == Semantic::EmitterEnabled ||
                schema.runtimeSemantic == Semantic::GravityMultiplier ||
                schema.runtimeSemantic == Semantic::FluidTurbulenceMultiplier;
     default:
         return schema.runtimeSemantic != Semantic::FluidTemperatureMultiplier &&
-               schema.runtimeSemantic != Semantic::FluidTurbulenceMultiplier;
+               schema.runtimeSemantic != Semantic::FluidTurbulenceMultiplier &&
+               schema.runtimeSemantic != Semantic::FluidShapeFillMultiplier;
     }
 }
 

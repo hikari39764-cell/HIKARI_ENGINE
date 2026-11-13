@@ -26,11 +26,11 @@ struct HikariFluidSource
     float4 toSource0;
     float4 toSource1;
     float4 toSource2;
-    float4 toDomain0;
+    float4 toDomain0; // w は模型の形（8）の箱の中心 x（toDomain1・2 の w が y・z）。他の形は 0
     float4 toDomain1;
     float4 toDomain2;
-    float4 shape;    // x 形（FluidSourceShape）、y 半径、z 内径、w 高さ（円柱・線の長さ）
-    float4 shape2;   // xyz 箱の半分の大きさ、w 円錐の角度 [rad]
+    float4 shape;    // x 形（FluidSourceShape）、y 半径、z 内径、w 高さ（円柱・線の長さ）。模型の形：y 輪郭を広げる距離、z 填充の境目の幅、w 填充の軸（0〜5）
+    float4 shape2;   // xyz 箱の半分の大きさ、w 円錐の角度 [rad]。模型の形：xyz 距離の体積の箱の半分の大きさ、w 填充の割合（0〜1）
     float4 emission; // x 毎秒の注入密度、y この子步の burst 密度、z 温度、w 汇（毎秒の吸収率）
     float4 velocity; // xyz 注入する速度（源の局所）、w 放射方向の速さ
     float4 field0;   // xyz 力場の中心（源の局所）、w 半径（0 で全体）
@@ -39,7 +39,7 @@ struct HikariFluidSource
     float4 wind;     // xyz 一様な加速度（域の局所）、w 速度の減衰 [1/s]
     float4 guide;    // x 形状引导の強さ、y 帯の厚さ、z 力場の効き方（0 加速度、1 目標速度）、w 縁の柔らかさ（源の局所）
     float4 flow;     // x 体積の湧き出し率 [1/s]（形の中で一様、開いた境界の域だけ）、y 注入の揺らぎ、z 1 / 揺らぎの塊 [1/m]、w 円環の弧 [rad]（0 は全周）
-    float4 sweep;    // xyz この子步の間に動いた分（源の局所、終わりの形から始めの位置へ）、w 未使用
+    float4 sweep;    // xyz この子步の間に動いた分（源の局所、終わりの形から始めの位置へ）、w 模型の形の距離の体積の band [m]
     float4 bounds;   // xyz 届く範囲の中心（域の局所）、w 半径（0 で域全体）
     float4 color;    // rgb 注入する烟の色（格ごとの色の域は密度 × 色を足す）、w 注入量のうち燃料になる割合（燃焼の域）
 };
@@ -93,11 +93,32 @@ float3 HikariFluidToDomain(HikariFluidSource source, float3 v)
     return float3(dot(source.toDomain0.xyz, v), dot(source.toDomain1.xyz, v), dot(source.toDomain2.xyz, v));
 }
 
-// 源の形の符号付き距離（源の局所、内側が負）。形の種類は VFX の emission shape と同じ並び、7 は域全体。
+// 源の形の符号付き距離（源の局所、内側が負）。形の種類は VFX の emission shape と同じ並び、7 は域全体、8 は模型の輪郭。
+// 模型の輪郭は距離の体積を読むので、読み込む側が HIKARI_FLUID_SHAPE_VOLUME（Texture3D<float>、R8_SNORM）と
+// HIKARI_FLUID_SHAPE_SAMPLER（線形・clamp）を先に定義する（源を持つのは解算だけ。定義の無い shader では 8 は来ない）。
 float HikariFluidSourceDistance(HikariFluidSource source, float3 p)
 {
     const uint shape = (uint)(source.shape.x + 0.5f);
     const float radius = source.shape.y;
+#ifdef HIKARI_FLUID_SHAPE_VOLUME
+    if (shape == 8u)
+    {
+        // 箱の中は体積の値（−1〜1）× band。箱は模型の包围盒を band ぶん広げてあり、面の上の値は外（+1）なので、箱の外は
+        // 箱までの距離を足す。shape.y だけ輪郭を外へ広げる。
+        const float3 halfSize = max(source.shape2.xyz, 1.0e-4f);
+        const float3 q = p - float3(source.toDomain0.w, source.toDomain1.w, source.toDomain2.w);
+        const float3 uvw = clamp(q / halfSize, -1.0f, 1.0f) * 0.5f + 0.5f;
+        const float surface = HIKARI_FLUID_SHAPE_VOLUME.SampleLevel(HIKARI_FLUID_SHAPE_SAMPLER, uvw, 0) * source.sweep.w +
+                              length(max(abs(q) - halfSize, 0.0f)) - source.shape.y;
+        // 填充：軸の手前の端から shape2.w の所までだけを形にする（0〜1 は模型そのものの長さ＝箱から band を引いた範囲）。
+        // 境目の先は境目からの距離ぶん外。境目の幅（shape.z）が縁の柔らかさより広ければ、その幅でゆるやかに外へ出す。
+        const uint axis = (uint)(source.shape.w + 0.5f);
+        const float extent = max(halfSize[axis >> 1u] - source.sweep.w, 1.0e-4f);
+        const float along = (axis & 1u) != 0u ? -q[axis >> 1u] : q[axis >> 1u];
+        const float front = along - extent * (2.0f * source.shape2.w - 1.0f);
+        return max(surface, front * source.guide.w / max(source.shape.z, source.guide.w));
+    }
+#endif
     if (shape == 1u)
     {
         // 内径があれば球殻（内径〜半径の帯）。
@@ -154,12 +175,12 @@ float3 HikariFluidFromSegment(float3 p, float3 d)
     return p - (lengthSquared > 0.0f ? saturate(dot(p, d) / lengthSquared) : 0.0f) * d;
 }
 
-// 源の形の細い方の大きさ（源の局所 [m]）：球と円錐は半径（球殻は殻の厚さ）、箱は最も短い半辺、円柱は半径と高さの半分の
-// 短い方、円環は帯の半幅、線は太さ。
+// 源の形の細い方の大きさ（源の局所 [m]）：球と円錐は半径（球殻は殻の厚さ）、箱と模型は最も短い半辺、円柱は半径と高さの
+// 半分の短い方、円環は帯の半幅、線は太さ。
 float HikariFluidSourceFeature(HikariFluidSource source)
 {
     const uint shape = (uint)(source.shape.x + 0.5f);
-    if (shape == 3u)
+    if (shape == 3u || shape == 8u)
         return min(source.shape2.x, min(source.shape2.y, source.shape2.z));
     if (shape == 4u)
         return min(source.shape.y, 0.5f * source.shape.w);

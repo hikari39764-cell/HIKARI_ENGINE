@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
-#include <cstdio>
 #include <cstring>
 #include <memory>
 #include <optional>
@@ -48,6 +47,8 @@ constexpr float kMaximumFrameVelocityChange = 12.0f;
 constexpr float kSleepQuietSeconds = 0.5f;
 // 圧力を解く窓を、烟があり得る砖块（烟のある砖块から既に 2 砖块外まで）の更に外へ広げる余白 [m]（砖块 1 つより狭くはしない）。
 constexpr float kPressureWindowMarginMeters = 1.0f;
+// 模型の形の距離の体積を、どの域も使わなくなってから GPU に残しておくフレーム数（同じ技を続けて出す間は作り直さない）。
+constexpr uint64_t kShapeVolumeIdleFrames = 600u;
 
 // 速度・密度・燃料の体積がこれ以上の域は、烟のある辺りの分块だけを住まわせる（Tiled Resources Tier 3 の装置）。
 // 128³ の域（約 64 MiB）から。小さな域は密なまま（分块の貸し借りの手間に見合わない）。
@@ -174,6 +175,19 @@ struct FluidVolumePass::Impl {
     // 域ごとに選んだ、このフレームの源（域自身の源と、届く場面の源）とその動き（作業用）。
     std::vector<FluidSourceSubmission> frameSources{};
     std::vector<SourceMotion> frameMotion{};
+    // 域ごとに選んだ、このフレームの模型の形の源が読む距離の体積（作業用。模型の源が無ければ空）。
+    std::shared_ptr<const FluidShapeVolume> frameShape{};
+    // GPU へ送った距離の体積。同じ体積を使う域と源は同じ貼図を読む。使われなくなって kShapeVolumeIdleFrames フレーム経つと退役する。
+    // emptyShape は、模型の源の無い域の根の表を埋める「どこも外」の 1 格。
+    struct ShapeVolumeGpu {
+        std::shared_ptr<const FluidShapeVolume> shape{};
+        INTERNAL::FluidVolume volume{};
+        uint64_t lastUsedFrame = 0u;
+    };
+    std::vector<std::unique_ptr<ShapeVolumeGpu>> shapeVolumes{};
+    // 流体を解いたフレームの通し番号（距離の体積を最後に使ったフレームを量る）。
+    uint64_t shapeFrame = 0u;
+    std::shared_ptr<const FluidShapeVolume> emptyShape{};
     // 域を解く順（優先度の高い順、同じなら近い順。作業用）。
     std::vector<uint32_t> order{};
     std::vector<float> rank{};
@@ -193,6 +207,45 @@ struct FluidVolumePass::Impl {
     INTERNAL::FluidTilePool tilePool{};
     ID3D12Device* sparseDevice = nullptr;
     bool sparseSupported = false;
+
+    // shape（空なら「どこも外」の 1 格）の GPU の貼図。まだ無ければ作って送る。作れなければ nullptr。
+    INTERNAL::FluidVolume* EnsureShapeVolume(std::shared_ptr<const FluidShapeVolume> shape) {
+        if (!shape) {
+            if (!emptyShape) {
+                FluidShapeVolume empty{};
+                empty.cells[0] = empty.cells[1] = empty.cells[2] = 1u;
+                empty.distance.assign(1u, int8_t{127});
+                emptyShape = std::make_shared<const FluidShapeVolume>(std::move(empty));
+            }
+            shape = emptyShape;
+        }
+        for (auto& entry : shapeVolumes)
+            if (entry->shape == shape) {
+                entry->lastUsedFrame = shapeFrame;
+                return &entry->volume;
+            }
+        auto entry = std::make_unique<ShapeVolumeGpu>();
+        if (!INTERNAL::CreateFluidShapeVolumeTexture(context, uploads[context.frameIndex % GFX::kFrameResourceCount],
+                                                     *shape, entry->volume))
+            return nullptr;
+        entry->shape = std::move(shape);
+        entry->lastUsedFrame = shapeFrame;
+        shapeVolumes.push_back(std::move(entry));
+        return &shapeVolumes.back()->volume;
+    }
+
+    // 使われなくなった距離の体積を退役する。眠ったままの域が指していれば外す（起きて解く時に指し直す）。
+    void RetireIdleShapeVolumes() {
+        std::erase_if(shapeVolumes, [&](std::unique_ptr<ShapeVolumeGpu>& entry) {
+            if (shapeFrame - entry->lastUsedFrame < kShapeVolumeIdleFrames)
+                return false;
+            for (auto& domain : domains)
+                if (domain->resources.shapeVolume == &entry->volume)
+                    domain->resources.shapeVolume = nullptr;
+            INTERNAL::RetireVolume(context, entry->volume);
+            return true;
+        });
+    }
 
     DomainState* Find(const ParticleEmitterInstanceKey& key) noexcept {
         for (auto& domain : domains)
@@ -391,16 +444,28 @@ void FluidVolumePass::Impl::GatherSources(DomainState& domain, const FluidDomain
                 return static_cast<int>(index);
         return -1;
     };
+    // 模型の形の源：一つの域が読める距離の体積は 1 つ。最初に来た体積を域の体積にし、体積の無い源（模型が読めていない）、
+    // 填充の割合が 0 の源、別の体積の源は入れない。
+    frameShape.reset();
+    const auto shaped = [&](const FluidSourceSubmission& source) {
+        if (source.shape != FluidSourceShape::Model)
+            return true;
+        if (!source.shapeVolume || source.shapeFill <= 0.0f)
+            return false;
+        if (!frameShape)
+            frameShape = source.shapeVolume;
+        return frameShape == source.shapeVolume;
+    };
     frameSources.clear();
     for (const FluidSourceSubmission& source : submission.sources)
-        if (frameSources.size() < kMaximumFluidSourcesPerDomain)
+        if (frameSources.size() < kMaximumFluidSourcesPerDomain && shaped(source))
             frameSources.push_back(source);
     const float domainRadius = 0.5f * MATH::Length(domain.layoutSize);
     const uint32_t domainChannels = FluidChannelMask(submission.settings.channel);
     for (const FluidSourceSubmission& source : sceneSources) {
         if (frameSources.size() >= kMaximumFluidSourcesPerDomain)
             break;
-        if ((FluidChannelMask(source.settings.channel) & domainChannels) == 0u)
+        if ((FluidChannelMask(source.settings.channel) & domainChannels) == 0u || !shaped(source))
             continue;
         // 今の位置か、まだ掃いていない始点から届けば入れる（域を横切って出ていく速い源の尾迹も残す）。
         const float reach = domainRadius + INTERNAL::FluidSourceReach(source, domain.resources.layout.cellSize);
@@ -592,6 +657,10 @@ void FluidVolumePass::Impl::Solve(DomainState& domain, const FluidDomainSubmissi
     if (domain.asleep && !enteringSleep)
         return;
 
+    // 模型の形の源が読む距離の体積（無ければ「どこも外」の 1 格）。根の表はいつも埋めるので、作れなければこのフレームは解かない。
+    domain.resources.shapeVolume = EnsureShapeVolume(frameShape);
+    if (domain.resources.shapeVolume == nullptr)
+        return;
     auto& upload = uploads[context.frameIndex % GFX::kFrameResourceCount];
     ID3D12GraphicsCommandList* commands = context.cmdList;
     const MATH::Vec3 up = INTERNAL::RotateToFluidLocal(domain.frameRotation, MATH::Vec3{0.0f, 1.0f, 0.0f});
@@ -844,6 +913,8 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
     }
     if (!impl.pipeline.Ensure(context.device))
         return false;
+    ++impl.shapeFrame;
+    impl.RetireIdleShapeVolumes();
     auto& uploads = impl.uploads[context.frameIndex % GFX::kFrameResourceCount];
     if (!uploads.IsInitialized() && !uploads.Init(context.device, 64u * 1024u, GFX::UPLOAD_TRAFFIC::Owner::Fluids))
         return false;
@@ -1071,6 +1142,9 @@ void FluidVolumePass::Shutdown() {
     while (!impl.domains.empty())
         impl.Retire(impl.domains.size() - 1u);
     INTERNAL::RetireVolume(impl.context, impl.slice);
+    for (auto& entry : impl.shapeVolumes)
+        INTERNAL::RetireVolume(impl.context, entry->volume);
+    impl.shapeVolumes.clear();
     impl.tilePool.Reset(impl.context);
     impl.sparseDevice = nullptr;
     impl.sparseSupported = false;

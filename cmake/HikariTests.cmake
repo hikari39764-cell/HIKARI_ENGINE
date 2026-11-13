@@ -91,7 +91,7 @@ endforeach()
 target_sources(HIKARI_ActionRuntimeContracts PRIVATE
     "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_AudioPlaybackContracts.cpp"
     "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_AfterimageContracts.cpp")
-foreach(name IN ITEMS RenderGraphSmoke RenderGraphCapacitySmoke TemporalFrameStateSmoke)
+foreach(name IN ITEMS RenderGraphSmoke RenderGraphCapacitySmoke TemporalFrameStateSmoke FluidShapeVolumeContracts)
     hikari_add_contract(${name} render Runtime)
 endforeach()
 foreach(name IN ITEMS RenderMathContracts DynamicUploadGpuContracts ClusterVertexDecodeGpuContracts
