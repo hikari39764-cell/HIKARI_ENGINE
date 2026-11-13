@@ -105,6 +105,8 @@ void ClampRuntimeOverrides(ParticleEmitterRuntimeOverrides& overrides) noexcept 
         ClampFinite(overrides.fluidTemperatureMultiplier, 0.0f, kMaximumMotionMultiplier, 1.0f);
     overrides.fluidTurbulenceMultiplier =
         ClampFinite(overrides.fluidTurbulenceMultiplier, 0.0f, kMaximumMotionMultiplier, 1.0f);
+    overrides.fluidShapeFillMultiplier =
+        ClampFinite(overrides.fluidShapeFillMultiplier, 0.0f, kMaximumMotionMultiplier, 1.0f);
 }
 
 bool RequiresLiveOwnerAttachment(const VfxProgram& program) noexcept {

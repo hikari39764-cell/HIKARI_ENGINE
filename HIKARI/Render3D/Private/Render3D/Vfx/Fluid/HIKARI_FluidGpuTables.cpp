@@ -8,6 +8,18 @@
 // 域の局所空間へ移して詰める。並びは HIKARI_FluidGrid.hlsli の HikariFluidSource / HikariFluidInteraction と同じ。
 namespace HIKARI::RENDER3D::FLUID::INTERNAL {
 namespace {
+// 模型の形の箱（源の局所）：距離の体積の箱の中心と半分の大きさ。体積が無ければ大きさ 0。
+struct ModelShapeBox {
+    MATH::Vec3 center{};
+    MATH::Vec3 half{};
+};
+ModelShapeBox ShapeBox(const FluidSourceSubmission& source) noexcept {
+    if (source.shape != FluidSourceShape::Model || !source.shapeVolume)
+        return {};
+    const FluidShapeVolume& volume = *source.shapeVolume;
+    return {(volume.boundsMin + volume.boundsMax) * 0.5f, (volume.boundsMax - volume.boundsMin) * 0.5f};
+}
+
 // 形の表面積 / 体積 [1/m]（源の局所、HikariFluidSourceDistance と同じ形）。outflow をこれに掛けると、形の中で一様な湧き出し率
 // が表面から outflow [m/s] で流れ出る量になる。Domain は 0（域全体の湧き出しは意味を持たない）。
 float SourceAreaPerVolume(const FluidSourceSubmission& source, float softEdge) noexcept {
@@ -32,6 +44,13 @@ float SourceAreaPerVolume(const FluidSourceSubmission& source, float softEdge) n
                1.0f / positive(softEdge);
     case FluidSourceShape::Edge: return 2.0f / positive((std::max)(source.radius, softEdge));
     case FluidSourceShape::Domain: return 0.0f;
+    case FluidSourceShape::Model: {
+        // 模型の輪郭の面積と体積は量っていないので、箱（体積の箱から band を除いた模型の包围盒）で近似する。
+        const ModelShapeBox box = ShapeBox(source);
+        const float band = source.shapeVolume ? source.shapeVolume->band : 0.0f;
+        return 1.0f / positive(box.half.x - band) + 1.0f / positive(box.half.y - band) +
+               1.0f / positive(box.half.z - band);
+    }
     default: return 3.0f / positive((std::max)(source.radius, softEdge));
     }
 }
@@ -66,6 +85,11 @@ float ShapeReach(const FluidSourceSubmission& source, float softEdge) noexcept {
     case FluidSourceShape::Circle: shape = positive(source.radius) + softEdge; break;
     case FluidSourceShape::Edge: shape = 0.5f * positive(source.height) + (std::max)(source.radius, softEdge); break;
     case FluidSourceShape::Domain: return std::numeric_limits<float>::infinity();
+    case FluidSourceShape::Model: {
+        const ModelShapeBox box = ShapeBox(source);
+        shape = MATH::Length(box.center) + MATH::Length(box.half) + positive(source.settings.shapeOffset);
+        break;
+    }
     default: shape = (std::max)(source.radius, softEdge); break;
     }
     return shape + 2.5f * softEdge;
@@ -135,6 +159,17 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     };
     set(6, static_cast<float>(source.shape), source.radius, source.innerRadius, source.height);
     set(7, source.boxHalfExtents.x, source.boxHalfExtents.y, source.boxHalfExtents.z, source.coneAngleRadians);
+    const ModelShapeBox model = ShapeBox(source);
+    if (source.shape == FluidSourceShape::Model) {
+        // 模型の形は行を読み替える：shape（形、輪郭を広げる距離、填充の境目の幅、填充の軸）、shape2（箱の半分の大きさ、填充の
+        // 割合）、toDomain の w（箱の中心）、sweep の w（距離の体積の band）。
+        set(6, static_cast<float>(source.shape), source.settings.shapeOffset,
+            (std::max)(source.settings.shapeFillSoftness, 0.0f), static_cast<float>(source.settings.shapeFillAxis));
+        set(7, model.half.x, model.half.y, model.half.z, std::clamp(source.shapeFill, 0.0f, 1.0f));
+        gpu.rows[3][3] = model.center.x;
+        gpu.rows[4][3] = model.center.y;
+        gpu.rows[5][3] = model.center.z;
+    }
     set(8, (std::max)(source.ratePerSecond, 0.0f), burstDensity, source.settings.temperature,
         source.settings.absorption);
     set(9, source.settings.velocity.x, source.settings.velocity.y, source.settings.velocity.z,
@@ -156,7 +191,8 @@ FluidSourceGpu PackFluidSource(const FluidSourceSubmission& source, const MATH::
     const MATH::Vec3 toStart = source.shape == FluidSourceShape::Domain
                                    ? MATH::Vec3{}
                                    : scaled(RotateToFluidLocal(source.worldRotation, sweep * -1.0f));
-    set(16, toStart.x, toStart.y, toStart.z, 0.0f);
+    set(16, toStart.x, toStart.y, toStart.z,
+        source.shape == FluidSourceShape::Model && source.shapeVolume ? source.shapeVolume->band : 0.0f);
     // 届く範囲（域の局所の中心と半径、0 は域全体）：外の格は源を読まない。掃いた分だけ広げる。
     const float reach = FluidSourceReach(source, cellSize);
     const MATH::Vec3 center = RotateToFluidLocal(domainRotation, source.worldPosition - domainPosition);

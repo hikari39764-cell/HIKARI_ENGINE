@@ -13,6 +13,7 @@
 #include "Render3D/WorldText/HIKARI_WorldTextFrameSource.h"
 #include "Scene/HIKARI_SceneRenderCacheSync.h"
 #include "Scene/HIKARI_ISystem.h"
+#include "Scene/Vfx/HIKARI_VfxFluidShapeCache.h"
 #include "Scene/Vfx/HIKARI_VfxMeshOutput.h"
 
 namespace HIKARI {
@@ -81,6 +82,7 @@ private:
     static SceneRenderCacheSync sSceneRenderCacheSync_;
     // VFX の Mesh 出力を world 同期後の scene cache へ差し込む owner。
     static VFX::VfxMeshInstancePublisher sVfxMeshPublisher_;
+    static VFX::VfxFluidShapeCache sVfxFluidShapes_;
     static bool sGpuSceneRegistryValid_;
     static bool sGpuDrivenSceneSyncInitialized_;
     static uint64_t sSubmissionWorldIdentity_;

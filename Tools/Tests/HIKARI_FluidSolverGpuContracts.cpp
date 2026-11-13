@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstring>
+#include <memory>
 #include <span>
 #include <vector>
 
@@ -11,6 +12,7 @@
 #include "Core/Content/HIKARI_EngineContentContext.h"
 #include "Gfx/HIKARI_DescriptorHeapLayout.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
+#include "Render3D/Vfx/HIKARI_FluidShapeVolume.h"
 #include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 #include "Internal/HIKARI_GpuContractDevice.h"
 
@@ -632,6 +634,68 @@ void FuelAndChannels(FluidGpu& fluid) {
     pass.Shutdown();
 }
 
+// 模型の形の源：距離の体積（半径 0.6 m の球を手で作る。箱は ±1 m、band は 4 格）の内側だけに烟が入る。填充 0.5 では
+// 手前（−y）の半分だけ、填充 0 と、体積の無い源は何も入れない。静かな開いた箱（浮力・渦・力場なし、消散 0）で 30 フレームずつ。
+void ModelShape(FluidGpu& fluid) {
+    constexpr uint32_t kCells = 32u;
+    constexpr float kCellSize = 2.0f / static_cast<float>(kCells);
+    auto volume = std::make_shared<FluidShapeVolume>();
+    volume->cells[0] = volume->cells[1] = volume->cells[2] = kCells;
+    volume->boundsMin = {-1.0f, -1.0f, -1.0f};
+    volume->boundsMax = {1.0f, 1.0f, 1.0f};
+    volume->band = kFluidShapeVolumeBandCells * kCellSize;
+    volume->distance.resize(size_t{kCells} * kCells * kCells);
+    for (uint32_t z = 0u; z < kCells; ++z)
+        for (uint32_t y = 0u; y < kCells; ++y)
+            for (uint32_t x = 0u; x < kCells; ++x) {
+                const MATH::Vec3 center{-1.0f + (static_cast<float>(x) + 0.5f) * kCellSize,
+                                        -1.0f + (static_cast<float>(y) + 0.5f) * kCellSize,
+                                        -1.0f + (static_cast<float>(z) + 0.5f) * kCellSize};
+                const float normalized = std::clamp((MATH::Length(center) - 0.6f) / volume->band, -1.0f, 1.0f);
+                volume->distance[x + kCells * (y + size_t{kCells} * z)] =
+                    static_cast<int8_t>(std::lround(normalized * 127.0f));
+            }
+    const auto run = [&](uint64_t playbackNamespace, float fill, bool withVolume) {
+        FluidVolumePass pass;
+        RENDER3D::PARTICLES::ParticleRenderInput input{};
+        FluidDomainSubmission& domain =
+            input.fluids.emplace_back(MakeDomain(playbackNamespace, FluidBoundary::Open, 0.0f));
+        domain.settings.domainSize = {3.0f, 3.0f, 3.0f};
+        domain.settings.resolution = 32u;
+        domain.settings.buoyancy = 0.0f;
+        domain.settings.weight = 0.0f;
+        domain.settings.vorticity = 0.0f;
+        FluidSourceSubmission& source = domain.sources.front();
+        source.worldPosition = {};
+        source.shape = FluidSourceShape::Model;
+        source.settings.temperature = 0.0f;
+        source.settings.velocity = {};
+        source.field = {};
+        source.shapeVolume = withVolume ? volume : nullptr;
+        source.shapeFill = fill;
+        FluidFrameSettings settings{};
+        settings.diagnostics = true;
+        for (uint32_t index = 0u; index <= 30u; ++index) {
+            domain.deltaSeconds = index < 30u ? 1.0f / 60.0f : 0.0f;
+            fluid.Frame(pass, input, settings);
+            domain.resetSimulation = false;
+        }
+        const float total = DomainStats(pass).densityTotal;
+        pass.Shutdown();
+        return total;
+    };
+    const float full = run(94u, 1.0f, true);
+    const float half = run(95u, 0.5f, true);
+    const float none = run(96u, 0.0f, true);
+    const float missing = run(97u, 1.0f, false);
+    // 球の体積 0.905 m³ × 毎秒 4 × 0.5 秒 ÷ 格の体積（0.094 m）³ ≒ 2180（縁の柔らかさの分だけ増える）。
+    std::fprintf(stderr, "fluid model shape: full %.1f half %.1f (ratio %.3f) none %.3f missing %.3f\n", full, half,
+                 half / (std::max)(full, 1.0e-6f), none, missing);
+    assert(full > 1500.0f && full < 4500.0f);
+    assert(half > 0.35f * full && half < 0.65f * full);
+    assert(none == 0.0f && missing == 0.0f);
+}
+
 // 域の数の上限（画質の maxDomains）：上限 + 2 個の域のうち、遠くても優先度の高い域は必ず解き、同じ優先度では相機から
 // 遠い 2 つが外れて統計に印が付く。
 void DomainLimit(FluidGpu& fluid) {
@@ -807,6 +871,7 @@ void CheckFluidSolver() {
     LongPrewarm(fluid, 81u, 30.0f, 10.0f, 300u);
     SinkAndEmit(fluid);
     FuelAndChannels(fluid);
+    ModelShape(fluid);
     DomainLimit(fluid);
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);

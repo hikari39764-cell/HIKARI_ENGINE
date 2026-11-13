@@ -57,6 +57,7 @@ ModelManager* RenderSubmissionSystem::sModelManager_ = nullptr;
 std::filesystem::path RenderSubmissionSystem::sProjectRoot_{};
 RENDER3D::RUNTIME::SceneRenderCache RenderSubmissionSystem::sSceneRenderCache_{};
 VFX::VfxMeshInstancePublisher RenderSubmissionSystem::sVfxMeshPublisher_{};
+VFX::VfxFluidShapeCache RenderSubmissionSystem::sVfxFluidShapes_{};
 RENDER3D::GPUDRIVEN::GpuSceneRegistry RenderSubmissionSystem::sGpuSceneRegistry_{};
 RENDER3D::GPUDRIVEN::MassGpuSceneRegistry RenderSubmissionSystem::sMassGpuSceneRegistry_{};
 RENDER3D::GPUDRIVEN::GpuDrivenSceneSource RenderSubmissionSystem::sCombinedGpuSceneSource_{};
@@ -620,6 +621,7 @@ void RenderSubmissionSystem::InvalidateSubmissionRouting() {
     SHADOW::SetGpuDrivenSceneSource(nullptr);
     sSceneRenderCache_.Clear();
     sVfxMeshPublisher_.Reset();
+    sVfxFluidShapes_.Clear();
     sSceneRenderCacheSync_.Clear();
     sGpuSceneRegistry_.Clear();
     sMassGpuSceneRegistry_.Clear();
@@ -720,6 +722,11 @@ void RenderSubmissionSystem::PreRender(World& world, const FrameContext& frame) 
     {
         static const auto timer = CPU_PROFILE::RegisterDynamicPass("Vfx.MeshOutput");
         const CPU_PROFILE::ScopedDynamicCpuTimer scope(timer);
+        // 流体源の模型の形：模型から焼いた距離の体積の出どころを再生へ渡す（次の再生の更新から使われる）。
+        if (auto* playback = world.Services().Find<VFX::VfxPlaybackService>()) {
+            sVfxFluidShapes_.Bind(sAssetRegistry_, sModelManager_);
+            playback->SetFluidShapeCache(&sVfxFluidShapes_);
+        }
         // VFX の Mesh 出力は world 由来の同期が終わった直後に差し込み、
         // 同じフレームの GPU scene へ載せる。world 側の所有物は触らない。
         if (const auto* vfxPlayback = world.Services().Find<VFX::VfxPlaybackService>()) {

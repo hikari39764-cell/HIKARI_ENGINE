@@ -655,6 +655,10 @@ VfxCompileResult CompileVfxAsset(const VfxAssetData& asset) {
             }
             program.dependencyGuids.push_back(*extra);
         }
+        // 流体源の形にする模型も依存にする（特効だけが参照する模型が、打包の時に抜け落ちないように）。
+        if (source.kind == VfxLayerKind::FluidSource && !source.fluidSource.shapeModel.empty()) {
+            program.dependencyGuids.push_back(AssetGuid{source.fluidSource.shapeModel});
+        }
         program.emitters.push_back(std::move(emitter));
     }
     // 事件を出す層：この層を生成元にする層がある種類だけ出し、碰撞はそれから生成する層の最小の速さの最も小さい値より

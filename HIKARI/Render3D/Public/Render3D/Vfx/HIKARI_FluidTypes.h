@@ -1,6 +1,8 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
+#include <string>
 #include <vector>
 
 #include "Core/Math/HIKARI_Math3D.h"
@@ -8,6 +10,7 @@
 #include "Core/Text/HIKARI_EnumNames.h"
 #include "Render3D/Vfx/HIKARI_ParticleEmitterInstanceKey.h"
 #include "Render3D/Vfx/HIKARI_ParticleForceField.h"
+#include "RenderContracts/Asset/HIKARI_AssetTypeEnum.h"
 
 // 体積流体（VFX の流体層）の設定と、再生から描画への毎フレームの提交。
 // 設定は字段表がただ一つの宣言で、VFX 源 JSON・烘焙（HVFXC）・正規化・検査器・Describe が共有する。
@@ -145,6 +148,14 @@ struct FluidDomainSettings {
     bool operator==(const FluidDomainSettings&) const = default;
 };
 
+// 模型の形の填充が進む向き（模型の局所の軸。箱のその向きの手前の端から満たす）。
+enum class FluidFillAxis : uint8_t { PositiveX, NegativeX, PositiveY, NegativeY, PositiveZ, NegativeZ };
+inline constexpr TEXT::EnumName<FluidFillAxis> kFluidFillAxisNames[] = {
+    {FluidFillAxis::PositiveX, "PositiveX"}, {FluidFillAxis::NegativeX, "NegativeX"},
+    {FluidFillAxis::PositiveY, "PositiveY"}, {FluidFillAxis::NegativeY, "NegativeY"},
+    {FluidFillAxis::PositiveZ, "PositiveZ"}, {FluidFillAxis::NegativeZ, "NegativeZ"},
+};
+
 // 流体源の作者値。形は層の shape、注入量は spawn.ratePerSecond（密度/秒、burst は一度に注入する密度）、
 // 力場・風・減衰は forces を使い、ここは流体だけが持つ値。速度は源の局所空間 [m/s]。
 struct FluidSourceSettings {
@@ -168,6 +179,18 @@ struct FluidSourceSettings {
     float fuelFraction = 0.0f;
     // 流体注入層（域の下に無い源）が入れる先の通道。域の下の源は自分の域へ入るので使わない。
     FluidChannel channel = FluidChannel::Default;
+    // 形を模型の輪郭にする：模型資産の GUID（空なら層の shape のまま）。模型の局所空間を源の局所空間にそのまま置き、
+    // 輪郭の内側が形になる（注入・力・吸収・湧き出し・形状引导が同じ輪郭を使う）。輪郭は模型の網から焼いた距離の体積
+    // （FluidShapeVolume）で、蒙皮の変形は追わない。一つの域が同時に使える模型は 1 種類（同じ模型なら源は何個でもよい）。
+    std::string shapeModel;
+    // 填充：模型の箱の shapeFillAxis の向きの手前の端から shapeFill（0〜1）の所までだけを形にする（1 で全体、0 で無し。
+    // 剣を柄から剣先へ満たしていく）。境目は shapeFillSoftness [m] の幅でぼかす。特効の入力を
+    // FluidSource.shapeFillMultiplier へ繋ぐと、ゲームのコードから毎フレーム進められる。
+    float shapeFill = 1.0f;
+    FluidFillAxis shapeFillAxis = FluidFillAxis::PositiveY;
+    float shapeFillSoftness = 0.1f;
+    // 輪郭を外へ広げる距離 [m]（負で内へ縮める。細い模型を格の大きさまで太らせて、霧が途切れないようにする）。
+    float shapeOffset = 0.0f;
 
     bool operator==(const FluidSourceSettings&) const = default;
 };
@@ -234,6 +257,17 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
     field("channel", &S::channel, kFluidChannelNames, Group{"Scene Injection"},
           Help{"For a fluid injection layer (a fluid source that is not under a domain): the channel of the scene "
                "domains it injects into. A source under a domain always feeds its own domain."});
+    constexpr auto modelShaped = [](const S& s) { return !s.shapeModel.empty(); };
+    field("shapeModel", &S::shapeModel, Label{"Shape model"}, AssetRef{AssetType::Model}, Group{"Model Shape"},
+          Help{"Use the outline of a model as this source's shape instead of the layer's emission shape. The model's "
+               "local space is placed in the source's local space. One domain can use one model at a time."});
+    field("shapeFill", &S::shapeFill, Slider(0.0, 1.0), Show{modelShaped}, Group{"Model Shape"},
+          Help{"How much of the model is filled, from the near end of the fill axis (1 = the whole model). Link an "
+               "effect input to FluidSource.shapeFillMultiplier to animate it from game code."});
+    field("shapeFillAxis", &S::shapeFillAxis, kFluidFillAxisNames, Show{modelShaped}, Group{"Model Shape"});
+    field("shapeFillSoftness", &S::shapeFillSoftness, Range{0.0, 100.0}, Unit{"m"}, Show{modelShaped},
+          Group{"Model Shape"});
+    field("shapeOffset", &S::shapeOffset, Range{-100.0, 100.0}, Unit{"m"}, Show{modelShaped}, Group{"Model Shape"});
 };
 
 // 流体を押すもの（場面の障碍物とゲームの押し）。障碍物は形の中の速度を自分の速度へ寄せ（Brinkman の罰則、投影の前）、
@@ -308,8 +342,11 @@ inline constexpr float kFluidTeleportSpeed = 60.0f;
 inline constexpr uint32_t kMaximumFluidInteractionsPerFrame = 64u;
 inline constexpr uint32_t kMaximumFluidInteractionsPerDomain = 32u;
 
-// 源の形（VFX の emission shape と同じ種類）。値は ParticleShape と同じ並び。
-enum class FluidSourceShape : uint32_t { Point, Sphere, Cone, Box, Cylinder, Circle, Edge, Domain };
+// 源の形。Point〜Edge は VFX の emission shape と同じ種類で、値は ParticleShape と同じ並び。Domain と Model は流体だけ：
+// Domain は域全体（域の層の力場）、Model は模型の輪郭（FluidSourceSettings::shapeModel を持つ源。再生の側が決める）。
+enum class FluidSourceShape : uint32_t { Point, Sphere, Cone, Box, Cylinder, Circle, Edge, Domain, Model };
+
+struct FluidShapeVolume;
 
 // 1 フレームぶんの源。座標は源の局所空間（形と力場）で、GPU が域の格子から変換する。
 // 域は源ごとに最後の子步の位置を覚え、次の子步たちをそこから今の位置までの線分に割り振り、各子步はその区間を掃いた
@@ -340,6 +377,9 @@ struct FluidSourceSubmission {
     // 世界空間の一様な加速度（風）と、場の中の速度の減衰 [1/s]。場の半径 0 は域全体。
     MATH::Vec3 wind{};
     float drag = 0.0f;
+    // 形が Model の時の輪郭（模型の網から焼いた距離の体積。同じ模型の源は同じ体積を指す）と、填充の割合（作者値 × 入力の倍率）。
+    std::shared_ptr<const FluidShapeVolume> shapeVolume;
+    float shapeFill = 1.0f;
 };
 
 // 再生の実例の層から源の鍵を作る（0 にはしない）。

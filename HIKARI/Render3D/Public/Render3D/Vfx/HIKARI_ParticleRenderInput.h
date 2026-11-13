@@ -289,6 +289,8 @@ struct ParticleEmitterRuntimeOverrides {
     float fluidTemperatureMultiplier = 1.0f;
     // 流体源と流体域の層だけ：力場の卷曲乱流の倍率。
     float fluidTurbulenceMultiplier = 1.0f;
+    // 流体源の層だけ：模型の形の填充の割合（FluidSourceSettings::shapeFill）の倍率。
+    float fluidShapeFillMultiplier = 1.0f;
 };
 
 struct ParticleMaterialParameterValue {

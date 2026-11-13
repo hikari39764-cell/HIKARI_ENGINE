@@ -8,9 +8,11 @@
 #include <d3d12.h>
 #include <wrl/client.h>
 
+#include "Gfx/HIKARI_DynamicUploadBuffer.h"
 #include "Gfx/HIKARI_GfxContext.h"
 #include "RenderCore/Resources/Descriptors/HIKARI_RenderResourceDescriptorPool.h"
 #include "Render3D/Vfx/Fluid/HIKARI_FluidResidency.h"
+#include "Render3D/Vfx/HIKARI_FluidShapeVolume.h"
 #include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 
 // 体積流体の解算の GPU 側：根と各 pass の PSO、域ごとの体積、1 子步と V 循環の記録。CPU の段取り（どの域を何子步
@@ -106,6 +108,9 @@ struct FluidDomainResources {
     uint32_t InjectionWords() const noexcept {
         return 7u * injectionCells[0] * injectionCells[1] * injectionCells[2] + bricks;
     }
+    // 形が模型の源（FluidSourceShape::Model）が読む距離の体積。持ち主は FluidVolumePass で、解くフレームごとに指し直す
+    // （模型の源が無い域は、どこも外の 1 格の体積）。
+    FluidVolume* shapeVolume = nullptr;
 
     uint32_t BrickCount() const noexcept { return bricks; }
     uint32_t DiagnosticsOffset() const noexcept { return bricks * 4u; }
@@ -199,6 +204,10 @@ bool CreateFluidBuffer(ID3D12Device* device, D3D12_HEAP_TYPE heapType, uint32_t 
                        Microsoft::WRL::ComPtr<ID3D12Resource>& buffer);
 bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
                              FluidVolume& volume);
+// 模型の輪郭の距離の体積を R8_SNORM の 3D 貼図にして送り、読める状態にする（context の命令列に複製を積む。
+// upload はこのフレームの上传の緩衝）。
+bool CreateFluidShapeVolumeTexture(const GFX::Context& context, DX::DynamicUploadBuffer& upload,
+                                   const FluidShapeVolume& shape, FluidVolume& volume);
 void RetireVolume(const GFX::Context& context, FluidVolume& volume);
 void RetireFluidDomainResources(const GFX::Context& context, FluidDomainResources& resources);
 

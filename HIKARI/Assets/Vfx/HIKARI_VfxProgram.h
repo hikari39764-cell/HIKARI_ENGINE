@@ -80,6 +80,8 @@ inline VfxRuntimePropertyLayout ResolveVfxRuntimePropertyLayout(VfxRuntimeBindin
         return {static_cast<uint32_t>(offsetof(Overrides, fluidTemperatureMultiplier)), Storage::Float};
     case VfxRuntimeBindingSemantic::FluidTurbulenceMultiplier:
         return {static_cast<uint32_t>(offsetof(Overrides, fluidTurbulenceMultiplier)), Storage::Float};
+    case VfxRuntimeBindingSemantic::FluidShapeFillMultiplier:
+        return {static_cast<uint32_t>(offsetof(Overrides, fluidShapeFillMultiplier)), Storage::Float};
     default: return {};
     }
 }

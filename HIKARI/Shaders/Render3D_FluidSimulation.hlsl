@@ -2,6 +2,11 @@
 // 多重网格の V 循環で圧力 → 投影。格子は Include/Vfx/HIKARI_FluidGrid.hlsli の交错 MAC 格子。
 // 圧力の方程式は A P = Σ近傍 P - k P = D h²（k は壁でない近傍の数、開いた境界の外は P = 0）、速度は
 // u -= (P_i - P_{i-1}) / h。粗い段の右辺は細かい段の残差の平均の 4 倍（格の大きさが 2 倍になる分）。
+// 模型の形の源（形 8）が読む距離の体積。HIKARI_FluidGrid.hlsli の HikariFluidSourceDistance が読むので、先に宣言する。
+Texture3D<float> gShapeVolume : register(t4);
+SamplerState gLinearClamp : register(s0);
+#define HIKARI_FLUID_SHAPE_VOLUME gShapeVolume
+#define HIKARI_FLUID_SHAPE_SAMPLER gLinearClamp
 #include "Include/Vfx/HIKARI_FluidGrid.hlsli"
 #include "Include/Vfx/HIKARI_ParticleForceMath.hlsli"
 
@@ -50,7 +55,6 @@ RWByteAddressBuffer gStats : register(u5);
 // （× 4096）の int で 0 密度、1 速度の重み W、2〜4 W × 速度（域の軸 [m/s]）、5 温度の重み、6 温度の重み × 温度、その後ろに
 // 砖块ごとの印。gInteractionCount.w の 4 の子步が受け取り、子步の後に InjectionClearCS が 0 に戻す。
 RWByteAddressBuffer gInjection : register(u6);
-SamplerState gLinearClamp : register(s0);
 SamplerState gLinearBorder : register(s1);
 
 // 閉じた面（bit 0 −x、1 +x、2 −y、3 +y、4 −z、5 +z）。多重網格のどの段でも同じ印で境界を決める（段ごとに算子が違うと

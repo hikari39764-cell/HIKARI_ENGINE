@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <bit>
 #include <cmath>
+#include <cstring>
 #include <string>
 #include <utility>
 
@@ -44,6 +45,7 @@ enum Root : UINT {
     kInteractions,
     kOutput2,
     kInjection,
+    kShapeVolume,
     kRootCount
 };
 
@@ -58,7 +60,7 @@ constexpr const char* kEntryNames[] = {
 static_assert(std::size(kEntryNames) == static_cast<size_t>(FluidEntry::Count));
 
 bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
-    std::array<CD3DX12_DESCRIPTOR_RANGE, 8> ranges{};
+    std::array<CD3DX12_DESCRIPTOR_RANGE, 9> ranges{};
     std::array<CD3DX12_ROOT_PARAMETER, kRootCount> parameters{};
     parameters[kDomainConstants].InitAsConstantBufferView(0);
     parameters[kPassConstants].InitAsConstants(8, 1);
@@ -78,6 +80,8 @@ bool CreateRoot(ID3D12Device* device, ID3D12RootSignature** output) {
     parameters[kInteractions].InitAsShaderResourceView(7);
     ranges[7].Init(D3D12_DESCRIPTOR_RANGE_TYPE_UAV, 1, 2);
     parameters[kOutput2].InitAsDescriptorTable(1, &ranges[7]);
+    ranges[8].Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 4);
+    parameters[kShapeVolume].InitAsDescriptorTable(1, &ranges[8]);
     std::array<CD3DX12_STATIC_SAMPLER_DESC, 2> samplers{};
     samplers[0].Init(0, D3D12_FILTER_MIN_MAG_MIP_LINEAR, D3D12_TEXTURE_ADDRESS_MODE_CLAMP,
                      D3D12_TEXTURE_ADDRESS_MODE_CLAMP, D3D12_TEXTURE_ADDRESS_MODE_CLAMP);
@@ -146,6 +150,47 @@ bool CreateFluidVolumeTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t
 bool CreateFluidSliceTexture(ID3D12Device* device, DXGI_FORMAT format, uint32_t width, uint32_t height,
                              FluidVolume& volume) {
     return CreateVolume(device, format, width, height, 1u, volume, true, false);
+}
+
+bool CreateFluidShapeVolumeTexture(const GFX::Context& context, DX::DynamicUploadBuffer& upload,
+                                   const FluidShapeVolume& shape, FluidVolume& volume) {
+    constexpr DXGI_FORMAT kShapeFormat = DXGI_FORMAT_R8_SNORM;
+    const uint32_t width = shape.cells[0];
+    const uint32_t height = shape.cells[1];
+    const uint32_t depth = shape.cells[2];
+    if (context.device == nullptr || context.cmdList == nullptr || width == 0u || height == 0u || depth == 0u ||
+        shape.distance.size() != size_t{width} * height * depth)
+        return false;
+    if (!CreateFluidVolumeTexture(context.device, kShapeFormat, width, height, depth, volume))
+        return false;
+    // 行は D3D12 の刻み（256 byte）に、始まりは貼図の置き場所の刻み（512 byte）に揃えて、フレームの上传の緩衝に置く
+    // （緩衝の頁は GPU が読み終わるまで生きている）。
+    constexpr size_t kPlacement = D3D12_TEXTURE_DATA_PLACEMENT_ALIGNMENT;
+    const uint32_t rowPitch = (width + D3D12_TEXTURE_DATA_PITCH_ALIGNMENT - 1u) &
+                              ~(static_cast<uint32_t>(D3D12_TEXTURE_DATA_PITCH_ALIGNMENT) - 1u);
+    const DX::UploadAllocation allocation = upload.Allocate(size_t{rowPitch} * height * depth + kPlacement);
+    if (!allocation) {
+        RetireVolume(context, volume);
+        return false;
+    }
+    const size_t offset = (allocation.offset + kPlacement - 1u) & ~(kPlacement - 1u);
+    uint8_t* const rows = static_cast<uint8_t*>(allocation.cpuAddress) + (offset - allocation.offset);
+    for (uint32_t row = 0u; row < height * depth; ++row)
+        std::memcpy(rows + size_t{row} * rowPitch, shape.distance.data() + size_t{row} * width, width);
+    D3D12_PLACED_SUBRESOURCE_FOOTPRINT footprint{};
+    footprint.Offset = offset;
+    footprint.Footprint = {kShapeFormat, width, height, depth, rowPitch};
+    const auto toCopy =
+        CD3DX12_RESOURCE_BARRIER::Transition(volume.resource.Get(), volume.state, D3D12_RESOURCE_STATE_COPY_DEST);
+    context.cmdList->ResourceBarrier(1, &toCopy);
+    const CD3DX12_TEXTURE_COPY_LOCATION destination(volume.resource.Get(), 0);
+    const CD3DX12_TEXTURE_COPY_LOCATION source(allocation.resource, footprint);
+    context.cmdList->CopyTextureRegion(&destination, 0, 0, 0, &source, nullptr);
+    const auto toRead =
+        CD3DX12_RESOURCE_BARRIER::Transition(volume.resource.Get(), D3D12_RESOURCE_STATE_COPY_DEST, kShaderRead);
+    context.cmdList->ResourceBarrier(1, &toRead);
+    volume.state = kShaderRead;
+    return true;
 }
 
 void RetireVolume(const GFX::Context& context, FluidVolume& volume) {
@@ -334,6 +379,10 @@ void FluidRecorder::Dispatch(FluidEntry entry, const FluidPassBindings& bindings
     if (bindings.slice != nullptr)
         commands_->SetComputeRootDescriptorTable(kSliceOutput, bindings.slice->uav.gpu);
     commands_->SetComputeRootUnorderedAccessView(kStats, domain_.stats->GetGPUVirtualAddress());
+    if (domain_.shapeVolume != nullptr) {
+        Transition(*domain_.shapeVolume, kShaderRead);
+        commands_->SetComputeRootDescriptorTable(kShapeVolume, domain_.shapeVolume->srv.gpu);
+    }
     // 注入の緩衝の無い域は統計の緩衝で埋める（shader は gInjectionCells が 0 なら読まない）。
     commands_->SetComputeRootUnorderedAccessView(
         kInjection, (domain_.injection ? domain_.injection : domain_.stats)->GetGPUVirtualAddress());
