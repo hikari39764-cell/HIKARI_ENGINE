@@ -5,6 +5,7 @@
 
 #include "Core/Serialization/Json/HIKARI_JsonFields.h"
 #include "Core/Text/HIKARI_EnumNames.h"
+#include "Render3D/Vfx/HIKARI_FluidTypes.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 
 namespace HIKARI {
@@ -35,6 +36,8 @@ struct FluidObstacleSettings {
     bool enabled = true;
     // 物体の碰撞器（手動の形と、模型の形への当てはめ）も障碍物にする。触发器と碰撞资产の形は使わない。
     bool useColliders = false;
+    // 押す先の域の通道（流体域の層の Channel と重なる域だけを押す）。
+    RENDER3D::FLUID::FluidChannel channel = RENDER3D::FLUID::FluidChannel::Default;
     std::vector<FluidObstacleShape> shapes{};
 };
 
@@ -60,6 +63,10 @@ inline constexpr auto kFluidObstacleFields = [](auto&& field) {
     field("enabled", &S::enabled, Label{"Enabled"}, Common{});
     field("useColliders", &S::useColliders, Label{"Use Colliders"},
           Help{"Also push fluid smoke with this object's Collider shapes (manual or fitted to the model)."}, Common{});
+    field(
+        "channel", &S::channel, RENDER3D::FLUID::kFluidChannelNames, Label{"Channel"},
+        Help{
+            "Which fluid domains this obstacle pushes: the ones listening on this channel (All pushes every domain)."});
     field("shapes", &S::shapes, Label{"Shape"}, Elements{kFluidObstacleShapeFields}, Common{});
 };
 

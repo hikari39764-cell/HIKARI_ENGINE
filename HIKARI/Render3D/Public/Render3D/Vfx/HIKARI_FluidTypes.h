@@ -53,6 +53,39 @@ inline constexpr TEXT::EnumName<FluidForceMode> kFluidForceModeNames[] = {
     {FluidForceMode::TargetVelocity, "TargetVelocity"},
 };
 
+// 通道：同じ場所に重なる域（消えにくい霧の域と、すぐ消えて浮く炎の域）へ、場面から届くもの（流体注入層・障碍物・
+// ゲームの押しと注入）を分けて届ける。域は通道を一つ受け、届くものは通道の集合へ出す。集合は bit i = 通道 i の印で、
+// 域の印と重なれば届く。域自身の源は通道に関わらず自分の域へ入る。
+// All は全部の通道（域なら何でも受ける、届くものなら全部の域へ）。None はどこにも重ならない：域なら場面からのものを
+// 一切受けず、自分の源だけで動く（特効が持ち歩く局所の域が、場地の霧を動かす力で崩れない）。
+enum class FluidChannel : uint8_t {
+    Default,
+    Channel1,
+    Channel2,
+    Channel3,
+    Channel4,
+    Channel5,
+    Channel6,
+    Channel7,
+    All,
+    None
+};
+inline constexpr TEXT::EnumName<FluidChannel> kFluidChannelNames[] = {
+    {FluidChannel::Default, "Default"},   {FluidChannel::Channel1, "Channel1"}, {FluidChannel::Channel2, "Channel2"},
+    {FluidChannel::Channel3, "Channel3"}, {FluidChannel::Channel4, "Channel4"}, {FluidChannel::Channel5, "Channel5"},
+    {FluidChannel::Channel6, "Channel6"}, {FluidChannel::Channel7, "Channel7"}, {FluidChannel::All, "All"},
+    {FluidChannel::None, "None"},
+};
+inline constexpr uint32_t kFluidDefaultChannelMask = 1u;
+inline constexpr uint32_t kFluidAllChannelsMask = 0xffu;
+constexpr uint32_t FluidChannelMask(FluidChannel channel) noexcept {
+    switch (channel) {
+    case FluidChannel::All: return kFluidAllChannelsMask;
+    case FluidChannel::None: return 0u;
+    default: return 1u << static_cast<uint32_t>(channel);
+    }
+}
+
 // 流体域の作者値。空間の値は層の局所空間 [m]、時間は秒。
 struct FluidDomainSettings {
     MATH::Vec3 domainSize{4.0f, 4.0f, 4.0f};
@@ -70,6 +103,8 @@ struct FluidDomainSettings {
     // 1 フレームに解ける域の数（画質の上限）を超えた時の優先度（0–100）。大きい域から解き、同じなら相機に近い域から。
     uint32_t priority = 0u;
     FluidBoundary boundary = FluidBoundary::Open;
+    // 場面から届くもの（流体注入層・障碍物・ゲームの押しと注入）のうち、この域が受ける通道。
+    FluidChannel channel = FluidChannel::Default;
     float vorticity = 0.3f;
     // 温度 1 あたりの上向き加速度と、密度 1 あたりの下向き加速度 [m/s^2]。
     float buoyancy = 1.5f;
@@ -131,6 +166,8 @@ struct FluidSourceSettings {
     FluidForceMode forceMode = FluidForceMode::Acceleration;
     // 注入量のうち燃料になる割合（残りは烟）。燃焼の域だけ：1 で燃料だけを入れ、煤は燃えて生まれる（火の元）。
     float fuelFraction = 0.0f;
+    // 流体注入層（域の下に無い源）が入れる先の通道。域の下の源は自分の域へ入るので使わない。
+    FluidChannel channel = FluidChannel::Default;
 
     bool operator==(const FluidSourceSettings&) const = default;
 };
@@ -141,6 +178,9 @@ inline constexpr auto kFluidDomainSettingsFields = [](auto&& field) {
     field("domainSize", &S::domainSize, Range{0.25, 2000.0}, Unit{"m"}, Group{"Domain"}, Common{});
     field("resolution", &S::resolution, Range{kFluidResolutionMin, kFluidResolutionMax}, Group{"Domain"}, Common{});
     field("boundary", &S::boundary, kFluidBoundaryNames, Group{"Domain"});
+    field("channel", &S::channel, kFluidChannelNames, Group{"Domain"},
+          Help{"Which fluid injection layers, obstacles and game submissions reach this domain: the ones sent to this "
+               "channel. All receives every channel; None receives nothing from the scene, only its own sources."});
     field("inertia", &S::inertia, Slider(0.0, 2.0), Group{"Domain"});
     field("relativeWind", &S::relativeWind, Slider(0.0, 1.0), Group{"Domain"});
     field("prewarmSeconds", &S::prewarmSeconds, Range{0.0, 30.0}, Unit{"s"}, Group{"Domain"});
@@ -191,6 +231,9 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
     field("emissionNoiseScale", &S::emissionNoiseScale, Range{0.05, 500.0}, Unit{"m"}, Group{"Emission Noise"});
     field("forceMode", &S::forceMode, kFluidForceModeNames);
     field("fuelFraction", &S::fuelFraction, Slider(0.0, 1.0), Group{"Combustion"});
+    field("channel", &S::channel, kFluidChannelNames, Group{"Scene Injection"},
+          Help{"For a fluid injection layer (a fluid source that is not under a domain): the channel of the scene "
+               "domains it injects into. A source under a domain always feeds its own domain."});
 };
 
 // 流体を押すもの（場面の障碍物とゲームの押し）。障碍物は形の中の速度を自分の速度へ寄せ（Brinkman の罰則、投影の前）、
@@ -202,7 +245,8 @@ inline constexpr auto kFluidSourceSettingsFields = [](auto&& field) {
 // Emit は提交している間、球の中へ烟を注入する（中心ほど濃く、strength は中心での毎秒の密度、direction は注入する
 // 烟の初速 [m/s]、extents.y は温度。源の数の上限とは別枠で、位置は毎フレーム自由）。1 フレームの提交はそのフレームの
 // 時間ぶん（strength × 時間）で、次に走る子步たちが入れる（子步の無いフレームの分も落とさない）。動いている Emit は
-// 前のフレームの位置からの線分を掃いて入れる（velocity。流体源の扫掠注入と同じく総量は変わらない）。
+// 前のフレームの位置からの線分を掃いて入れる（velocity。流体源の扫掠注入と同じく総量は変わらない）。fuel を立てた Emit は
+// 烟の代わりに燃料を入れる（燃焼の域だけが受ける。温度が点火温度を超えていれば燃える）。
 enum class FluidInteractionKind : uint32_t { Obstacle, Impulse, Force, Emit };
 enum class FluidInteractionShape : uint32_t { Sphere, Capsule, Box };
 
@@ -223,6 +267,10 @@ struct FluidInteraction {
     float strength = 0.0f;
     // 力だけ：半径の中の烟・温度・燃料が毎秒この率で消える [1/s]（中心から二乗で弱まる）。他の種類は 0。
     float absorption = 0.0f;
+    // 届ける先の通道の集合（bit i = 通道 i。域の FluidChannelMask と重なれば届く）。
+    uint32_t channels = kFluidDefaultChannelMask;
+    // 注入だけ：烟の代わりに燃料を入れる。
+    bool fuel = false;
     // 0 でなければ、烟を消す力（向きの無い負の力＝汇か、吸収のある力）が消した烟の量を回読してこの値で返す
     // （FluidSinkReport）。出した側が決める。
     uint64_t reportKey = 0u;

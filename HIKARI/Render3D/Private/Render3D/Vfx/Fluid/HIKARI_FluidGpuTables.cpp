@@ -202,7 +202,7 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
         interaction.strength * strengthScale);
     // 注入の掃き：そのフレームに動いた線分（中心から始めの位置へ、域の局所。GPU はこの線分の上で重みを時間平均する）。
     // 動いた量は服务が記した実際の移動（域の時間倍率に左右されない）から、局所空間の域自身の動き（域の時間）を引く。
-    // 力の行 6 は x に吸収率 [1/s]。
+    // 力の行 6 は x に吸収率 [1/s]。注入の行 6 の w は、烟の代わりに燃料を入れる印。
     MATH::Vec3 toStart{};
     if (interaction.kind == FluidInteractionKind::Emit) {
         toStart =
@@ -210,7 +210,7 @@ FluidInteractionGpu PackFluidInteraction(const FluidInteraction& interaction, co
     } else if (interaction.kind == FluidInteractionKind::Force) {
         toStart.x = interaction.absorption;
     }
-    set(6, toStart, 0.0f);
+    set(6, toStart, interaction.fuel ? 1.0f : 0.0f);
     return gpu;
 }
 

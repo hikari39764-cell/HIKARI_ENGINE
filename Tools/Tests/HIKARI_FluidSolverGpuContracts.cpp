@@ -570,6 +570,68 @@ void SinkAndEmit(FluidGpu& fluid) {
     pass.Shutdown();
 }
 
+// 通道と燃料の注入：同じ場所に重なる、燃える域（Channel1）と燃えない域（Default）。Channel1 へ出した燃料の注入（点火温度
+// より熱い）は燃える域だけに入り、燃えて煤になる。Default へ出した燃料は燃えない域が受け取らない（烟にもならない）。
+// Default へ出した烟の注入は燃えない域だけに入る。静かな開いた箱（浮力・渦なし、消散 0）で 30 フレームずつ。
+void FuelAndChannels(FluidGpu& fluid) {
+    FluidVolumePass pass;
+    RENDER3D::PARTICLES::ParticleRenderInput input{};
+    constexpr uint64_t kBurning = 92u;
+    constexpr uint64_t kPlain = 93u;
+    for (const uint64_t playbackNamespace : {kBurning, kPlain}) {
+        FluidDomainSubmission& domain =
+            input.fluids.emplace_back(MakeDomain(playbackNamespace, FluidBoundary::Open, 0.0f));
+        domain.sources.clear();
+        domain.settings.buoyancy = 0.0f;
+        domain.settings.weight = 0.0f;
+        domain.settings.vorticity = 0.0f;
+    }
+    input.fluids[0].settings.combustion = true;
+    input.fluids[0].settings.channel = FluidChannel::Channel1;
+    FluidInteraction emit{};
+    emit.kind = FluidInteractionKind::Emit;
+    emit.extents = {0.6f, 2.0f, 0.0f};
+    emit.strength = 2.0f;
+    FluidFrameSettings settings{};
+    settings.diagnostics = true;
+    uint32_t frame = 0u;
+    const auto density = [&](uint64_t playbackNamespace) {
+        for (const FluidDomainStats& stats : pass.GetStats().perDomain)
+            if (stats.key.playbackNamespace == playbackNamespace)
+                return stats.densityTotal;
+        assert(false);
+        return 0.0f;
+    };
+    const auto run = [&](bool fuel, uint32_t channels) {
+        emit.fuel = fuel;
+        emit.channels = channels;
+        settings.interactions = std::span<const FluidInteraction>(&emit, 1u);
+        for (uint32_t index = 0u; index <= 30u; ++index) {
+            // 最後の 1 フレームは時間を進めず、前のフレームの回読だけを受け取る。
+            settings.interactionFrame = frame++;
+            for (FluidDomainSubmission& domain : input.fluids) {
+                domain.deltaSeconds = index < 30u ? 1.0f / 60.0f : 0.0f;
+            }
+            fluid.Frame(pass, input, settings);
+            for (FluidDomainSubmission& domain : input.fluids)
+                domain.resetSimulation = false;
+        }
+    };
+    run(true, FluidChannelMask(FluidChannel::Channel1));
+    const float soot = density(kBurning);
+    const float untouched = density(kPlain);
+    run(true, kFluidDefaultChannelMask);
+    const float ignored = density(kPlain);
+    run(false, kFluidDefaultChannelMask);
+    const float smoke = density(kPlain);
+    std::fprintf(stderr,
+                 "fluid channels: fuel on channel 1 -> burning %.4f plain %.4f, fuel on default -> plain %.4f, "
+                 "smoke on default -> plain %.4f\n",
+                 soot, untouched, ignored, smoke);
+    assert(soot > 0.0f && untouched == 0.0f && ignored == 0.0f && smoke > 0.0f);
+    pass.Shutdown();
+}
+
 // 域の数の上限（画質の maxDomains）：上限 + 2 個の域のうち、遠くても優先度の高い域は必ず解き、同じ優先度では相機から
 // 遠い 2 つが外れて統計に印が付く。
 void DomainLimit(FluidGpu& fluid) {
@@ -744,6 +806,7 @@ void CheckFluidSolver() {
     LongPrewarm(fluid, 80u, 60.0f, 6.0f, 360u);
     LongPrewarm(fluid, 81u, 30.0f, 10.0f, 300u);
     SinkAndEmit(fluid);
+    FuelAndChannels(fluid);
     DomainLimit(fluid);
     closedBox(0, 1.0e-4f);
     closedBox(1, 0.06f);

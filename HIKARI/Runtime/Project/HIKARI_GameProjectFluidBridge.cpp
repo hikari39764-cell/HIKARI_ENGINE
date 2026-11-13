@@ -26,14 +26,18 @@ GameProjectWorldResult Resolve(GameProjectWorldHandle identity, GameProjectObjec
                            owner);
 }
 
-// 公開の形を描画側の形へ移す。版・大きさ・予約の値を確かめ、範囲は service が確かめる。
+// 公開の形を描画側の形へ移す。版・大きさ・通道の印を確かめ、範囲は service が確かめる。
+// 公開の Fuel は、描画側では燃料の印を立てた注入（掃き・持ち越し・要る砖块の見積もりは注入と同じ）。
 bool Convert(const GameProjectFluidInteraction& source, RENDER3D::FLUID::FluidInteraction& out) noexcept {
     if (source.structSize != sizeof(source) || source.apiVersion != kGameProjectFluidApiVersion ||
-        source.reserved != 0u ||
-        static_cast<uint32_t>(source.kind) > static_cast<uint32_t>(GameProjectFluidInteractionKind::Emit) ||
+        (source.channels & ~kGameProjectFluidAllChannels) != 0u ||
+        static_cast<uint32_t>(source.kind) > static_cast<uint32_t>(GameProjectFluidInteractionKind::Fuel) ||
         static_cast<uint32_t>(source.shape) > static_cast<uint32_t>(GameProjectFluidShape::Box))
         return false;
-    out.kind = static_cast<RENDER3D::FLUID::FluidInteractionKind>(source.kind);
+    out.fuel = source.kind == GameProjectFluidInteractionKind::Fuel;
+    out.kind = out.fuel ? RENDER3D::FLUID::FluidInteractionKind::Emit
+                        : static_cast<RENDER3D::FLUID::FluidInteractionKind>(source.kind);
+    out.channels = source.channels != 0u ? source.channels : RENDER3D::FLUID::kFluidDefaultChannelMask;
     out.shape = static_cast<RENDER3D::FLUID::FluidInteractionShape>(source.shape);
     out.worldPosition = {source.position.x, source.position.y, source.position.z};
     out.worldRotation = {source.rotation.x, source.rotation.y, source.rotation.z, source.rotation.w};
