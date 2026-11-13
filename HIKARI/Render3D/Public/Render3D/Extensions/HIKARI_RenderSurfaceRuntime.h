@@ -16,6 +16,8 @@ namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS {
 void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension* const> extensions);
 bool HasWork() noexcept;
 bool HasDepthAwareWork() noexcept;
+// 登録中の拡張が報告した投影範囲。次の呼び出しまで有効。
+std::span<const RenderSurfaceShadowCasterBounds> GetShadowCasterBounds() noexcept;
 
 // 組み終わった光線追跡の代理。モジュールが Release するまで持ち続け、版は中身が変わった時だけ進む。
 // 使うかどうかは視点が決める（モジュールの面を持たない視点は渡さない）。

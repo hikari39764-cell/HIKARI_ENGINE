@@ -145,6 +145,8 @@ struct PhysicsShapeDesc {
     uint64_t geometryContentRevision = 0u;
     // HeightField：sampleCount² の高さ（z 行優先）。localCenter が標本 (0, 0) の位置。
     std::shared_ptr<const std::vector<float>> heightSamples{};
+    // 空なら全部に当たりがある。0 でない標本に接する三角形を抜く。
+    std::shared_ptr<const std::vector<uint8_t>> heightNoCollisionSamples{};
     uint32_t heightSampleCount = 0u;
     float heightSampleSpacing = 1.0f;
     bool isTrigger = false;

@@ -6,6 +6,7 @@ set(HIKARI_SDK_CORE_SHARED_HEADERS
     "Core/HIKARI_JsonRead.h"
     "Core/HIKARI_MathConfig.h"
     "Core/Math/HIKARI_Math3D.h"
+    "Core/Math/HIKARI_MathValidation.h"
     "Core/Math/HIKARI_ScalarMath.h"
     "Core/Serialization/Json/HIKARI_JsonFieldInfo.h"
     "Core/Serialization/Json/HIKARI_JsonFieldOptions.h"
@@ -13,4 +14,5 @@ set(HIKARI_SDK_CORE_SHARED_HEADERS
     "Core/Text/HIKARI_EnumNames.h"
     "Core/Text/HIKARI_HumanizeKey.h")
 set(HIKARI_SDK_CORE_SHARED_SOURCES
-    "Core/Math/HIKARI_Math3D.cpp")
+    "Core/Math/HIKARI_Math3D.cpp"
+    "Core/Math/HIKARI_MathValidation.cpp")

@@ -131,15 +131,23 @@ JPH::ShapeRefC BuildLeafShape(const PhysicsShapeDesc& shape, uint64_t userData, 
     }
     case PhysicsShapeType::HeightField: {
         const size_t sampleCount = static_cast<size_t>(shape.heightSampleCount) * shape.heightSampleCount;
-        if (shape.heightSamples == nullptr || sampleCount == 0u || shape.heightSamples->size() != sampleCount) {
+        if (shape.heightSamples == nullptr || sampleCount == 0u || shape.heightSamples->size() != sampleCount ||
+            (shape.heightNoCollisionSamples != nullptr && shape.heightNoCollisionSamples->size() != sampleCount)) {
             if (outError != nullptr) {
                 *outError = "height field samples are invalid";
             }
             return {};
         }
-        JPH::HeightFieldShapeSettings settings(
-            shape.heightSamples->data(), JPH::Vec3::sZero(),
-            JPH::Vec3(shape.heightSampleSpacing, 1.0f, shape.heightSampleSpacing), shape.heightSampleCount);
+        JPH::HeightFieldShapeSettings settings(shape.heightSamples->data(), JPH::Vec3::sZero(),
+                                               JPH::Vec3(shape.heightSampleSpacing, 1.0f, shape.heightSampleSpacing),
+                                               shape.heightSampleCount);
+        if (shape.heightNoCollisionSamples != nullptr) {
+            for (size_t index = 0u; index < sampleCount; ++index) {
+                if ((*shape.heightNoCollisionSamples)[index] != 0u) {
+                    settings.mHeightSamples[index] = JPH::HeightFieldShapeConstants::cNoCollisionValue;
+                }
+            }
+        }
         settings.mUserData = userData;
         result = settings.Create();
         break;

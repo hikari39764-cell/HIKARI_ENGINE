@@ -118,9 +118,10 @@ public:
 
     // 動かない高さ場の当たりを足す。sampleCount は辺の標本数（2^n + 1）、heights は sampleCount² の高さ（m）を z 行優先で。
     // (originX, originZ) が標本 (0, 0) の世界位置。物理の動いている世界（Play）でだけ作れる。戻りは外す時の番号、失敗は 0。
-    HIKARI_GAME_PROJECT_SDK_API uint64_t AddStaticHeightField(GameProjectObjectHandle owner, float originX,
-                                                              float originZ, float spacingMeters, uint32_t sampleCount,
-                                                              std::span<const float> heights) const noexcept;
+    // noCollisionSamples は空か heights と同じ数。0 でない標本に接する三角形には当たりを作らない。配列は呼び出し中に写す。
+    HIKARI_GAME_PROJECT_SDK_API uint64_t AddStaticHeightField(
+        GameProjectObjectHandle owner, float originX, float originZ, float spacingMeters, uint32_t sampleCount,
+        std::span<const float> heights, std::span<const uint8_t> noCollisionSamples = {}) const noexcept;
     HIKARI_GAME_PROJECT_SDK_API void RemoveStaticHeightField(uint64_t body) const noexcept;
     // モジュールの幾何を道案内の入力へ足す。外すまで source を生かしておく。
     HIKARI_GAME_PROJECT_SDK_API bool AddNavigationGeometrySource(INavigationGeometrySource& source) const noexcept;

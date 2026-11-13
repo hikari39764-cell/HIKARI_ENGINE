@@ -28,7 +28,7 @@ bool FollowsGround(const SceneObjectData& object) noexcept {
     return !object.parent.has_value() && !object.editorLocked && object.FindComponent(kAnchorType) != nullptr;
 }
 
-enum class Placement : uint8_t { Placed, Unchanged, NeedsModel };
+enum class Placement : uint8_t { Placed, Unchanged, NeedsModel, NoGround };
 
 Placement Place(const DocumentSceneBase& scene, const std::unordered_map<uint64_t, ModelFootprint>& footprints,
                 SceneObjectData& object) {
@@ -39,8 +39,10 @@ Placement Place(const DocumentSceneBase& scene, const std::unordered_map<uint64_
     }
     TransformData placed{};
     if (!PlaceOnGround(scene.GetWorld(), object.transform, footprint != footprints.end() ? &footprint->second : nullptr,
-                       ResolveGroundPlacement(object), placed) ||
-        !Moved(placed, object.transform)) {
+                       ResolveGroundPlacement(object), placed)) {
+        return Placement::NoGround;
+    }
+    if (!Moved(placed, object.transform)) {
         return Placement::Unchanged;
     }
     object.transform = placed;
@@ -75,6 +77,7 @@ std::optional<SceneObjectAuthoringHistoryRequest> GroundFollowService::Update(Do
         }
         SceneObjectData placed = object;
         switch (Place(scene, footprints, placed)) {
+        case Placement::NoGround: missingGround_ = true; break;
         case Placement::NeedsModel: stillWaiting.push_back(object.id.value); break;
         case Placement::Unchanged: break;
         case Placement::Placed:
@@ -126,6 +129,7 @@ void GroundFollowService::ApplyToEdit(DocumentSceneBase& scene, SceneObjectAutho
             footprints = CollectModelFootprints();
         }
         switch (Place(scene, *footprints, object)) {
+        case Placement::NoGround: missingGround_ = true; break;
         case Placement::NeedsModel: waiting_.push_back(object.id.value); break;
         case Placement::Unchanged: break;
         case Placement::Placed:

@@ -51,9 +51,9 @@ void BeginFrame(const GFX::Context& graphics, const SceneEnvironment& environmen
         PublishShadowCacheStats(gShadowRendererState);
         return;
     }
-    gShadowRendererState.frameHasShadowWork =
-        BuildShadowGpuDrivenSceneSources(gShadowRendererState) || (sprites && sprites->HasShadowWork()) ||
-        RENDER3D::SURFACE_EXTENSIONS::HasWork();
+    gShadowRendererState.frameHasShadowWork = BuildShadowGpuDrivenSceneSources(gShadowRendererState) ||
+                                              (sprites && sprites->HasShadowWork()) ||
+                                              RENDER3D::SURFACE_EXTENSIONS::HasWork();
     if (!gShadowRendererState.frameHasShadowWork) {
         PublishShadowCacheStats(gShadowRendererState);
         return;
@@ -117,6 +117,12 @@ void BeginFrame(const GFX::Context& graphics, const SceneEnvironment& environmen
                 minimumDepths[i] =
                     (std::min)(minimumDepths[i], GetShadowCasterMinimumDepth(shadowFrames.cascades[i], bounds));
         }
+    for (const auto& bounds : RENDER3D::SURFACE_EXTENSIONS::GetShadowCasterBounds()) {
+        const MATH::Vec4 sphere{bounds.center[0], bounds.center[1], bounds.center[2], bounds.radius};
+        for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
+            minimumDepths[i] =
+                (std::min)(minimumDepths[i], GetShadowCasterMinimumDepth(shadowFrames.cascades[i], sphere));
+    }
     for (uint32_t i = 0; i < shadowFrames.cascadeCount; ++i)
         ExtendShadowCasterDepth(shadowFrames.cascades[i], minimumDepths[i]);
     for (uint32_t i = shadowFrames.cascadeCount; i < kMaxDirectionalShadowCascades; ++i)
