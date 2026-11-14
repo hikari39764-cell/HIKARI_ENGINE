@@ -55,17 +55,17 @@ bool DocumentSceneEditorController::PrepareGamePreview(DocumentSceneBase& scene)
         return false;
     }
 
-    if (!scene.SaveCurrentSceneDocument()) {
-        viewportDropMessage_ = "Could not save the current scene for Play";
-        return false;
+    // Play は編集中の文書から世界を作り直すので、開始前の保存は未保存の変更を残すためだけに行う。
+    // 変更の無い場面と画質を書き直すと、手で書いた小数の表記が変わり、既定値の画質ファイルが増える。
+    if (context_.sceneDirty || scene.HasUnsavedSceneChanges()) {
+        if (!scene.SaveCurrentSceneDocument()) {
+            viewportDropMessage_ = "Could not save the current scene for Play";
+            return false;
+        }
+        context_.sceneDirty = false;
+        scene.SetUnsavedSceneChanges(false);
     }
-
-    context_.sceneDirty = false;
-    scene.SetUnsavedSceneChanges(false);
-    if (!SaveRenderQualityProfile(scene)) {
-        return false;
-    }
-    return true;
+    return !renderQualitySavePending_ || SaveRenderQualityProfile(scene);
 }
 
 } // namespace HIKARI
