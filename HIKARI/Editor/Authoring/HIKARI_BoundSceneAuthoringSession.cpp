@@ -48,7 +48,8 @@ public:
         const auto guid = parameters.value("assetGuid", std::string{});
         if (!guid.empty() && guid != scene_->GetCurrentSceneAssetGuid().value)
             return {false, "SCENE_NOT_LOADED",
-                    "This provider binds the loaded scene. It never switches the user's scene."};
+                    "This provider binds the loaded scene. It never switches the user's scene. To switch "
+                    "scenes, use scene.open."};
         sceneIdentity_ = scene_->GetSceneId() + "|" + scene_->GetScenePath();
         documentRevision_ = scene_->GetSceneDocumentRevision();
         revision_ = context_.editRevision();

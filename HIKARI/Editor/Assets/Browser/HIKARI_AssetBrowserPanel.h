@@ -4,6 +4,8 @@
 #include <filesystem>
 #include <optional>
 #include <string>
+#include <string_view>
+#include <vector>
 
 #include "Core/HIKARI_AssetGuid.h"
 #include "Editor/Assets/Browser/HIKARI_AssetBrowserCache.h"
@@ -13,6 +15,7 @@ namespace HIKARI {
 class AssetDatabase;
 struct AssetUsageSummary;
 struct EditorSelection;
+struct SceneSystemData;
 enum class AssetType;
 
 struct AssetWorkspaceActivation {
@@ -79,10 +82,16 @@ private:
 };
 
 namespace EDITOR::ASSET_BROWSER {
-// 新しい場面の資産（既定の中身）を作って資産の一覧に載せ、その GUID を返す。directory が Assets/Scenes の下で
-// なければ Assets/Scenes に作る。失敗した時は無効な GUID を返し、理由を outError に書く。
+// 新しい場面の資産（既定の床と systems）を作って資産の一覧に載せ、その GUID を返す。directory が Assets/Scenes の下で
+// なければ Assets/Scenes に作る。baseName（英数字・空白・_・- 以外は落とす）がファイル名と場面名になり、同じ名前の
+// ファイルがあれば番号を付ける。失敗した時は書いたファイルを消して無効な GUID を返し、理由を outError に書く。
 AssetGuid CreateSceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& directory,
+                           std::string_view baseName, const std::vector<SceneSystemData>& systems,
                            std::filesystem::path& outRelativePath, std::string& outError);
+// 場面のファイル名から .scene.json を除いた名前。
+std::string GetSceneAssetBaseName(const std::filesystem::path& path);
+// プロジェクト相対の path が Assets/Scenes かその下か（大文字小文字は区別しない）。
+bool IsScenesDirectoryPath(const std::filesystem::path& path);
 } // namespace EDITOR::ASSET_BROWSER
 
 } // namespace HIKARI

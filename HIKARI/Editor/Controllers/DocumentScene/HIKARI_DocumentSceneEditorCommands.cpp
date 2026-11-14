@@ -296,7 +296,9 @@ bool SaveSceneAsNewAsset(DocumentSceneBase& scene) {
     AssetDatabase& database = scene.GetAssetDatabase();
     std::filesystem::path relativePath{};
     std::string error{};
-    const AssetGuid guid = EDITOR::ASSET_BROWSER::CreateSceneAsset(database, {}, relativePath, error);
+    // 資産のファイルはすぐ下で今の文書の中身に書き換わる。
+    const AssetGuid guid = EDITOR::ASSET_BROWSER::CreateSceneAsset(
+        database, {}, "New Scene", scene.GetSceneDocument().systems, relativePath, error);
     if (!guid.IsValid() || !scene.SaveCurrentSceneDocumentAs(guid)) {
         HIKARI_LOG_WARN("[SceneAsset] could not save the scene as a new asset: " + error);
         return false;

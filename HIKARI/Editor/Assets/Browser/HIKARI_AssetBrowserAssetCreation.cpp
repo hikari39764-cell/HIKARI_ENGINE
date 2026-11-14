@@ -141,11 +141,13 @@ bool CreateDefaultMaterialAsset(AssetDatabase& assetDatabase, const std::filesys
 
 namespace {
 bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& currentDirectory,
+                           std::string_view baseName, const std::vector<SceneSystemData>& systems,
                            std::filesystem::path& outRelativePath, std::string& outError) {
     const std::filesystem::path sceneDirectory =
         IsScenesDirectoryPath(currentDirectory) ? currentDirectory : std::filesystem::path("Assets/Scenes");
+    const std::string fileName = SanitizeFileToken(std::string(baseName), "New Scene");
     const std::filesystem::path absoluteScenePath = MakeUniqueFilePath(
-        (assetDatabase.GetProjectRoot() / sceneDirectory / "New Scene.scene.json").lexically_normal());
+        (assetDatabase.GetProjectRoot() / sceneDirectory / (fileName + ".scene.json")).lexically_normal());
 
     std::error_code ec{};
     std::filesystem::create_directories(absoluteScenePath.parent_path(), ec);
@@ -156,12 +158,13 @@ bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::
 
     const std::string sceneName = absoluteScenePath.stem().stem().string();
     SceneDocument document{};
-    document.sceneName = sceneName.empty() ? "New Scene" : sceneName;
+    document.sceneName = sceneName.empty() ? fileName : sceneName;
     // 新規シーンのデフォルト構成として実体のグリッド床を置く。
     document.objects.push_back(BuildDefaultGridFloorSceneObject(document));
-    document.systems.push_back(SceneSystemData{"ModelRenderSystem", true, 100, nlohmann::json::object()});
+    document.systems = systems;
     const SceneSerializer serializer{};
     if (!serializer.SaveToFile(absoluteScenePath.string(), document)) {
+        std::filesystem::remove(absoluteScenePath, ec);
         outError = "Failed to write scene file.";
         return false;
     }
@@ -176,21 +179,28 @@ bool CreateEmptySceneAsset(AssetDatabase& assetDatabase, const std::filesystem::
 } // namespace
 
 AssetGuid CreateSceneAsset(AssetDatabase& assetDatabase, const std::filesystem::path& directory,
+                           std::string_view baseName, const std::vector<SceneSystemData>& systems,
                            std::filesystem::path& outRelativePath, std::string& outError) {
-    if (!CreateEmptySceneAsset(assetDatabase, directory, outRelativePath, outError)) {
+    if (!CreateEmptySceneAsset(assetDatabase, directory, baseName, systems, outRelativePath, outError)) {
         if (outError.empty()) {
             outError = TEXT::Localize("ui.assetBrowser.sceneCreationFailed");
         }
         return {};
     }
+    // 一覧に載らなかった場面は、書いたファイルと meta を消して作らなかったことにする。
+    const auto discard = [&](const char* errorKey) {
+        std::error_code ec{};
+        std::filesystem::remove(assetDatabase.GetProjectRoot() / outRelativePath, ec);
+        std::filesystem::remove(assetDatabase.GetMetaPathForSource(outRelativePath), ec);
+        outError = TEXT::Localize(errorKey);
+        return AssetGuid{};
+    };
     if (!assetDatabase.ScanAssets(true)) {
-        outError = TEXT::Localize("ui.assetBrowser.assetDatabaseRefreshFailed");
-        return {};
+        return discard("ui.assetBrowser.assetDatabaseRefreshFailed");
     }
     const AssetRecord* record = assetDatabase.FindByPath(outRelativePath);
     if (record == nullptr) {
-        outError = TEXT::Localize("ui.assetBrowser.sceneCreationFailed");
-        return {};
+        return discard("ui.assetBrowser.sceneCreationFailed");
     }
     return record->guid;
 }
@@ -222,7 +232,9 @@ bool CreateFolderFromBrowser(AssetDatabase& assetDatabase, std::filesystem::path
 bool CreateSceneFromBrowser(AssetDatabase& assetDatabase, std::filesystem::path& currentDirectory,
                             EditorSelection& selection, std::string& lastOperationMessage) {
     std::filesystem::path scenePath{};
-    const AssetGuid guid = CreateSceneAsset(assetDatabase, currentDirectory, scenePath, lastOperationMessage);
+    const AssetGuid guid = CreateSceneAsset(assetDatabase, currentDirectory, "New Scene",
+                                            {SceneSystemData{"ModelRenderSystem", true, 100, nlohmann::json::object()}},
+                                            scenePath, lastOperationMessage);
     if (!guid.IsValid()) {
         LogSceneAssetWarn("new scene failed: " + lastOperationMessage);
         return false;

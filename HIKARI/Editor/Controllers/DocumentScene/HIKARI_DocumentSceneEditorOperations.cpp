@@ -260,6 +260,7 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
                                  {},
                                  [this](const nlohmann::json&) { return ExecuteSceneSave(); }},
                                 EditorOperationKind::Mutation);
+    RegisterSceneFileOperations();
     EDITOR::EditorOperationDefinition saveAll{
         "editor.save_all",
         "Save the scene and every edited environment, weather, render style, post, gameplay camera and external "

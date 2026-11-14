@@ -32,10 +32,6 @@ std::filesystem::path MakeUniqueCompoundSuffixFilePath(const std::filesystem::pa
 
 std::string SanitizeFileToken(const std::string& raw, const std::string& fallback);
 
-std::string GetSceneAssetBaseName(const std::filesystem::path& path);
-
-bool IsScenesDirectoryPath(const std::filesystem::path& path);
-
 bool IsMaterialsDirectoryPath(const std::filesystem::path& path);
 
 bool CreateDefaultMaterialAsset(AssetDatabase& assetDatabase, const std::filesystem::path& currentDirectory,
