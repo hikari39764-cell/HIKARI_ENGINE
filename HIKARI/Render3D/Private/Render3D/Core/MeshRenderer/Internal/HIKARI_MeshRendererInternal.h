@@ -4,6 +4,7 @@
 #include "Render3D/Core/MeshRenderer/Execution/HIKARI_MeshDrawExecutor.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererState.h"
 #include "Render3D/Debug/HIKARI_RenderDebugView.h"
+#include "HIKARI/Project/RenderSurface.h"
 #include "Render3D/GpuDriven/Backend/HIKARI_GeometryBackendPolicy.h"
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
@@ -109,6 +110,18 @@ struct MeshFrameBindingOverrides {
     RENDER3D::WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceGpuFrameBuffer = nullptr;
     RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer = nullptr;
 };
+
+// 主視点以外の視点の相机：束縛はその視点の定数、viewProjection と position はモジュールへ渡す（刈り込みと LOD）。
+struct SurfaceRecordCamera {
+    const MeshFrameBindingOverrides* bindings = nullptr;
+    MATH::Mat4 viewProjection{};
+    MATH::Vec3 position{};
+};
+
+// モジュールの面をこの視点の相机で今の描画先へ描く（Forward か DepthAware）。呼ぶ前に
+// SURFACE_EXTENSIONS::PrepareForView で準備を確かめる。描画先と viewport は呼び手が設定しておく。
+bool RecordViewSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
+                                 const MeshPassResources& passResources, const SurfaceRecordCamera& camera);
 
 GeometryBackendExecutionResult ExecuteSecondaryViewGeometryBackendPlan(
     const GFX::Context& graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind pass, const MeshPassResources& passResources,

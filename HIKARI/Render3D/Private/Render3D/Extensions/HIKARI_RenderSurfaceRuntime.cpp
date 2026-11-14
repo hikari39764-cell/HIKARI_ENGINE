@@ -132,6 +132,8 @@ struct RuntimeState {
     std::map<std::array<RenderSurfaceResourceId, kRenderSurfaceTextureSlotCount>, DescriptorTable> tables{};
     std::array<DX::DynamicUploadBuffer, GFX::kFrameResourceCount> uploads{};
     uint64_t lastFrameIndex = UINT64_MAX;
+    // 準備（PrepareFrame）を済ませた通しのフレーム番号。
+    uint64_t preparedFrame = UINT64_MAX;
     uint32_t slot = 0u;
     MATH::Vec3 cameraPosition{};
 };
@@ -954,6 +956,19 @@ void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension*
     resources.FinishCopies();
     BuildPendingRayProxies(state);
     PublishRayProxies(state);
+    state.preparedFrame = frameSerial;
+}
+
+bool PrepareForView(const GFX::Context& graphics, std::span<IRenderSurfaceExtension* const> extensions) {
+    RuntimeState& state = State();
+    if (extensions.empty()) {
+        return false;
+    }
+    if (state.preparedFrame != TIME::GetFrameContext().frameIndex) {
+        BeginFrame(graphics, extensions);
+    }
+    return state.preparedFrame == TIME::GetFrameContext().frameIndex &&
+           std::equal(state.extensions.begin(), state.extensions.end(), extensions.begin(), extensions.end());
 }
 
 bool HasWork() noexcept { return !State().extensions.empty(); }
@@ -1020,6 +1035,7 @@ void Shutdown(const GFX::Context* graphics) noexcept {
     ReleaseAll(state, graphics);
     state.extensions.clear();
     state.deviceGeneration = 0u;
+    state.preparedFrame = UINT64_MAX;
 }
 
 } // namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS
