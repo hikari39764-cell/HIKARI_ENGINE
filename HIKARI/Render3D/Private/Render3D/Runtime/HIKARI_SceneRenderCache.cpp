@@ -535,7 +535,7 @@ void SceneRenderCache::RepackSurfaceFloatPool(uint64_t dataVersionBeforePacking)
     // deterministic first-fit で構築する。地形 core (field + style) は atomic に
     // 入り、必要なら同じ範囲を保ったまま格子だけを縮小する。最小格子さえ
     // 収容できない surface は明示的に non-resident とし、neutral tile を公開しない。
-    SceneSurfaceFloatPoolPacker floatPool(surfaceFeatureFloats_, TERRAIN::kSurfaceFeatureFloatPoolCapacity);
+    SceneSurfaceFloatPoolPacker floatPool(surfaceFeatureFloats_, kSurfaceFeatureFloatPoolCapacity);
     for (uint32_t surfaceIndex = 0u; surfaceIndex < surfaceInstances_.size(); ++surfaceIndex) {
         SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
         if (!instance.terrainSurface) {

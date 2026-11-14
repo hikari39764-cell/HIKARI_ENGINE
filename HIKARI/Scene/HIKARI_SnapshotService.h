@@ -9,12 +9,12 @@
 #include <variant>
 #include <vector>
 
-namespace HIKARI::TERRAIN {
+namespace HIKARI {
 
-// 地形/地表 feature の query service が共有する immutable snapshot store。
+// 地形/水面などの地表 feature の query service が共有する immutable snapshot store。
 // publish/clear は atomic に切り替わり、reader は常に同じ revision を読む。
 template <typename TEntry, typename TIndex = std::monostate>
-class TerrainSnapshotService {
+class SnapshotService {
 public:
     struct Snapshot {
         uint64_t revision = 0u;
@@ -64,4 +64,4 @@ private:
     mutable std::mutex publishMutex_{};
 };
 
-} // namespace HIKARI::TERRAIN
+} // namespace HIKARI

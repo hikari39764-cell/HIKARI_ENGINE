@@ -19,7 +19,7 @@
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 
-namespace HIKARI::RENDER3D::TERRAIN {
+namespace HIKARI::RENDER3D::SURFACE {
 
 // 水/地形の sparse record と共有 float pool を所有する GPU バッファ。
 // 各提出のコピー元は不変。float pool は frame slot ごとに保持し、slot の
@@ -247,4 +247,4 @@ private:
     std::size_t floatCapacity_ = 0u;
 };
 
-} // namespace HIKARI::RENDER3D::TERRAIN
+} // namespace HIKARI::RENDER3D::SURFACE

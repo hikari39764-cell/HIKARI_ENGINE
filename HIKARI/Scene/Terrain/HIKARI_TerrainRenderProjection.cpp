@@ -69,8 +69,8 @@ uint32_t ResolveTerrainProjectionGrid(uint32_t totalCellsX, uint32_t totalCellsZ
         RENDER3D::RUNTIME::kSceneSurfaceNeutralFloatCount +
         static_cast<std::size_t>(layerCount) * RENDER3D::TERRAIN::kTerrainSurfaceLayerStyleFloatCount;
     const std::size_t availableVertexFloats =
-        RENDER3D::TERRAIN::kSurfaceFeatureFloatPoolCapacity > fixedPoolFloats
-            ? RENDER3D::TERRAIN::kSurfaceFeatureFloatPoolCapacity - fixedPoolFloats
+        RENDER3D::RUNTIME::kSurfaceFeatureFloatPoolCapacity > fixedPoolFloats
+            ? RENDER3D::RUNTIME::kSurfaceFeatureFloatPoolCapacity - fixedPoolFloats
             : 0u;
     const std::size_t vertexBudget = fieldsPerVertex > 0u ? availableVertexFloats / fieldsPerVertex : 0u;
     const double budgetStride = std::sqrt(static_cast<double>(vertexBudget));

@@ -14,6 +14,8 @@ namespace HIKARI::RENDER3D::RUNTIME {
 constexpr std::size_t kSceneSurfaceNeutralFloatCount = 4u;
 // GPU が過去 version から差分を追えるだけの履歴。frame slot 数より多く保つ。
 constexpr std::size_t kSceneSurfaceFloatPoolHistoryCapacity = 8u;
+// 地形 field と水面 coverage が共有する scene surface float pool の容量。
+constexpr std::size_t kSurfaceFeatureFloatPoolCapacity = 1280u * 1024u;
 
 // float pool 内の連続範囲 [first, first + count)。
 struct SceneSurfaceFloatRange {

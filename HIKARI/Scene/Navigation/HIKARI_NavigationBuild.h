@@ -11,7 +11,6 @@
 #include <DetourAlloc.h>
 #include <DetourNavMesh.h>
 #include <DetourNavMeshQuery.h>
-#include "Scene/Terrain/HIKARI_TerrainChunks.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
 namespace HIKARI {
@@ -49,12 +48,20 @@ struct NavigationChunkKey {
     auto operator<=>(const NavigationChunkKey&) const = default;
 };
 
+// 塊の格子座標。地形でもモジュールの塊でも同じ形で持つ。
+struct NavigationChunkCoord {
+    int32_t x = 0;
+    int32_t z = 0;
+
+    auto operator<=>(const NavigationChunkCoord&) const = default;
+};
+
 struct NavigationChunkSource {
     RuntimeObjectHandle object{};
     TerrainSurfaceComponent* terrain = nullptr;
     // モジュールの塊。terrain の代わりに使う。
     const INavigationGeometrySource* moduleSource = nullptr;
-    TERRAIN::TerrainChunkKey key{};
+    NavigationChunkCoord key{};
     uint64_t revision = 0u;
 };
 

@@ -8,8 +8,6 @@
 namespace HIKARI::RENDER3D::TERRAIN {
 
 constexpr std::size_t kTerrainSurfaceMaxGpuDataRecords = 1024u;
-// 地形 field と水面 coverage が共有する scene surface float pool の容量。
-constexpr std::size_t kSurfaceFeatureFloatPoolCapacity = 1280u * 1024u;
 constexpr std::size_t kTerrainSurfaceLayerStyleFloatCount = 20u;
 // layer weight は 1 float slot に unorm8 x4 で詰める。
 constexpr uint32_t kTerrainSurfaceLayersPerWeightPlane = 4u;

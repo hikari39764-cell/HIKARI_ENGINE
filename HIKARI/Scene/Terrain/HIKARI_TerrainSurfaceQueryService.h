@@ -11,7 +11,7 @@
 #include "Scene/Terrain/HIKARI_TerrainSurfaceTypes.h"
 #include "Scene/Terrain/HIKARI_TerrainChunks.h"
 #include "Scene/Terrain/HIKARI_TerrainSurface.h"
-#include "Scene/Terrain/HIKARI_TerrainSnapshotService.h"
+#include "Scene/HIKARI_SnapshotService.h"
 
 namespace HIKARI::TERRAIN {
 
@@ -137,7 +137,7 @@ public:
     void Clear();
 
 private:
-    TERRAIN::TerrainSnapshotService<TerrainSurfaceSnapshotEntry, TerrainSurfaceSnapshotIndex> snapshotStore_{};
+    SnapshotService<TerrainSurfaceSnapshotEntry, TerrainSurfaceSnapshotIndex> snapshotStore_{};
 };
 
 } // namespace HIKARI::TERRAIN

@@ -88,7 +88,8 @@ CurrentNavigationSources GatherCurrentSources(World& world, const NavigationSour
             (void)chunk;
             const NavigationChunkKey navigationKey{objectValue, key.x, key.z};
             result.chunks.emplace(navigationKey,
-                                  NavigationChunkSource{handle, &terrain, nullptr, key, terrain.GetChunkRevision(key)});
+                                  NavigationChunkSource{handle, &terrain, nullptr, NavigationChunkCoord{key.x, key.z},
+                                                        terrain.GetChunkRevision(key)});
         }
     });
     for (const INavigationGeometrySource* source : world.GetNavigationGeometrySources()) {
@@ -240,8 +241,8 @@ bool BuildChunkGeometry(const NavigationChunkSource& source, NavigationGeometry&
         outDiagnostic = "navigation chunk lost its terrain owner";
         return false;
     }
-    const PHYSICS::TerrainCollisionProjection projection =
-        PHYSICS::BuildTerrainChunkCollisionProjection(source.object, *source.terrain, source.key);
+    const PHYSICS::TerrainCollisionProjection projection = PHYSICS::BuildTerrainChunkCollisionProjection(
+        source.object, *source.terrain, TERRAIN::TerrainChunkKey{source.key.x, source.key.z});
     if (!projection.buildSucceeded) {
         outDiagnostic =
             projection.diagnostic.empty() ? "terrain chunk collision projection failed" : projection.diagnostic;
