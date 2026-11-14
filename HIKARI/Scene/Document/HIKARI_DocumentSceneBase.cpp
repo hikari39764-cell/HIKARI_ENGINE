@@ -698,6 +698,8 @@ void DocumentSceneBase::Render() {
         }
         if (auto* combat = state_->runtime.world.Services().Find<VFX::CombatPresentationService>()) {
             primaryView.combatPresentationFrameSource = &combat->GetFrameSource();
+            // 戦闘演出の内蔵プリセットも、登録済み VFX と同じく最初のフレームで貼図と材質を先に用意させる。
+            particleFrameSource.enginePrewarmMaterials = &combat->GetPrewarmMaterials();
         }
         if (auto* reactions = state_->runtime.world.Services().Find<VFX::ActionPostReactionService>()) {
             primaryView.actionPostReactionFrameSource = &reactions->GetFrameSource();
