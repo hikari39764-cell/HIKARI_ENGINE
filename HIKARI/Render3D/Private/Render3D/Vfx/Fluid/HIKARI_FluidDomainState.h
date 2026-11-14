@@ -85,6 +85,8 @@ struct FluidDomainState {
     // 解算の予算（AssignFluidBudget）：視図の LOD に足す段（0〜2）と、予算を超えて解かずに止めた（前の烟を描くだけ）か。
     uint32_t budgetLevel = 0u;
     bool frozen = false;
+    // 止め始めた描画入力の帧号（止めている間だけ読む。止めた長さを予算の割り振りへ渡す）。
+    uint64_t frozenSinceFrame = 0u;
     // 砖块を烟があるとみなす最大密度（INTERNAL::FluidOccupiedDensity。占有の回読が数える）。
     float occupiedDensity = 0.0f;
     // 回読の砖块ごとの活動（1：烟がある、または最後の子步で動いた。烟の 26 近傍、源・注入の届く砖块）。疎な域の住まいが
@@ -140,18 +142,43 @@ struct FluidDomainState {
 double EstimateFluidSolveCost(const FluidGridLayout& layout, float activeFraction, float pressureFraction,
                               double frameSeconds, double stepSeconds, uint32_t maxSubsteps, uint32_t vCycles) noexcept;
 
-// 予算の段 0〜2 ごとの見積もりと、割り振った段・止めたか（前のフレームの値から始める）。
+// 予算の段 0〜2 ごとの見積もりと、割り振った段・止めたか（前のフレームの値から始める）。frozenFrames は止めてからの
+// フレーム数（止めていなければ 0）。
 struct FluidBudgetEntry {
     double cost[3]{};
     uint32_t level = 0u;
     bool frozen = false;
+    uint32_t frozenFrames = 0u;
 };
+
+// 止めた域を、余裕（予算の 8.5 割）に入らなくても予算いっぱいまで使って戻し始めるまでのフレーム数。止めた域は前の烟を
+// 動かさずに描くので、長く続くと固まって見える。
+inline constexpr uint32_t kFluidFrozenPatienceFrames = 8u;
 
 // 予算の割り振り（Niagara の重要度による間引きと同じ考え方）。entries は重要な順（作者の優先度、相機に近い順）。見積もりの
 // 合計が budget を超える間は最も重要でない域から段を上げ（子步を長く、V 循環を 1 つ減らす）、段が尽きたら重要でない域から
-// 止める（最も重要な域は止めない）。予算の 7 割を下回ったら重要な域から止めたのを戻し、段を下げる（戻した後も 8.5 割以内の
-// 間だけ。境目で毎フレーム行き来しない）。budget が 0 なら予算なし。
+// 止める（最も重要な域は止めない）。
+// 戻す時は、止めた域が先（重要な順）：ほかの域を全部いちばん粗い段にすれば入るなら、重要でない域から段を上げて場所を
+// 空け、戻す（入る先は予算の 8.5 割まで、kFluidFrozenPatienceFrames を過ぎた域は予算いっぱいまで）。段を下げるのは
+// その後で、予算の 7 割を下回った時だけ（重要な順、下げた後も 8.5 割以内。境目で毎フレーム行き来しない）。
+// budget が 0 なら予算なし。
 void AssignFluidBudget(std::span<FluidBudgetEntry> entries, double budget) noexcept;
+
+// 予算の見積もりに使うフレームの時間。1 フレームだけの詰まり（エフェクトの起動など）をそのまま見積もると、その 1 フレームで
+// 段が上がり域が止まって、その後も余裕の帯の中で戻らない。直近 5 フレームの時間の中央値を超える分は見積もりに数えない
+// （長いフレームが続けば中央値が上がり、見積もりに入る）。
+class FluidPlanSeconds final {
+public:
+    // このフレーム（描画入力の帧号）の時間を記録し、見積もりの時間に掛ける倍率（1 以下）を返す。同じ帧号の 2 回目から
+    // （別の視図）は記録せず、同じ倍率を返す。
+    double Scale(uint64_t frameIndex, double frameSeconds) noexcept;
+
+private:
+    std::array<double, 5> recent_{};
+    uint32_t count_ = 0u;
+    uint64_t frame_ = UINT64_MAX;
+    double scale_ = 1.0;
+};
 
 // 見積もりから GPU の時間 [ms] への換算（画質の solveBudgetMs を見積もりの単位にする）。装置と場面で変わるので、流体解算
 // の GPU 計時（数フレーム遅れて読み戻る）を同じフレームの見積もりと組にし、kFluidCalibrationFrames 組ごとに比べて半分ずつ
