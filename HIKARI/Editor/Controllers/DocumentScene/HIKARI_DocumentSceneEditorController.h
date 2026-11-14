@@ -378,6 +378,13 @@ private:
     // 場面を開く要求。未保存の変更があれば確認を待ち、無ければすぐ開く。
     void RequestSceneOpen(DocumentSceneBase& scene, const AssetGuid& sceneGuid);
     void DrawPendingSceneOpenModal(DocumentSceneBase& scene);
+    // scene.new・scene.open（HIKARI_DocumentSceneEditorSceneWorkflow.cpp）。
+    void RegisterSceneFileOperations();
+    // 操作が場面を切り替える前に、今の場面の未保存の変更を unsavedChanges（refuse・save・discard）の通りに扱う。
+    // 確認の窓は出さない。続けてよければ空を返して outOutcome に結果（none・saved・discarded）を書き、だめなら失敗を返す。
+    std::optional<EDITOR::EditorOperationResult> PrepareAgentSceneSwitch(DocumentSceneBase& scene,
+                                                                         std::string_view unsavedChanges,
+                                                                         std::string& outOutcome);
     void EnsureAgentBridge(DocumentSceneBase& scene);
     // 外部智能体（本地桥）からの一つの操作。公開範囲と访问模式を確かめて操作表で実行する。主线程で呼ぶ。
     EDITOR::EditorOperationResult ExecuteAgentAction(const std::string& operation, const nlohmann::json& parameters);
