@@ -36,6 +36,9 @@ struct AgentPlayRun {
     uint64_t startTick = 0;
     // 開始時のログの通し番号。結果には以降の警告とエラーを付ける。
     uint64_t logSequenceAtStart = 0;
+    // --agent-play-run の時だけ：起動してからこの回を始めるまでの警告とエラー（项目設定や运行时功能の解決、
+    // 場面の読み込み）。結果ではこの回の分より前に並べる。
+    nlohmann::json startupProblems = nlohmann::json::array();
     nlohmann::json captures = nlohmann::json::array();
     // 位置を記録する物体（trackObjects）。30 tick ごとと終点の世界位置を samples に残す。
     std::vector<uint64_t> trackObjects{};

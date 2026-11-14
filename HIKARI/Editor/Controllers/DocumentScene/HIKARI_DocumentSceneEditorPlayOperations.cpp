@@ -633,12 +633,18 @@ void DocumentSceneEditorController::TickAgentPlayRun() {
         const std::filesystem::path request = *std::exchange(pendingBackgroundRun_, std::nullopt);
         std::ifstream file(request, std::ios::binary);
         const nlohmann::json parameters = nlohmann::json::parse(file, nullptr, false);
+        // 起動の間の警告とエラーも結果に入れる。長い回では日志の履歴から押し出されるので、始める前に取っておく。
+        nlohmann::json startupProblems = ReadLogs(0u, CORE::LogLevel::Warn, kMaximumRunLogRecords, {});
         EDITOR::EditorOperationResult started =
             parameters.is_object() ? StartAgentPlayRun(parameters)
                                    : EDITOR::OperationFailure("INVALID_REQUEST", "The run request is not JSON.");
         backgroundResult_ = request.parent_path() / "result.json";
-        if (!started.ok)
+        if (started.ok) {
+            agentPlayRun_->startupProblems = std::move(startupProblems);
+        } else {
+            started.data["problems"] = std::move(startupProblems);
             WriteBackgroundResult(started);
+        }
     }
     if (backgroundResult_ && agentPlayRun_ &&
         (agentPlayRun_->phase == EDITOR::AGENT::AgentPlayRun::Phase::Done ||
@@ -758,7 +764,11 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::PollAgentPlayRun(ui
         data["poll"] = {{"operation", "play.run.status"}, {"parameters", {{"runId", run.id}}}};
         return EDITOR::OperationOk("Run in progress.", std::move(data));
     }
-    data["problems"] = ReadLogs(run.logSequenceAtStart, CORE::LogLevel::Warn, kMaximumRunLogRecords, {});
+    nlohmann::json problems = run.startupProblems;
+    for (nlohmann::json& record :
+         ReadLogs(run.logSequenceAtStart, CORE::LogLevel::Warn, kMaximumRunLogRecords - problems.size(), {}))
+        problems.push_back(std::move(record));
+    data["problems"] = std::move(problems);
     if (!run.samples.empty())
         data["tracked"] = ThinSamples(run.samples);
     data["play"] = DescribePlayState().data;
