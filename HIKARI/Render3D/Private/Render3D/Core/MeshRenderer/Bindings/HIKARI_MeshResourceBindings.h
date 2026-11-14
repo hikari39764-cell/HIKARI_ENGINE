@@ -43,6 +43,8 @@ struct MeshBindingContext {
     int fallbackCubeTextureHandle = -1;
     MeshPassResources passResources{};
     MeshBindingStateCache* cache = nullptr;
+    // モジュールの面の root（surfaceExtensionRootSig）へ張っている。場面の加速構造の枠があるのはこの root だけ。
+    bool surfaceExtensionRoot = false;
 };
 
 void BindFrameCommonResources(const MeshBindingContext& ctx, ID3D12RootSignature* rootSig,

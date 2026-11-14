@@ -373,6 +373,7 @@ static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfaceP
     MeshDrawContext drawCtx = BuildDrawContext(graphics, false, passKind, passResources, nullptr);
     drawCtx.binding.cache = &bindingCache;
     drawCtx.staticRootSig = rootSignature;
+    drawCtx.binding.surfaceExtensionRoot = true;
     BindSurfaceRecordFrameResources(drawCtx);
     RENDER3D::SURFACE_EXTENSIONS::RecordInput input{};
     input.pass = pass;

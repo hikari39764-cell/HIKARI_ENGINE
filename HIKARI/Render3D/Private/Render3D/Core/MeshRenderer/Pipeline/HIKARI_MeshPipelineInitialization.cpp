@@ -242,6 +242,13 @@ bool InitializeMeshPipelines(ID3D12Device* device, MeshPipelineStore& store) {
     surfaceExtensionParams[ROOT_PARAM::JointPalette].InitAsShaderResourceView(0, 10, kAll);
     surfaceExtensionParams[ROOT_PARAM::MeshletVisibleRanges].InitAsConstantBufferView(3, 0, kAll);
     surfaceExtensionParams[ROOT_PARAM::ClusterGeometryPool].InitAsDescriptorTable(1, &surfaceExtensionTextures, kAll);
+    // モジュールの面は amplification 段を持たないので、その枠を場面の加速構造（t0, space11）に使う。影の光線は
+    // mesh 段からも飛ばすので、有効かどうかの旗（ScreenSpaceTraceControl）と影の設定（ShadowCB）も全段から読める
+    // ようにする。
+    const CD3DX12_DESCRIPTOR_RANGE surfaceExtensionRayScene(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, 1, 0, 11);
+    surfaceExtensionParams[ROOT_PARAM::MeshletOcclusionDepth].InitAsDescriptorTable(1, &surfaceExtensionRayScene, kAll);
+    surfaceExtensionParams[ROOT_PARAM::ScreenSpaceTraceControl].InitAsConstants(2, 10, 0, kAll);
+    surfaceExtensionParams[ROOT_PARAM::ShadowCB].InitAsConstantBufferView(4, 0, kAll);
     D3D12_ROOT_SIGNATURE_DESC surfaceExtensionRsDesc = rsDesc;
     surfaceExtensionRsDesc.pParameters = surfaceExtensionParams;
     // 頂点着色器が高さ図を標本化する。通常の面の標本器は画素着色器だけに見せている。

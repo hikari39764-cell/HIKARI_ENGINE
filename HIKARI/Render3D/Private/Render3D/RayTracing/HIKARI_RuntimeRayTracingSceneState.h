@@ -15,6 +15,7 @@
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingDeformation.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingInputs.h"
+#include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingMass.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingScene.h"
 #include "Render3D/Resources/HIKARI_ClusterGeometryResourceSystem.h"
@@ -130,6 +131,9 @@ struct RuntimeRayTracingScene::State {
     std::map<uint64_t, std::unique_ptr<INTERNAL::Asset>> assets;
     CLUSTER::ClusterRayTracingGeometryBuilder converter;
     std::unique_ptr<AccelerationStructure> topLevel;
+    // topLevel の SRV。topLevel を作り直して番地が変わった時に張り替える。
+    RenderResourceView topLevelView{};
+    D3D12_GPU_VIRTUAL_ADDRESS topLevelViewAddress = 0;
     // hit 記録。材質の slot だけが替わった時は GPU が読み終えた予備へ書き直す。
     GFX::FencedUploadBuffers hitUploads{GFX::UPLOAD_TRAFFIC::Owner::RayTracingHitRecords};
     std::vector<D3D12_RAYTRACING_INSTANCE_DESC> lastInstances;
@@ -177,6 +181,7 @@ struct RuntimeRayTracingScene::State {
                         const RuntimeRayTracingBudget& budget, const RuntimeRayTracingSurfaceBindings& surfaces);
     void TrackRetirement(const GFX::Context& graphics, uint64_t bytes);
     void RetireTop(const GFX::Context& graphics, bool keepHits = false);
+    D3D12_GPU_DESCRIPTOR_HANDLE TopLevelView(const GFX::Context& graphics);
     uint64_t Available(const RuntimeRayTracingBudget& budget);
     RuntimeRayTracingFrame Fail(const GFX::Context& graphics, const RuntimeRayTracingBudget& budget,
                                 RuntimeRayTracingStatus status);
