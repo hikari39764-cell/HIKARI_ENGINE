@@ -17,7 +17,9 @@
 namespace HIKARI::RENDER3D::FLUID {
 
 inline constexpr uint32_t kFluidResolutionMin = 16u;
-inline constexpr uint32_t kFluidResolutionMax = 256u;
+// 最長辺の格の数の上限。平たい域（場の火：48 × 6 × 48 m）を細かくするために 384 まで許す。立方体の域で上げると格の数が
+// 3 乗で増える（384³ は 256³ の約 3.4 倍）ので、重さは解算の予算（画質の solveBudgetMs）で確かめる。
+inline constexpr uint32_t kFluidResolutionMax = 384u;
 // 一つの域に入る源（流体源層と、域自身の力場）の上限。GPU の源の表の大きさでもある。
 inline constexpr uint32_t kMaximumFluidSourcesPerDomain = 16u;
 // 一つの VFX 資産が持てる域の数と、1 フレームに提交できる域の数。
