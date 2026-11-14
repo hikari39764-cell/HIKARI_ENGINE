@@ -198,6 +198,7 @@ struct FluidVolumePass::Impl {
     std::vector<std::pair<DomainState*, uint32_t>> planned{};
     std::vector<INTERNAL::FluidBudgetEntry> budget{};
     INTERNAL::FluidBudgetCalibration calibration{};
+    INTERNAL::FluidPlanSeconds planSeconds{};
     // このフレームに流体へ注入する粒子の層がある（解く域が注入の緩衝を持つ）。
     bool injectionWanted = false;
     // 回読が届いた汇の吸い込み量と域の発光（TakeSinkReports / TakeGlowReports で場面へ渡す）。
@@ -995,7 +996,11 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         impl.planned.emplace_back(domain, order);
     }
     // 2 周目：見積もり（活動する砖块の割合は回読の値、まだ無ければ全部）が予算を超えれば、重要でない域から子步を長くし、
-    // それでも超える域は止める。
+    // それでも超える域は止める。見積もりのフレームの時間は、1 フレームだけの詰まりを数えない（FluidPlanSeconds）。
+    float longestSeconds = 0.0f;
+    for (const auto& plan : impl.planned)
+        longestSeconds = (std::max)(longestSeconds, input->fluids[plan.second].deltaSeconds);
+    const double planScale = impl.planSeconds.Scale(input->frameIndex, longestSeconds);
     impl.budget.resize(impl.planned.size());
     for (size_t index = 0u; index < impl.planned.size(); ++index) {
         const DomainState& domain = *impl.planned[index].first;
@@ -1006,28 +1011,34 @@ bool FluidVolumePass::PrepareFrame(const GFX::Context& context, const PARTICLES:
         INTERNAL::FluidBudgetEntry& entry = impl.budget[index];
         entry.level = domain.budgetLevel;
         entry.frozen = domain.frozen;
+        entry.frozenFrames = domain.frozen ? static_cast<uint32_t>(input->frameIndex - domain.frozenSinceFrame) : 0u;
         for (uint32_t level = 0u; level < 3u; ++level) {
             const uint32_t lod = (std::min)(domain.lod + level, 2u);
             // 眠っている域は解かない。
-            entry.cost[level] = domain.asleep
-                                    ? 0.0
-                                    : INTERNAL::EstimateFluidSolveCost(
-                                          domain.resources.layout, active, domain.pressureFraction,
-                                          submission.deltaSeconds, FluidSubstepSeconds(submission.settings, lod),
-                                          submission.settings.maxSubsteps, FluidVCycles(policy, lod));
+            entry.cost[level] =
+                domain.asleep
+                    ? 0.0
+                    : INTERNAL::EstimateFluidSolveCost(domain.resources.layout, active, domain.pressureFraction,
+                                                       submission.deltaSeconds * planScale,
+                                                       FluidSubstepSeconds(submission.settings, lod),
+                                                       submission.settings.maxSubsteps, FluidVCycles(policy, lod));
         }
     }
     INTERNAL::AssignFluidBudget(impl.budget, impl.calibration.BudgetUnits(policy.solveBudgetMs));
     // 3 周目：解いて描く。止めた域は時間を進めず前の烟を描く（一度も解いていない域と預熱中の域は止めない）。
     uint32_t solved = 0u;
     double solvedUnits = 0.0;
-    bool unmodeled = false;
+    // 詰まったフレームは、見積もりより多くの子步を実際に解くので、換算の較正には使わない。
+    bool unmodeled = planScale < 1.0;
     for (size_t index = 0u; index < impl.planned.size(); ++index) {
         DomainState* domain = impl.planned[index].first;
         const FluidDomainSubmission& submission = input->fluids[impl.planned[index].second];
         domain->budgetLevel = impl.budget[index].level;
+        const bool wasFrozen = domain->frozen;
         domain->frozen =
             impl.budget[index].frozen && domain->prewarmSteps == 0u && domain->lastSimulatedFrame != UINT64_MAX;
+        if (domain->frozen && !wasFrozen)
+            domain->frozenSinceFrame = input->frameIndex;
         domain->lod = (std::min)(domain->lod + domain->budgetLevel, 2u);
         domain->stats.budgetLevel = domain->budgetLevel;
         domain->stats.frozen = domain->frozen;
