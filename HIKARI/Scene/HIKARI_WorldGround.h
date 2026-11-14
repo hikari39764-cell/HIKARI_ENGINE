@@ -11,6 +11,7 @@ struct WorldGroundHit {
     MATH::Vec3 position{};
     MATH::Vec3 normal{0.0f, 1.0f, 0.0f};
     float distance = 0.0f;
+    char surface[48]{};
 };
 
 // 世界の地面：モジュールが登録した地面（IGroundSource）のうち一番近い当たり。編集中の世界でも使える。

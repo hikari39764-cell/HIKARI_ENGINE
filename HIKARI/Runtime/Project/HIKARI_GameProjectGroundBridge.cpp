@@ -1,3 +1,5 @@
+#include <cstring>
+
 #include "HIKARI/Project/GroundSource.h"
 #include "HIKARI/Project/WorldView.h"
 
@@ -38,6 +40,8 @@ bool WorldView::RaycastGround(GameProjectFloat3 origin, GameProjectFloat3 direct
     out.position = {hit.position.x, hit.position.y, hit.position.z};
     out.normal = {hit.normal.x, hit.normal.y, hit.normal.z};
     out.distance = hit.distance;
+    std::memcpy(out.surface, hit.surface, sizeof(out.surface));
+    out.surface[sizeof(out.surface) - 1] = '\0';
     return true;
 }
 

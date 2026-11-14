@@ -1,6 +1,7 @@
 #include "Scene/HIKARI_WorldGround.h"
 
 #include <cmath>
+#include <cstring>
 
 #include "HIKARI/Project/GroundSource.h"
 #include "Scene/HIKARI_World.h"
@@ -29,6 +30,8 @@ bool RaycastWorldGround(const World& world, const MATH::Vec3& origin, const MATH
             outHit.position = {hit.position.x, hit.position.y, hit.position.z};
             outHit.normal = MATH::Normalize(MATH::Vec3{hit.normal.x, hit.normal.y, hit.normal.z});
             outHit.distance = hit.distance;
+            std::memcpy(outHit.surface, hit.surface, sizeof(outHit.surface));
+            outHit.surface[sizeof(outHit.surface) - 1] = '\0';
             found = true;
         }
     }
