@@ -201,6 +201,7 @@ struct ParticleGpuDrivenPass::Impl {
     std::unordered_set<std::string> residentStandardTextures{};
     uint64_t prewarmedRegistryId = 0u;
     uint64_t prewarmedRegistryRevision = 0u;
+    const std::vector<VfxPrewarmMaterial>* prewarmedEngineMaterials = nullptr;
     ParticleGpuDrivenPassStats stats{};
     uint32_t emitterPageCapacity = 0u;
     uint32_t emitterUploadCapacity = 0u;
@@ -1229,6 +1230,7 @@ struct ParticleGpuDrivenPass::Impl {
         residentStandardTextures.clear();
         prewarmedRegistryId = 0u;
         prewarmedRegistryRevision = 0u;
+        prewarmedEngineMaterials = nullptr;
         stats = {};
         emitterPageCapacity = 0u;
         emitterUploadCapacity = 0u;
@@ -1296,24 +1298,39 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
                                          const FLUID::FluidFlowView* fluidFlow) {
     if (impl_ && context.device && context.srvHeap && source && source->input && source->assetRegistry) {
         const AssetRegistry& assets = *source->assetRegistry;
-        if (impl_->prewarmedRegistryId != assets.GetInstanceId() ||
-            impl_->prewarmedRegistryRevision != assets.GetRevision()) {
-            // 空の初回フレームでも、登録済み VFX の描画資源を準備する。事件の再生・時刻・乱数は進めない。
+        const bool registryChanged = impl_->prewarmedRegistryId != assets.GetInstanceId() ||
+                                     impl_->prewarmedRegistryRevision != assets.GetRevision();
+        // 内蔵 VFX を渡さない view（ツールの直接再生など）が混ざっても、用意し直しを繰り返さない。
+        const bool engineMaterialsChanged = source->enginePrewarmMaterials != nullptr &&
+                                            source->enginePrewarmMaterials != impl_->prewarmedEngineMaterials;
+        if (registryChanged || engineMaterialsChanged) {
+            // 空の初回フレームでも、登録済み VFX と内蔵 VFX の描画資源を準備する。事件の再生・時刻・乱数は進めない。
             // 実際に参照する貼図だけを同じ常駐経路へ渡し、内蔵カタログ全体の遅延読込を避ける。
             ParticleRenderInput dependencies{};
-            for (const AssetDescriptor* base : assets.CollectByType(AssetType::VfxEffect)) {
-                const auto* descriptor = dynamic_cast<const VfxAssetDescriptor*>(base);
-                if (descriptor == nullptr) {
-                    continue;
+            const auto addDependency = [&dependencies](const VfxPrewarmMaterial& material) {
+                ParticleEmitterRenderParameters& render = dependencies.emitters.emplace_back().render;
+                render.materialMode = material.materialMode;
+                render.colorTextureAssetGuid = material.colorTextureAssetGuid;
+                render.materialAssetGuid = material.materialAssetGuid;
+                render.effectMaterial = material.effectMaterial;
+                render.effectMaterialKey = material.effectMaterialKey;
+            };
+            if (registryChanged) {
+                for (const AssetDescriptor* base : assets.CollectByType(AssetType::VfxEffect)) {
+                    const auto* descriptor = dynamic_cast<const VfxAssetDescriptor*>(base);
+                    if (descriptor == nullptr) {
+                        continue;
+                    }
+                    // 用意する材質の一覧は VFX を読み込んだ側が descriptor に入れてある。
+                    for (const VfxPrewarmMaterial& material : descriptor->prewarm) {
+                        addDependency(material);
+                    }
                 }
-                // 用意する材質の一覧は VFX を読み込んだ側が descriptor に入れてある。
-                for (const VfxPrewarmMaterial& material : descriptor->prewarm) {
-                    ParticleEmitterRenderParameters& render = dependencies.emitters.emplace_back().render;
-                    render.materialMode = material.materialMode;
-                    render.colorTextureAssetGuid = material.colorTextureAssetGuid;
-                    render.materialAssetGuid = material.materialAssetGuid;
-                    render.effectMaterial = material.effectMaterial;
-                    render.effectMaterialKey = material.effectMaterialKey;
+            }
+            // 材質の解決結果は資産登録の版ごとに作り直すので、登録が変わった時も内蔵 VFX を入れ直す。
+            if (source->enginePrewarmMaterials != nullptr) {
+                for (const VfxPrewarmMaterial& material : *source->enginePrewarmMaterials) {
+                    addDependency(material);
                 }
             }
             if (!dependencies.emitters.empty()) {
@@ -1332,6 +1349,9 @@ bool ParticleGpuDrivenPass::PrepareFrame(const GFX::Context& context, const Part
             }
             impl_->prewarmedRegistryId = assets.GetInstanceId();
             impl_->prewarmedRegistryRevision = assets.GetRevision();
+            if (source->enginePrewarmMaterials != nullptr) {
+                impl_->prewarmedEngineMaterials = source->enginePrewarmMaterials;
+            }
         }
     }
     // 登録アセットを持たないツールの直接再生は、従来の初期化経路を維持する。

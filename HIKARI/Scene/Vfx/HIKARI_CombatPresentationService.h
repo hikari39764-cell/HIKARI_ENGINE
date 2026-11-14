@@ -11,6 +11,10 @@
 #include "Render3D/Vfx/HIKARI_CombatPresentationFrameSource.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
 
+namespace HIKARI {
+struct VfxPrewarmMaterial;
+}
+
 namespace HIKARI::VFX {
 
 class VfxPlaybackService;
@@ -99,6 +103,9 @@ public:
     ~CombatPresentationService();
 
     bool Prewarm() noexcept;
+    // Prewarm で作った全プリセットの材質の参照。描画側が登録済み VFX と同じ経路で、
+    // 最初のフレームに貼図と材質を用意する。
+    const std::vector<VfxPrewarmMaterial>& GetPrewarmMaterials() const noexcept { return prewarmMaterials_; }
     bool PlayWorldEffect(VfxPlaybackService& playback, const CombatWorldEffectRequest& request);
     bool SubmitGroundTelegraph(const GroundTelegraphRequest& request, uint64_t frameIndex) noexcept;
     bool SubmitWorldBarrier(const WorldBarrierRequest& request, uint64_t frameIndex) noexcept;
@@ -123,6 +130,7 @@ private:
     void BuildWorldBarrierFrame() noexcept;
 
     std::array<std::shared_ptr<const VfxProgram>, static_cast<size_t>(CombatWorldEffectKind::Count)> programs_{};
+    std::vector<VfxPrewarmMaterial> prewarmMaterials_{};
     std::vector<TrailState> trails_{};
     std::vector<RENDER3D::COMBAT_VFX::WeaponTrailVertex> weaponTrailVertices_{};
     std::vector<GroundTelegraphState> groundTelegraphs_{};

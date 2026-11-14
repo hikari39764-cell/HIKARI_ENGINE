@@ -14,6 +14,7 @@
 #include <utility>
 
 #include "Assets/Vfx/Compiler/HIKARI_VfxCompiler.h"
+#include "Assets/Vfx/HIKARI_VfxPrewarm.h"
 #include "Assets/Vfx/HIKARI_VfxPresetRegistry.h"
 #include "Scene/Vfx/HIKARI_VfxPlaybackService.h"
 #include "Assets/Vfx/HIKARI_VfxProgram.h"
@@ -167,11 +168,17 @@ std::shared_ptr<const VfxProgram> CombatPresentationService::ResolveProgram(Comb
 
 bool CombatPresentationService::Prewarm() noexcept {
     try {
+        std::vector<VfxPrewarmMaterial> materials{};
         for (size_t index = 0u; index < static_cast<size_t>(CombatWorldEffectKind::Count); ++index) {
-            if (!ResolveProgram(static_cast<CombatWorldEffectKind>(index))) {
+            const std::shared_ptr<const VfxProgram> program = ResolveProgram(static_cast<CombatWorldEffectKind>(index));
+            if (!program) {
                 return false;
             }
+            std::vector<VfxPrewarmMaterial> collected = CollectVfxPrewarmMaterials(*program);
+            materials.insert(materials.end(), std::make_move_iterator(collected.begin()),
+                             std::make_move_iterator(collected.end()));
         }
+        prewarmMaterials_ = std::move(materials);
         return true;
     } catch (...) {
         return false;

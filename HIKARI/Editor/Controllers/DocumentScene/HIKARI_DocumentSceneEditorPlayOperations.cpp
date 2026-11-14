@@ -9,6 +9,7 @@
 #include "Editor/Authoring/HIKARI_SceneObjectObservation.h"
 #include "Editor/Commands/HIKARI_EditorOperationContext.h"
 #include "Runtime/HIKARI_RuntimeLaunchConfig.h"
+#include "Runtime/Diagnostics/HIKARI_PerformanceCapture.h"
 #include "Core/Paths/HIKARI_ExecutablePath.h"
 #include "Editor/Agent/HIKARI_HeadlessEngineRun.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
@@ -23,6 +24,7 @@
 #include <algorithm>
 #include <cmath>
 #include <fstream>
+#include <memory>
 #include <string>
 #include <utility>
 #include <vector>
@@ -86,7 +88,7 @@ bool ReadTrackParameter(const nlohmann::json& parameters, const std::filesystem:
     return INPUT::LoadInputTrack(path, outTrack, outError);
 }
 
-// play.run と play.background の共通の引数（ticks、track / path、captureAt、trackObjects、pauseAfter）を読む。
+// play.run と play.background の共通の引数（ticks、track / path、captureAt、trackObjects、pauseAfter、perf）を読む。
 EDITOR::EditorOperationResult ReadAgentPlayRun(const nlohmann::json& parameters,
                                                const std::filesystem::path& projectRoot,
                                                EDITOR::AGENT::AgentPlayRun& run) {
@@ -110,6 +112,12 @@ EDITOR::EditorOperationResult ReadAgentPlayRun(const nlohmann::json& parameters,
     run.trackObjects = parameters.value("trackObjects", std::vector<uint64_t>{});
     if (run.trackObjects.size() > kMaximumTrackedObjects)
         return EDITOR::OperationFailure("TOO_MANY_TRACKED_OBJECTS", "trackObjects allows at most 16 objects.");
+    if (const auto perf = parameters.find("perf"); perf != parameters.end()) {
+        run.perfFrom = perf->is_object() ? perf->value("from", 0u) : 0u;
+        run.perfTo = perf->is_object() ? perf->value("to", 0u) : 0u;
+        if (run.perfFrom >= run.perfTo || run.perfTo > run.ticks)
+            return EDITOR::OperationFailure("INVALID_PERF_RANGE", "perf needs {from, to} with from < to <= ticks.");
+    }
     return EDITOR::OperationOk("", {});
 }
 
@@ -167,6 +175,60 @@ nlohmann::json ReadLogs(uint64_t afterSequence, CORE::LogLevel minimum, size_t l
             records.push_back(DescribeLogRecord(record));
     }
     return records;
+}
+
+// perf の区間の性能捕獲を始める（熱身なし）。摘要は内部の捕獲として run.perfReport に受け取る。
+void StartRunPerf(EDITOR::AGENT::AgentPlayRun& run) {
+    run.perfReport = std::make_shared<nlohmann::json>(nullptr);
+    RUNTIME::PERFORMANCE_CAPTURE::Request request;
+    request.warmupFrames = 0u;
+    request.sampleFrames = run.perfTo - run.perfFrom;
+    // 捕獲は Play や場面控制器より長く続きうるので、受け取り先は共有で持たせる。
+    request.onFinished = [report = run.perfReport](const nlohmann::json& captured, const std::string& message) {
+        *report = captured;
+        if (!message.empty())
+            (*report)["message"] = message;
+    };
+    std::string error;
+    if (!RUNTIME::PERFORMANCE_CAPTURE::Start(std::move(request), error))
+        *run.perfReport = {{"error", error}};
+}
+
+// 結果の perf：性能捕獲の摘要（perf.capture と同じ形）から区間の時間・長いフレーム・内存の項目と、終わった時の流体の
+// 指標（fluid.*）だけを載せる（context や指標の全体は大きい）。
+nlohmann::json DescribeRunPerf(const EDITOR::AGENT::AgentPlayRun& run) {
+    constexpr const char* kFields[] = {"captureComplete",
+                                       "sampleFramesObserved",
+                                       "gpuFramesObserved",
+                                       "gpuCoverageComplete",
+                                       "invalidIntervals",
+                                       "configurationStable",
+                                       "frameInterval",
+                                       "renderedFps",
+                                       "longFrames",
+                                       "gpuPasses",
+                                       "cpuPasses",
+                                       "modules",
+                                       "memory",
+                                       "gpuUnavailableReasonAtFinish",
+                                       "timingSemantics",
+                                       "message",
+                                       "error"};
+    const nlohmann::json& report = *run.perfReport;
+    nlohmann::json perf{{"fromTick", run.perfFrom}, {"toTick", run.perfTo}};
+    for (const char* field : kFields) {
+        if (const auto value = report.find(field); value != report.end())
+            perf[field] = *value;
+    }
+    if (const auto metrics = report.find("metricsAtFinish"); metrics != report.end() && metrics->is_object()) {
+        nlohmann::json fluid = nlohmann::json::object();
+        for (const auto& metric : metrics->items()) {
+            if (metric.key().starts_with("fluid."))
+                fluid[metric.key()] = metric.value();
+        }
+        perf["fluidAtFinish"] = std::move(fluid);
+    }
+    return perf;
 }
 
 } // namespace
@@ -633,12 +695,18 @@ void DocumentSceneEditorController::TickAgentPlayRun() {
         const std::filesystem::path request = *std::exchange(pendingBackgroundRun_, std::nullopt);
         std::ifstream file(request, std::ios::binary);
         const nlohmann::json parameters = nlohmann::json::parse(file, nullptr, false);
+        // 起動の間の警告とエラーも結果に入れる。長い回では日志の履歴から押し出されるので、始める前に取っておく。
+        nlohmann::json startupProblems = ReadLogs(0u, CORE::LogLevel::Warn, kMaximumRunLogRecords, {});
         EDITOR::EditorOperationResult started =
             parameters.is_object() ? StartAgentPlayRun(parameters)
                                    : EDITOR::OperationFailure("INVALID_REQUEST", "The run request is not JSON.");
         backgroundResult_ = request.parent_path() / "result.json";
-        if (!started.ok)
+        if (started.ok) {
+            agentPlayRun_->startupProblems = std::move(startupProblems);
+        } else {
+            started.data["problems"] = std::move(startupProblems);
             WriteBackgroundResult(started);
+        }
     }
     if (backgroundResult_ && agentPlayRun_ &&
         (agentPlayRun_->phase == EDITOR::AGENT::AgentPlayRun::Phase::Done ||
@@ -681,6 +749,8 @@ void DocumentSceneEditorController::TickAgentPlayRun() {
         return;
     }
     const uint64_t elapsed = now - run.startTick;
+    if (run.perfTo != 0u && !run.perfReport && elapsed >= run.perfFrom)
+        StartRunPerf(run);
     if (!run.trackObjects.empty() && elapsed >= run.nextSampleTick && elapsed <= run.ticks) {
         run.samples.push_back(SampleTrackedObjects(aiOperationScene_->GetWorld(), run.trackObjects, elapsed));
         run.nextSampleTick = elapsed + kTrackSampleTicks;
@@ -714,7 +784,10 @@ void DocumentSceneEditorController::TickAgentPlayRun() {
     }
     if (run.phase == Phase::Running && TIME::GetLockstepFramesRemaining() == 0u && elapsed >= run.ticks)
         run.phase = Phase::Finishing;
-    if (run.phase == Phase::Finishing && run.pendingCaptureId == 0u && run.nextCapture >= run.captureTicks.size()) {
+    // perf の捕獲は最後の標本の GPU 時間を数フレーム後に回収するので、それも待つ。
+    const bool perfPending = run.perfReport && run.perfReport->is_null();
+    if (run.phase == Phase::Finishing && run.pendingCaptureId == 0u && run.nextCapture >= run.captureTicks.size() &&
+        !perfPending) {
         // 最後の位置（間隔の途中で終わっても終点を残す）。
         if (!run.trackObjects.empty() && (run.samples.empty() || run.samples.back()["tick"] != run.ticks))
             run.samples.push_back(SampleTrackedObjects(aiOperationScene_->GetWorld(), run.trackObjects, run.ticks));
@@ -758,9 +831,15 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::PollAgentPlayRun(ui
         data["poll"] = {{"operation", "play.run.status"}, {"parameters", {{"runId", run.id}}}};
         return EDITOR::OperationOk("Run in progress.", std::move(data));
     }
-    data["problems"] = ReadLogs(run.logSequenceAtStart, CORE::LogLevel::Warn, kMaximumRunLogRecords, {});
+    nlohmann::json problems = run.startupProblems;
+    for (nlohmann::json& record :
+         ReadLogs(run.logSequenceAtStart, CORE::LogLevel::Warn, kMaximumRunLogRecords - problems.size(), {}))
+        problems.push_back(std::move(record));
+    data["problems"] = std::move(problems);
     if (!run.samples.empty())
         data["tracked"] = ThinSamples(run.samples);
+    if (run.perfReport)
+        data["perf"] = DescribeRunPerf(run);
     data["play"] = DescribePlayState().data;
     if (run.phase == Phase::Failed) {
         EDITOR::EditorOperationResult result = EDITOR::OperationFailure("RUN_FAILED", run.error);

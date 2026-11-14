@@ -48,8 +48,9 @@ constexpr const char* kUsage =
     "                               --track-objects 每 30 tick 记录这些物体的位置\n"
     "  logs [--since N] [--level info|warning|error] [--contains 文本] [--limit N]\n"
     "  headless <ticks> [--track 文件] [--capture 120,240] [--track-objects 11,21] [--quality project]\n"
-    "           [--allow-missing-module]\n"
-    "                               编辑器没开时，用保存的开始场景无头运行一次（同 play background）\n"
+    "           [--allow-missing-module] [--perf 300-1500]\n"
+    "                               编辑器没开时，用保存的开始场景无头运行一次（同 play background），\n"
+    "                               --perf 在这段 tick 里测帧间隔、各 GPU 通道和 CPU 段的耗时（结果的 perf）\n"
     "  mcp                          作为 MCP 服务器运行（标准输入输出）\n"
     "\n"
     "选项：\n"
@@ -60,9 +61,9 @@ constexpr const char* kUsage =
     "退出码：0 成功，1 操作失败，2 用法错误，3 无法连接编辑器。\n";
 
 // 値を取る選択肢と、値を取らない旗。
-const std::set<std::string> kValueOptions = {"--project",  "--timeout", "--source",        "--out",
-                                             "--track",    "--capture", "--since",         "--level",
-                                             "--contains", "--limit",   "--track-objects", "--quality"};
+const std::set<std::string> kValueOptions = {"--project",       "--timeout", "--source", "--out",      "--track",
+                                             "--capture",       "--since",   "--level",  "--contains", "--limit",
+                                             "--track-objects", "--quality", "--perf"};
 const std::set<std::string> kFlags = {"--pretty", "--no-pause", "--allow-missing-module"};
 
 std::string ToUtf8(const wchar_t* text) {
@@ -165,6 +166,21 @@ bool BuildRunArguments(const CommandLine& line, size_t index, nlohmann::json& ou
     return true;
 }
 
+// --perf <起>-<止>：その tick の区間を性能捕獲で測る（play.run の perf）。空なら測らない。範囲の確かめは编辑器がする。
+bool ParsePerfRange(const std::string& text, nlohmann::json& outArguments, std::string& outError) {
+    if (text.empty())
+        return true;
+    const size_t dash = text.find('-');
+    const std::optional<uint64_t> from = dash != std::string::npos ? ParseCount(text.substr(0, dash)) : std::nullopt;
+    const std::optional<uint64_t> to = dash != std::string::npos ? ParseCount(text.substr(dash + 1)) : std::nullopt;
+    if (!from || !to) {
+        outError = "--perf 需要 <起tick>-<止tick>，例如 300-1500";
+        return false;
+    }
+    outArguments["perf"] = {{"from", *from}, {"to", *to}};
+    return true;
+}
+
 // play の命令を道具の引数にする。失敗したら理由。
 bool BuildPlayArguments(const CommandLine& line, nlohmann::json& outArguments, std::string& outError) {
     const std::vector<std::string>& words = line.positional;
@@ -249,7 +265,8 @@ int wmain(int argc, wchar_t** argv) {
         headless.allowMissingModule = line.flags.contains("--allow-missing-module");
         headless.projectQuality = line.Value("--quality") == "project";
         std::string error;
-        if (!BuildRunArguments(line, 1u, headless.run, error)) {
+        if (!BuildRunArguments(line, 1u, headless.run, error) ||
+            !ParsePerfRange(line.Value("--perf"), headless.run, error)) {
             PrintUtf8("headless " + error, stderr);
             return kExitUsage;
         }

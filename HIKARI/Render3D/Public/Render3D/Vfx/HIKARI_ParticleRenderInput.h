@@ -20,6 +20,7 @@
 namespace HIKARI {
 class AssetRegistry;
 struct MaterialAssetDescriptor;
+struct VfxPrewarmMaterial;
 
 namespace RENDER3D::MATERIAL {
 struct MaterialExternalValueSnapshot;
@@ -457,6 +458,9 @@ struct ParticleRenderFrameSource {
     std::vector<FLUID::FluidSinkReport>* fluidSinkReports = nullptr;
     // 回読が届いた域の発光（火の光源）。描画がここへ足し、場面が次のフレームに再生側へ返す。
     std::vector<FLUID::FluidGlowReport>* fluidGlowReports = nullptr;
+    // 資産として登録されないエンジン内蔵の VFX（戦闘演出の既定プリセット）の材質の参照。登録済み VFX と同じく、
+    // 最初のフレームで貼図と材質を先に用意する。null なら内蔵 VFX は使わない。
+    const std::vector<VfxPrewarmMaterial>* enginePrewarmMaterials = nullptr;
 
     bool HasDrawWork() const noexcept { return input != nullptr && !input->emitters.empty(); }
 
