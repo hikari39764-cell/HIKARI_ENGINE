@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <memory>
 #include <optional>
 #include <string>
 #include <vector>
@@ -44,6 +45,11 @@ struct AgentPlayRun {
     std::vector<uint64_t> trackObjects{};
     uint64_t nextSampleTick = 0;
     nlohmann::json samples = nlohmann::json::array();
+    // perf：perfFrom から perfTo までの tick（锁步なので 1 tick が 1 フレーム）を性能捕獲で測る。perfTo が 0 なら測らない。
+    // perfReport は捕獲を始めた時に作り、終わると摘要（始められなければ error）が入る。null の間は測っている途中。
+    uint32_t perfFrom = 0;
+    uint32_t perfTo = 0;
+    std::shared_ptr<nlohmann::json> perfReport{};
     std::string error{};
 };
 
