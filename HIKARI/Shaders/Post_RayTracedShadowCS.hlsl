@@ -195,13 +195,52 @@ void CSFilter(uint3 id : SV_DispatchThreadID, uint3 group : SV_GroupID, uint thr
     if (gInputFlags.x > 0.5f && HikariProjectWorldPosition(position, gPreviousViewProj,
         previousUv, previousDepth, previousViewDepth) && all(previousUv > 0) && all(previousUv < 1))
     {
-        const float4 history = gHistory.SampleLevel(gPointClamp, previousUv, 0);
         const float expectedDistance = length(position - gPreviousCamera.xyz);
-        if (history.w > 0 && abs(history.w - expectedDistance) < max(0.03f, expectedDistance * 0.01f) &&
-            dot(HikariDecodeOctahedralDirection(history.yz), normal) > 0.95f)
+        // 履歴は前フレームの画素の中心の値なので、再投影した先とは最大で半画素ずれる。面をかすめて見る遠くの地面では
+        // 1 画素で距離が数十 cm〜1 m 変わり、距離だけで照合するとカメラが少し動いただけで履歴が全部捨てられた
+        // （遠くの起伏の半影が、動いている間だけ 1 フレームごとの雑音に戻ってちらついた）。同じ面の上で 1 画素ぶん
+        // 変わる距離を許容に足し、周りの 4 画素を照合しながら双線形で読む。
+        float3 stepPosition;
+        float distanceStep = 0.0f;
+        [unroll] for (int axis = 0; axis < 2; ++axis)
+        {
+            const int stride = axis == 0 ? 1 : HIKARI_SHADOW_FILTER_TILE;
+            const float2 offset = (axis == 0 ? float2(1.0f, 0.0f) : float2(0.0f, 1.0f)) * gScreenParams.zw;
+            // 輪郭では片側が別の面なので、両側のうち変化の小さい方を取る。
+            float smallest = 1.0e9f;
+            [unroll] for (int side = -1; side <= 1; side += 2)
+            {
+                const float tapDepth = gFilterDepth[center + side * stride];
+                if (HikariIsValidSceneDepth(tapDepth) &&
+                    HikariReconstructWorldPosition(uv + offset * side, tapDepth, gInvViewProj, stepPosition))
+                {
+                    smallest = min(smallest, abs(length(stepPosition - gCameraPosition.xyz) - distanceToCamera));
+                }
+            }
+            distanceStep += smallest < 1.0e8f ? smallest : 0.0f;
+        }
+        const float distanceTolerance = max(0.03f, expectedDistance * 0.01f) + distanceStep;
+        const float2 historyPixel = previousUv * gScreenParams.xy - 0.5f;
+        const int2 historyBase = int2(floor(historyPixel));
+        const float2 historyFraction = historyPixel - float2(historyBase);
+        float previousSum = 0.0f;
+        float previousWeight = 0.0f;
+        [unroll] for (int tapIndex = 0; tapIndex < 4; ++tapIndex)
+        {
+            const int2 tapOffset = int2(tapIndex & 1, tapIndex >> 1);
+            const float4 history = gHistory.Load(int3(clamp(historyBase + tapOffset, int2(0, 0), last), 0));
+            const float2 bilinear = lerp(1.0f - historyFraction, historyFraction, float2(tapOffset));
+            if (history.w > 0 && abs(history.w - expectedDistance) < distanceTolerance &&
+                dot(HikariDecodeOctahedralDirection(history.yz), normal) > 0.9f)
+            {
+                previousSum += history.x * bilinear.x * bilinear.y;
+                previousWeight += bilinear.x * bilinear.y;
+            }
+        }
+        if (previousWeight > 0.05f)
         {
             // 移動する影は受光面の運動に現れない。可視率の変化も調べ、全照明/全遮蔽の領域は上で即時更新する。
-            const float previous = clamp(history.x, lowest, highest);
+            const float previous = clamp(previousSum / previousWeight, lowest, highest);
             const float historyWeight = 0.85f * (1.0f - smoothstep(0.08f, 0.3f, abs(previous - visibility)));
             visibility = lerp(visibility, previous, historyWeight);
         }
