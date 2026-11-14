@@ -189,6 +189,8 @@ static const uint HIKARI_RAY_REPORT_BACKFACES = 2u;
 static const uint HIKARI_RAY_GEOMETRY_ONLY = 4u;
 // 大量配置を見ない（kRuntimeRayTracingMassMask のビットを外す）。
 static const uint HIKARI_RAY_SKIP_MASS = 8u;
+// 代理（地形など）を見ない（代理の instance の mask 0x01 を外す）。代理は HikariTraceRuntimeProxyOccluded で別に見る。
+static const uint HIKARI_RAY_SKIP_PROXY = 32u;
 // 一本の光線が面を復元して材質を調べる候補の上限。これを超えた候補は当たりとして止める。森の中を斜めに抜ける光線は
 // 葉の板を何百枚も通るので、上限が無いと一回の更新が数十 ms 跳ね、GPU が応答しなくなる危険もある。
 static const uint HIKARI_RAY_MAX_MATERIAL_TESTS = 16u;
@@ -213,7 +215,8 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
     // 裏面を切るのは代理だけに効く（他の instance は TRIANGLE_CULL_DISABLE）。粗い代理の下から出る光線を止めない。
     const uint backFaces = (queryFlags & HIKARI_RAY_REPORT_BACKFACES) != 0u ? RAY_FLAG_NONE : RAY_FLAG_CULL_BACK_FACING_TRIANGLES;
     query.TraceRayInline(gRuntimeRayScene, backFaces | (shadowRay ? RAY_FLAG_ACCEPT_FIRST_HIT_AND_END_SEARCH : RAY_FLAG_NONE),
-        (queryFlags & HIKARI_RAY_SKIP_MASS) != 0u ? 0xfdu : 0xffu, ray);
+        0xffu & ~((queryFlags & HIKARI_RAY_SKIP_MASS) != 0u ? 0x02u : 0u) &
+            ~((queryFlags & HIKARI_RAY_SKIP_PROXY) != 0u ? 0x01u : 0u), ray);
     uint materialTests = 0u;
     while (query.Proceed())
     {
@@ -341,13 +344,14 @@ bool HikariTraceRuntimeProxyOccluded(RayDesc ray)
 }
 
 // 太陽などへの影の光線の通る割合（不透明に当たれば 0、半透明は透過率の積）。
+// skipFlags は見ない物（HIKARI_RAY_SKIP_MASS・HIKARI_RAY_SKIP_PROXY の組み合わせ）。
 float HikariTraceRuntimeShadowTransmittance(RayDesc ray, uint hitRecordCount, uint materialCount, float4 time,
-    SamplerState materialSampler, bool skipMass)
+    SamplerState materialSampler, uint skipFlags)
 {
     float transmittance = 1.0f;
     HikariRaySurface ignored;
     return HikariTraceRuntimeSceneCore(ray, hitRecordCount, materialCount, time, materialSampler,
-        HIKARI_RAY_SHADOW | (skipMass ? HIKARI_RAY_SKIP_MASS : 0u), ignored, 0.0f.xx, transmittance)
+        HIKARI_RAY_SHADOW | skipFlags, ignored, 0.0f.xx, transmittance)
         ? 0.0f : transmittance;
 }
 #endif

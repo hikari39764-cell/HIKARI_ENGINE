@@ -79,6 +79,10 @@ void CSMain(uint3 id : SV_DispatchThreadID)
     // 森を見渡す画面では大半が遠くの画素で、光線の数がそのまま費用になる。
     const uint sampleCount = distanceToCamera > HIKARI_SHADOW_SINGLE_RAY_METERS ? 1u : max((uint)gRayParams.y, 1u);
     const float frame = gRayParams.z;
+    // 近くの自分自身の遮りを自分で求める面（地形）からは、代理をその距離より先でだけ見る（HIKARI_SceneSurfaceContract）。
+    const bool ownNearShadow = HikariHasOwnNearShadow(metallic);
+    const uint skipFlags =
+        (HikariIsFarModelSurface(metallic) ? HIKARI_RAY_SKIP_MASS : 0u) | (ownNearShadow ? HIKARI_RAY_SKIP_PROXY : 0u);
     float lit = 0.0f;
     [loop] for (uint i = 0u; i < sampleCount; ++i)
     {
@@ -92,12 +96,15 @@ void CSMain(uint3 id : SV_DispatchThreadID)
         ray.TMax = max(gRayParams.x, 0.1f);
         // 半透明（ガラスなど）は透過率の分だけ光を通す。
         float through = HikariTraceRuntimeShadowTransmittance(ray, gRayLighting.scene.x, gRayLighting.scene.y,
-            gRayLighting.time, gMaterialWrap, HikariIsFarModelSurface(metallic));
-        // 影の距離より先は代理（地形）だけを見る。低い太陽の山の影は距離の設定に関わらず届く。
-        if (through > 0.0f && gInputFlags.y > ray.TMax)
+            gRayLighting.time, gMaterialWrap, skipFlags);
+        // 代理（地形）だけを見る光線。影の距離より先を見る（低い太陽の山の影は距離の設定に関わらず届く）。
+        // 近くの自分自身の遮りを自分で求める面からは、上の光線が代理を見ていないので、その距離より先の全部を見る。
+        const float proxyFrom = ownNearShadow ? HIKARI_OWN_NEAR_SHADOW_METERS : ray.TMax;
+        const float proxyTo = max(ray.TMax, gInputFlags.y);
+        if (through > 0.0f && proxyTo > proxyFrom)
         {
-            ray.TMin = ray.TMax;
-            ray.TMax = gInputFlags.y;
+            ray.TMin = proxyFrom;
+            ray.TMax = proxyTo;
             if (HikariTraceRuntimeProxyOccluded(ray))
                 through = 0.0f;
         }
