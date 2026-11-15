@@ -373,7 +373,6 @@ set(HIKARI_RUNTIME_SOURCES
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Water/HIKARI_WaterSurfaceRenderData.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Water/Spectrum/HIKARI_OceanSpectrumRuntime.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Water/HIKARI_WaterVisibleDepth.cpp"
-    "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Render/HIKARI_ModelRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Shadow/HIKARI_ShadowMapRenderer.cpp"
     "${HIKARI_SOURCE_ROOT}/HIKARI/Render3D/Private/Render3D/Shadow/HIKARI_LocalLightShadowRenderer.cpp"

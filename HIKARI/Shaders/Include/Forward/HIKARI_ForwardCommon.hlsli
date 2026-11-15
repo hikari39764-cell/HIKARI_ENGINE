@@ -69,7 +69,7 @@ Texture2D<float> gSceneDepthTex : register(t7);
 Texture2D gSceneColorTex : register(t8);
 // 近場の GI：rgb 照り返し E/pi（前露出済み）、a 可視性（Post_SSAOPS）。
 Texture2D<float4> gSsaoTex : register(t13);
-// t1 space7 は地形/水面の共有 float pool が使うため、screen-space は t2/t3 へ移動。
+// t1 space7 は面の機能の共有 float pool が使うため、screen-space は t2/t3 へ移動。
 Texture2D<float> gScreenSpaceDepthPyramid : register(t2, space7);
 Texture2D<float4> gScreenSpacePackedSurface : register(t3, space7);
 // 光線追跡の太陽の可視率（現フレーム・描画解像度、1 = 照らされる）。HIKARI_SCREEN_SPACE_RAY_SHADOW_VALID の時だけ読む。

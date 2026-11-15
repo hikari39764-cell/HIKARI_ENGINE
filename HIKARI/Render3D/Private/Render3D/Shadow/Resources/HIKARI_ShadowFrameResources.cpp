@@ -119,8 +119,7 @@ bool CreateShadowFrameResources(ShadowRendererState& state, const GFX::Context& 
         ReleaseShadowFrameResources(state, graphics);
         return false;
     };
-    if (!state.surfaceGpuSceneBuffer.Initialize(device, sceneCpu, sceneGpu) ||
-        !state.terrainSurfaceGpuFrameBuffer.Initialize(device))
+    if (!state.surfaceGpuSceneBuffer.Initialize(device, sceneCpu, sceneGpu))
         return fail();
 
     const UINT materialDataBytes = sizeof(MESHRENDERER::MaterialGpuData) * MESHRENDERER::kMaxMaterialDataCount;

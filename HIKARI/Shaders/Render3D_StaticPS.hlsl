@@ -22,9 +22,6 @@ static const float HIKARI_TRANSMISSION_THICKNESS = 0.15f;
 
 typedef HikariForwardPixelInput PSInput;
 
-#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_GENERAL
-#include "Include/Surface/HIKARI_TerrainSurfaceShading.hlsli"
-#endif
 #include "Include/Forward/HIKARI_ForwardMaterialInputs.hlsli"
 
 // 水面は depth-aware/transparent の全経路 PSO だけが描く。
@@ -75,46 +72,9 @@ float4 main(PSInput input) : SV_TARGET
     HikariApplyShellFade(input.shellLayer, input.position.xy);
     const bool costNoShadow =
         forwardCostMode == HIKARI_FORWARD_COST_NO_SHADOW;
-#if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN
-    // 地形専用 PSO。AS が地形以外の可視範囲を除外している。
-    // debug view 中は CPU が全経路 PSO へ切り替えるため、ここでは通常着色だけを持つ。
-    return HikariShadeTerrainSurface(
-        input,
-        HikariGetMeshObjectDataForPixel(
-            input.objectDataIndex,
-            input.surfaceGpuSceneIndex),
-        input.surfaceFeatureData,
-        costNoShadow);
-#else
     const bool neutralClay =
         gDebugView == HIKARI_DEBUG_VIEW_NEUTRAL_CLAY;
 #if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_ALL
-    const bool terrainSurface =
-        HikariSurfaceHasTerrainSurface(input.surfaceFeatureFlags);
-    // Neutral Clay も authored coverage の外側を描いてはいけない。
-    // 深度/GeometryAux と同じ clip を先に適用し、debug 表示だけが
-    // 四角い terrain chunk を復活させる不一致を防ぐ。
-    if (neutralClay && terrainSurface)
-    {
-        const HikariSurfaceGpuSceneInstance terrainInstance =
-            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-        HikariClipTerrainCoverage(
-            HikariLoadTerrainSurfaceParams(
-                terrainInstance.surfaceFeatureDataIndex),
-            input.uv1);
-    }
-    if (!neutralClay && terrainSurface)
-    {
-        const HikariMeshObjectData terrainObjectData =
-            HikariGetMeshObjectDataForPixel(
-                input.objectDataIndex,
-                input.surfaceGpuSceneIndex);
-        return HikariShadeTerrainSurface(
-            input,
-            terrainObjectData,
-            input.surfaceFeatureData,
-            costNoShadow);
-    }
     if (!neutralClay &&
         HikariSurfaceHasWaterSurface(input.surfaceFeatureFlags))
     {
@@ -252,7 +212,7 @@ float4 main(PSInput input) : SV_TARGET
         baseColorSample = HikariResolveMaterialSourceColor(materialData, baseColorSample);
         albedo *= baseColorSample;
     }
-    if ((input.surfaceFeatureFlags & (HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE | HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE)) == 0u)
+    if ((input.surfaceFeatureFlags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) == 0u)
     {
         // 実例集の個体ごとの揺らぎ：暖かく明るい側と、冷たく暗い側へ。
         albedo.rgb *= 1.0f + input.surfaceFeatureData.z * float3(0.28f, 0.1f, -0.22f);
@@ -707,7 +667,6 @@ float4 main(PSInput input) : SV_TARGET
     return HikariPreExposeView(float4(
         alphaBlended ? finalColor * albedo.a : finalColor,
         albedo.a));
-#endif
 }
 
 #if HIKARI_FORWARD_REFLECTION_CAPTURE

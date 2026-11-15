@@ -27,7 +27,6 @@
 #include "Render3D/HIKARI_Mesh.h"
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
-#include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuFrameBuffer.h"
 #include "Render3D/Shadow/HIKARI_ShadowCachePolicy.h"
 #include "Render3D/Shadow/HIKARI_ShadowLightFrame.h"
 #include "Render3D/Shadow/HIKARI_ShadowMapRenderer.h"
@@ -137,7 +136,6 @@ struct ShadowRendererState {
     std::vector<ShadowPrimaryLocation> shadowPrimaryLocations{};
     ShadowSourceCacheState shadowSourceCache{};
     RENDER3D::GPUDRIVEN::SurfaceGpuSceneFrameBuffer surfaceGpuSceneBuffer{};
-    RENDER3D::TERRAIN::TerrainSurfaceGpuFrameBuffer terrainSurfaceGpuFrameBuffer{};
     RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer traditionalCommandStreamBuffer{};
     RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame{};
     RENDER3D::GPUDRIVEN::GpuDrivenLayer gpuDrivenLayer{};

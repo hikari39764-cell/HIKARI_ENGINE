@@ -15,7 +15,7 @@
 //   光          HIKARI_LibLighting.hlsli（Lambert、半 Lambert、包み込み、縁、卡通の段、MatCap）
 //   抖動        HIKARI_LibDither.hlsli（Bayer）
 //
-// 新しく書く着色器はここを使う。地形（HikariTerrainHash21 / HikariTerrainValueNoise）、水面、絵画風の殻、
+// 新しく書く着色器はここを使う。水面、絵画風の殻、
 // 後処理の風格化（HikariStylizeValueNoise）、後処理の彩度（Rec.601 の HikariPostLuma / HikariApplySaturation）、
 // 雲（範囲 0 を避ける HikariCloudRemap）にある似た関数は計算が少しずつ違い、合わせると既存の見た目が変わるので、
 // それぞれの場所に残している。

@@ -2070,8 +2070,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2104,8 +2104,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2138,8 +2138,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2172,8 +2172,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2211,8 +2211,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2245,8 +2245,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2284,8 +2284,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2323,8 +2323,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2362,8 +2362,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2401,8 +2401,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2440,8 +2440,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2479,8 +2479,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2518,8 +2518,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2557,8 +2557,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2596,8 +2596,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2635,8 +2635,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2674,8 +2674,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2713,8 +2713,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2756,8 +2756,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2795,8 +2795,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2834,8 +2834,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2877,8 +2877,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2920,8 +2920,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -2959,8 +2959,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3006,8 +3006,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3053,8 +3053,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3096,8 +3096,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3135,133 +3135,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "ccfcbfa093ec4e05832cb06696b5c771",
-      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenTerrainDiagnosticPS",
-      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "255",
-          "name": "HIKARI_FORWARD_COST_MODE_STATIC"
-        },
-        {
-          "value": "2",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "daada5028cd4968e573d8305e2e1bd4b",
-      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenTerrainPS",
-      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "2",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "73601a51ce7d441f95e20780127efd47",
-      "programId": "HIKARI.EngineShader.Render3D_GpuDrivenTerrainReflectionPS",
-      "source": "Render3D_GpuDrivenOpaqueFullPS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "1",
-          "name": "HIKARI_FORWARD_REFLECTION_CAPTURE"
-        },
-        {
-          "value": "2",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3355,8 +3230,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3389,47 +3264,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 65,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 2
-        }
-      }
-    },
-    {
-      "assetGuid": "f2deafb49082dc279b8fe13ba04c805f",
-      "programId": "HIKARI.EngineShader.Render3D_MeshletGeneralAS",
-      "source": "Render3D_MeshletAS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Amplification",
-          "entry": "main",
-          "profile": "as_6_5"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3452,10 +3288,6 @@
         {
           "value": "2",
           "name": "HIKARI_SURFACE_COVERAGE"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -3471,8 +3303,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3495,10 +3327,6 @@
         {
           "value": "1",
           "name": "HIKARI_SURFACE_COVERAGE"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -3514,8 +3342,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3548,47 +3376,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "97a61d47f53b0e9df034409bd50ed683",
-      "programId": "HIKARI.EngineShader.Render3D_MeshletGeometryAuxFeatureTerrainPS",
-      "source": "Render3D_MeshletGeometryAuxFeaturePS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "2",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3621,8 +3410,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3660,8 +3449,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3694,47 +3483,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 60,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 0
-        }
-      }
-    },
-    {
-      "assetGuid": "51240dc366b9ec005429f5198610bbb4",
-      "programId": "HIKARI.EngineShader.Render3D_MeshletGeometryAuxTerrainPS",
-      "source": "Render3D_MeshletGeometryAuxPS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "2",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Pixel",
-          "entry": "main",
-          "profile": "ps_6_0"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -3767,8 +3517,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3801,8 +3551,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3840,8 +3590,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3864,10 +3614,6 @@
         {
           "value": "2",
           "name": "HIKARI_MATERIAL_CLASS"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -3883,8 +3629,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3911,10 +3657,6 @@
         {
           "value": "2",
           "name": "HIKARI_SURFACE_LIGHTING"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -3930,8 +3672,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -3958,10 +3700,6 @@
         {
           "value": "1",
           "name": "HIKARI_SURFACE_LIGHTING"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -3977,8 +3715,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4011,8 +3749,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4045,8 +3783,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4079,8 +3817,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4103,10 +3841,6 @@
         {
           "value": "1",
           "name": "HIKARI_MATERIAL_CLASS"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -4122,8 +3856,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4150,10 +3884,6 @@
         {
           "value": "2",
           "name": "HIKARI_SURFACE_LIGHTING"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -4169,8 +3899,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4197,10 +3927,6 @@
         {
           "value": "3",
           "name": "HIKARI_SURFACE_LIGHTING"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -4216,8 +3942,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4244,10 +3970,6 @@
         {
           "value": "1",
           "name": "HIKARI_SURFACE_LIGHTING"
-        },
-        {
-          "value": "1",
-          "name": "HIKARI_SURFACE_PARTITION"
         }
       ],
       "entries": [
@@ -4263,47 +3985,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
-        "requiredCaps": {
-          "minimumShaderModel": 65,
-          "minimumRootSignatureVersion": 10,
-          "requiredFeatureMask": 2
-        }
-      }
-    },
-    {
-      "assetGuid": "beb74b88c21e221e93873d208cdf425b",
-      "programId": "HIKARI.EngineShader.Render3D_MeshletTerrainAS",
-      "source": "Render3D_MeshletAS.hlsl",
-      "scope": "Runtime",
-      "state": "Cooked",
-      "owner": "Render3D.GpuDriven",
-      "group": "",
-      "includeRoots": [
-        "EngineSdk"
-      ],
-      "defines": [
-        {
-          "value": "2",
-          "name": "HIKARI_SURFACE_PARTITION"
-        }
-      ],
-      "entries": [
-        {
-          "id": "Main",
-          "stage": "Amplification",
-          "entry": "main",
-          "profile": "as_6_5"
-        }
-      ],
-      "contract": {
-        "engineInterfaceId": "HIKARI.RenderGeometry",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
-        "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4336,8 +4019,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 65,
           "minimumRootSignatureVersion": 10,
@@ -4370,8 +4053,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4627,8 +4310,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4661,8 +4344,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4695,8 +4378,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.ShadowGraphics.Root",
-        "rootLayoutVersion": 2,
-        "rootLayoutHash": "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c",
+        "rootLayoutVersion": 3,
+        "rootLayoutHash": "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4729,8 +4412,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4763,8 +4446,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4839,8 +4522,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4878,8 +4561,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4912,8 +4595,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4951,8 +4634,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -4985,8 +4668,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -5019,8 +4702,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
@@ -5257,8 +4940,8 @@
         "engineInterfaceVersion": 2,
         "engineInterfaceHash": "8e88b019f3846a824173fdb81feefac56a8175880c670fe4a53f817f7fd40a98",
         "rootLayoutId": "HIKARI.RenderGeometry.MeshGraphics.Root",
-        "rootLayoutVersion": 9,
-        "rootLayoutHash": "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00",
+        "rootLayoutVersion": 10,
+        "rootLayoutHash": "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,

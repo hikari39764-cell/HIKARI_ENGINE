@@ -44,8 +44,7 @@ uint64_t BuildSourceLayoutVersion(uint64_t residencyEpoch, uint64_t layoutVersio
 
 RUNTIME::SurfaceFeatureFloatPoolSource BuildSurfaceFeatureFloatSource(uint64_t residencyEpoch,
                                                                       const RUNTIME::SceneRenderCache& cache) {
-    return {cache.GetSurfaceFeatureFloats(), residencyEpoch, cache.GetSurfaceFloatPoolVersion(),
-            cache.GetSurfaceFeatureFloatHistory()};
+    return {cache.GetSurfaceFeatureFloats(), residencyEpoch, cache.GetSurfaceFloatPoolVersion()};
 }
 
 uint32_t PassInstanceFlag(GpuDrivenPassKind passKind) {
@@ -462,8 +461,6 @@ void GpuSceneRegistry::Clear() {
     waterSurfaceGpuData_.clear();
     waterSurfaceGpuData_.push_back(WATER::BuildWaterSurfaceGpuDataSentinel());
     meshShaderJointPalettes_.reset();
-    terrainSurfaceGpuData_.clear();
-    terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel(1u));
     surfaceFeatureFloats_ = {};
     forwardOpaqueResidentRecordIndices_.clear();
     depthPrepassOccluderRecordIndices_.clear();
@@ -644,21 +641,10 @@ void GpuSceneRegistry::RebuildForwardFromSceneCache(const GpuSceneRegistrySyncIn
     }
     meshShaderJointPalettes_ = std::move(jointPaletteSnapshot);
 
-    terrainSurfaceGpuData_.clear();
-    terrainSurfaceGpuData_.push_back(TERRAIN::BuildTerrainSurfaceGpuDataSentinel(1u));
     materialProgramSurfacesPresent_ =
         std::any_of(surfaceRecords_.begin(), surfaceRecords_.end(),
                     [](const GpuSceneSurfaceRecord& record) { return record.valid && record.key.materialProgram; });
     surfaceFeatureFloats_ = BuildSurfaceFeatureFloatSource(residencyEpoch_, *input.sceneCache);
-    for (GpuSceneSurfaceRecord& record : surfaceRecords_) {
-        if (!record.valid || !record.terrainSurface) {
-            record.terrainSurfaceGpuDataIndex = 0u;
-            continue;
-        }
-        record.terrainSurfaceGpuDataIndex = NUMERIC::SaturateToUint32(terrainSurfaceGpuData_.size());
-        terrainSurfaceGpuData_.push_back(
-            TERRAIN::BuildTerrainSurfaceGpuData(record.terrainSurfaceData, record.terrainSurfaceOffsets));
-    }
 
     stats_.sourceRecordCount = NUMERIC::SaturateToUint32(surfaceRecords_.size());
 
@@ -984,9 +970,6 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
             IsGpuSceneShadowStaticTraditionalRecord(newRecord)) {
             return reject("traditional surface");
         }
-        if (oldRecord.terrainSurface != newRecord.terrainSurface) {
-            return reject("sand membership changed");
-        }
         const auto oldForwardPass = ResolveForwardResidentPass(oldRecord);
         const auto newForwardPass = ResolveForwardResidentPass(newRecord);
         const bool newDepthOccluder = IsDepthPrepassCoverageRecord(newRecord);
@@ -1022,23 +1005,11 @@ bool GpuSceneRegistry::TryPatchForwardDataFromSceneCache(const GpuSceneRegistryS
             newRecord.waterSurfaceGpuDataIndex = waterSurfaceGpuDataIndex;
         }
 
-        const uint32_t terrainSurfaceGpuDataIndex = oldRecord.terrainSurfaceGpuDataIndex;
-        if (newRecord.terrainSurface) {
-            if (terrainSurfaceGpuDataIndex == 0u || terrainSurfaceGpuDataIndex >= terrainSurfaceGpuData_.size()) {
-                return reject("sand slot missing");
-            }
-            newRecord.terrainSurfaceGpuDataIndex = terrainSurfaceGpuDataIndex;
-        }
-
         surfaceRecords_[surfaceIndex] = std::move(newRecord);
         if (waterSurfaceGpuDataIndex != 0u) {
             waterSurfaceGpuData_[waterSurfaceGpuDataIndex] =
                 WATER::BuildWaterSurfaceGpuData(surfaceRecords_[surfaceIndex].waterSurfaceData,
                                                 surfaceRecords_[surfaceIndex].waterSurfaceLiquidCoverageOffset);
-        }
-        if (terrainSurfaceGpuDataIndex != 0u) {
-            terrainSurfaceGpuData_[terrainSurfaceGpuDataIndex] = TERRAIN::BuildTerrainSurfaceGpuData(
-                surfaceRecords_[surfaceIndex].terrainSurfaceData, surfaceRecords_[surfaceIndex].terrainSurfaceOffsets);
         }
         if (newForwardPass == GpuDrivenPassKind::Count && !newDepthOccluder && !newShadow) {
             continue;
@@ -1101,7 +1072,6 @@ void GpuSceneRegistry::RebuildForwardSceneSource() {
     sceneSource_.surfaceRecords = &surfaceRecords_;
     sceneSource_.meshShaderJointPalettes = meshShaderJointPalettes_;
     sceneSource_.waterSurfaceGpuData = &waterSurfaceGpuData_;
-    sceneSource_.terrainSurfaceGpuData = &terrainSurfaceGpuData_;
     sceneSource_.materialProgramSurfacesPresent = materialProgramSurfacesPresent_;
     sceneSource_.surfaceFeatureFloats = surfaceFeatureFloats_;
     const uint32_t sharedPrimaryCount = NUMERIC::SaturateToUint32(globalGpuSceneInstances_.size());

@@ -52,9 +52,9 @@ struct Asset {
         GFX::RetireD3D12ObjectForFrame(metadata, graphics, "RT.Scene.Metadata");
     }
 };
-// 変形する面。物体と形状ごとに BLAS を持ち、頂点は compute で world 空間へ変形して refit する。
-// 骨格の蒙皮は毎フレーム、地形（高さ場。鍵の 4 番目は地形の記録の番号）は高さ場か配置が変わった時だけ。
-using DeformedKey = std::tuple<uint64_t, uint64_t, uint64_t, uint32_t>;
+// 変形する面（骨格の蒙皮）。物体と形状ごとに BLAS を持ち、頂点は毎フレーム compute で world 空間へ変形して refit する。
+// 鍵は物体の ID、生存世代、形状。
+using DeformedKey = std::tuple<uint64_t, uint64_t, uint64_t>;
 struct Deformed {
     Asset* asset = nullptr;
     std::vector<size_t> records; // 変形の行列と骨格を毎フレーム読み直す表面の番号
@@ -64,11 +64,6 @@ struct Deformed {
     const ID3D12Resource* builtIndices = nullptr; // BLAS を組んだ時の添字と pool（変われば組み直す）
     D3D12_GPU_VIRTUAL_ADDRESS builtPool = 0;
     uint64_t touched = 0;
-    bool terrain = false;
-    bool refresh = true; // このフレーム変形し直す（蒙皮は常に、地形は変化時）
-    uint32_t builtOutputBase = 0xffffffffu;
-    uint64_t builtFloatVersion = 0;
-    std::array<float, 16> builtWorld{};
     uint64_t Bytes() const {
         uint64_t bytes = 0;
         for (const auto& bottom : bottomLevels)
@@ -165,7 +160,6 @@ struct RuntimeRayTracingScene::State {
     // 前回の全体の組み立てで決めた表面と群の入れ方。配置だけが動いたフレームはこれで instance の変換だけを直す。
     std::vector<INTERNAL::RecordUse> recordUses;
     std::vector<INTERNAL::GroupUse> groupUses;
-    bool terrainBound = false;
     // モジュールの代理の並び：lastInstances と lastHits の中の先頭と、代理ごとの面の数。
     uint32_t proxyFirstInstance = 0, proxyFirstHit = 0;
     std::vector<uint32_t> proxySurfaceCounts;
@@ -176,9 +170,9 @@ struct RuntimeRayTracingScene::State {
     std::vector<uint8_t> groupRetints;
 
     void RetireDeformed(const GFX::Context& graphics, INTERNAL::Deformed& entry);
-    // 表面から変形の行列と骨格（地形は高さ場の番号）を読み直し、頂点を変形して BLAS を作るか refit する。
+    // 表面から変形の行列と骨格を読み直し、頂点を変形して BLAS を作るか refit する。
     bool DeformAndRefit(const GFX::Context& graphics, const GPUDRIVEN::GpuDrivenSceneSource& source,
-                        const RuntimeRayTracingBudget& budget, const RuntimeRayTracingSurfaceBindings& surfaces);
+                        const RuntimeRayTracingBudget& budget);
     void TrackRetirement(const GFX::Context& graphics, uint64_t bytes);
     void RetireTop(const GFX::Context& graphics, bool keepHits = false);
     D3D12_GPU_DESCRIPTOR_HANDLE TopLevelView(const GFX::Context& graphics);

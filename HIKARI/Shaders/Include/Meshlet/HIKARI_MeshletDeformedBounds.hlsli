@@ -1,8 +1,6 @@
 #ifndef HIKARI_MESHLET_DEFORMED_BOUNDS_INCLUDED
 #define HIKARI_MESHLET_DEFORMED_BOUNDS_INCLUDED
 
-#include "Include/Surface/HIKARI_TerrainSurfaceParams.hlsli"
-
 // shadow route は水面 record (t0, space7) を束縛しない。
 #ifndef HIKARI_MESHLET_AS_WATER_BOUNDS
 #define HIKARI_MESHLET_AS_WATER_BOUNDS 1
@@ -13,7 +11,7 @@
 #include "Include/Meshlet/HIKARI_OceanGeometry.hlsli"
 #endif
 
-// 頂点変形する地形と水面は、平面 cluster の local bounds を変形包絡で
+// 頂点変形する水面は、平面 cluster の local bounds を変形包絡で
 // 広げて AS 剔除に参加させる。包絡を確定できない面は false (可視側) を返す。
 // 相机を追う海は、格子を相机の前へ移して歪める（HikariApplyWaterSurfaceDeform と同じ計算）。
 // 歪めは各軸で単調なので、簇の箱の角を写せば変形後の箱になる。invViewProj と cameraPosition は主視点。
@@ -30,19 +28,6 @@ bool HikariMeshletResolveDeformedClusterBounds(
     if ((instance.flags & unsupported) != 0u)
     {
         return false;
-    }
-    if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE) != 0u)
-    {
-        // 地形は平面格子の Y を焼き込み高さだけ動かす。CPU の保守範囲を足す。
-        const HikariTerrainSurfaceParams p =
-            HikariLoadTerrainSurfaceParams(instance.surfaceFeatureDataIndex);
-        if (!p.valid || !(p.boundsMinY <= p.boundsMaxY))
-        {
-            return false;
-        }
-        boundsMin.y += p.boundsMinY;
-        boundsMax.y += p.boundsMaxY;
-        return true;
     }
 #if HIKARI_MESHLET_AS_WATER_BOUNDS
     if ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE) != 0u)

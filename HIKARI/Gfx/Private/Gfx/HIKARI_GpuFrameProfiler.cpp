@@ -371,7 +371,6 @@ constexpr PassInfo kPassInfo[] = {
     {Pass::RuntimeRayScenePreparation, "Shared Ray Scene Preparation", "Render3D"},
     {Pass::MeshletForwardStandard, "Meshlet Forward Standard PBR", "Render3D"},
     {Pass::MeshletForwardMaterialProgram, "Meshlet Forward Material Program", "Render3D"},
-    {Pass::MeshletForwardTerrain, "Meshlet Forward Terrain", "Render3D"},
     {Pass::GameUi, "Game UI", "Render3D"},
     {Pass::FluidSolveActivity, "Fluid Solve Activity", "Vfx"},
     {Pass::FluidSolveAdvect, "Fluid Solve Advect", "Vfx"},

@@ -32,7 +32,6 @@ enum class RuntimeRayTracingExclusion : uint8_t {
     Water,
     Skinned,
     FoliageWind,
-    Terrain,
     CustomVertex,
     MaterialEffect,
     ScreenMaterial,
@@ -49,7 +48,6 @@ inline constexpr TEXT::EnumName<RuntimeRayTracingExclusion> kRuntimeRayTracingEx
     {RuntimeRayTracingExclusion::Water, "Water"},
     {RuntimeRayTracingExclusion::Skinned, "Skinned"},
     {RuntimeRayTracingExclusion::FoliageWind, "FoliageWind"},
-    {RuntimeRayTracingExclusion::Terrain, "Terrain"},
     {RuntimeRayTracingExclusion::CustomVertex, "CustomVertex"},
     {RuntimeRayTracingExclusion::MaterialEffect, "MaterialEffect"},
     {RuntimeRayTracingExclusion::ScreenMaterial, "ScreenMaterial"},
@@ -107,12 +105,8 @@ struct RuntimeRayTracingProxy {
     std::span<const uint32_t> surfaces{};
 };
 
-// 地形の高さ場（HIKARI_TerrainSurfaceParams.hlsli の記録と float pool）。地形の面を世界空間へ変形して入れるのに使う。
-// 無ければ地形は入れない。floatVersion が変わった時だけ地形を変形し直す。
+// 描画側から借りる場面の入力。
 struct RuntimeRayTracingSurfaceBindings {
-    D3D12_GPU_VIRTUAL_ADDRESS terrainRecords = 0;
-    D3D12_GPU_VIRTUAL_ADDRESS surfaceFloats = 0;
-    uint64_t floatVersion = 0;
     // 大量配置の描画の常駐記録（このフレームの MassGpuSceneSource と同じ中身。無ければ 0）。動いた個体の instance 記述を
     // GPU で書くのに使う。
     D3D12_GPU_VIRTUAL_ADDRESS massRecords = 0;

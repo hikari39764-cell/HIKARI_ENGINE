@@ -17,7 +17,6 @@
 #include "Include/HIKARI_MeshObjectData.hlsli"
 #include "Include/Meshlet/HIKARI_WaterSurfaceDeform.hlsli"
 #include "Include/Forward/HIKARI_ForwardVertexMeta.hlsli"
-#include "Include/Surface/HIKARI_TerrainSurfaceDeform.hlsli"
 #include "Include/Surface/HIKARI_FoliageWind.hlsli"
 #if defined(HIKARI_GEOMETRY_OUTLINE_VERTEX)
 #include "Include/Features/HIKARI_GeometryOutlineVertex.hlsli"
@@ -67,11 +66,6 @@ VSOutput main(VSInput input)
             localNormal,
             output.surfaceFeatureData);
     }
-    HikariApplyTerrainSurfaceDeform(
-        surfaceInstance,
-        localPosition,
-        localNormal,
-        output.surfaceFeatureData);
     float4 worldPos = mul(objectData.world, float4(localPosition, 1.0f));
     worldPos = HikariApplyFoliageWindWorldPosition(
         surfaceInstance,

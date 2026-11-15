@@ -5,7 +5,6 @@
 #include "Include/Render3D/HIKARI_MeshCameraData.hlsli"
 #include "Include/HIKARI_MeshObjectData.hlsli"
 #include "Include/Forward/HIKARI_SurfaceFeatureCoverage.hlsli"
-#include "Include/Surface/HIKARI_SurfacePartition.hlsli"
 #include "Include/Surface/HIKARI_MaterialShell.hlsli"
 #include "Include/Surface/HIKARI_PainterlyShell.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
@@ -13,10 +12,6 @@
 #include "Include/Material/HIKARI_MaterialExpressionSurface.hlsli"
 #include "Include/Surface/HIKARI_SurfaceShadingNormal.hlsli"
 #include "Include/Lighting/HIKARI_ViewLightingData.hlsli"
-#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_GENERAL
-#include "Include/Surface/HIKARI_TerrainSurfaceParams.hlsli"
-#include "Include/Surface/HIKARI_TerrainSurfaceNormal.hlsli"
-#endif
 #include "Include/Material/HIKARI_MaterialProgramData.hlsli"
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
 #include "Include/Features/HIKARI_StylizedFeatureMask.hlsli"
@@ -76,14 +71,8 @@ float4 main(PSInput input) : SV_TARGET
     const float3 geometricNormal =
         (materialData.instanceFlags & HIKARI_PROGRAM_FLAG_DOUBLE_SIDED) != 0u && !input.isFrontFace
             ? -normalize(input.normalWS) : normalize(input.normalWS);
-#if HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_ALL
-    const bool terrainSurface = HikariSurfaceHasTerrainSurface(input.surfaceFeatureFlags);
-#else
-    // 分割 PSO では AS が担当面だけを渡す。
-    static const bool terrainSurface = HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN;
-#endif
-    // 筆触の殻：forward と同じ関数と入力で殻の被覆を確定する（地形は殻を持たない）。
-    const bool painterly = !kGeometryAuxOpaque && !terrainSurface && HikariIsPainterlyShellMaterial(materialData);
+    // 筆触の殻：forward と同じ関数と入力で殻の被覆を確定する。
+    const bool painterly = !kGeometryAuxOpaque && HikariIsPainterlyShellMaterial(materialData);
     HikariPainterlyStroke stroke = (HikariPainterlyStroke)0;
     if (painterly)
     {
@@ -92,8 +81,7 @@ float4 main(PSInput input) : SV_TARGET
             geometricNormal, HikariCameraViewDirection(input.worldPosWS), stroke.mask);
     }
     HikariMaterialExpressionResult materialExpression = (HikariMaterialExpressionResult)0;
-#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_TERRAIN
-    if (!kGeometryAuxOpaque && !terrainSurface && !painterly &&
+    if (!kGeometryAuxOpaque && !painterly &&
         materialData.materialProgramIndex != HIKARI_STANDARD_PBR_MATERIAL_PROGRAM)
     {
         HikariMaterialExpressionContext expressionContext =
@@ -105,7 +93,6 @@ float4 main(PSInput input) : SV_TARGET
         materialExpression = HikariEvaluateMaterialExpression(
             materialData, expressionContext, gLinearWrap);
     }
-#endif
     if (!kGeometryAuxOpaque && (materialData.materialFlags & MATERIAL_ALPHA_MASK) != 0)
     {
         float4 albedo = HikariResolveMaterialBaseColor(materialData, input.uv, input.uv1, gLinearWrap);
@@ -120,17 +107,6 @@ float4 main(PSInput input) : SV_TARGET
         HikariApplyStaticMaterialFxCoverage(
             input.worldPosWS, instance.fxUser[0], instance.fxUser[1]);
     }
-#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_GENERAL
-    if (terrainSurface)
-    {
-        const HikariSurfaceGpuSceneInstance terrainInstance =
-            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-        HikariClipTerrainCoverage(
-            HikariLoadTerrainSurfaceParams(
-                terrainInstance.surfaceFeatureDataIndex),
-            input.uv1);
-    }
-#endif
 
     HikariMaterialPbrInputs pbrInputs = HikariResolveMaterialPbrInputs(
         materialData, input.uv, input.uv1, gLinearWrap);
@@ -143,41 +119,18 @@ float4 main(PSInput input) : SV_TARGET
     float roughness = pbrInputs.roughness;
     float metallic = pbrInputs.metallic;
 
-    float3 n = normalize(geometricNormal);
-    if (terrainSurface)
+    float3 n = HikariResolveSurfaceShadingNormal(
+        materialData,
+        geometricNormal,
+        input.tangentWS,
+        input.uv,
+        input.uv1,
+        gLinearWrap);
+    n = HikariResolveMaterialExpressionNormal(
+        materialExpression, materialData.normalScale, geometricNormal, input.tangentWS, n);
+    if (painterly)
     {
-#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_GENERAL
-        const HikariSurfaceGpuSceneInstance terrainInstance =
-            HikariGetSurfaceGpuSceneInstanceAt(input.surfaceGpuSceneIndex);
-        n = HikariResolveTerrainSurfaceAuxNormal(
-            materialData,
-            HikariLoadTerrainSurfaceParams(
-                terrainInstance.surfaceFeatureDataIndex),
-            input.worldPosWS,
-            input.uv1,
-            input.normalWS,
-            input.tangentWS,
-            gLinearClamp);
-#endif
-    }
-    else
-    {
-        n = HikariResolveSurfaceShadingNormal(
-            materialData,
-            geometricNormal,
-            input.tangentWS,
-            input.uv,
-            input.uv1,
-            gLinearWrap);
-    }
-    if (!terrainSurface)
-    {
-        n = HikariResolveMaterialExpressionNormal(
-            materialExpression, materialData.normalScale, geometricNormal, input.tangentWS, n);
-        if (painterly)
-        {
-            n = HikariApplyPainterlyStrokeNormal(n, geometricNormal, input.tangentWS, stroke.normalTS);
-        }
+        n = HikariApplyPainterlyStrokeNormal(n, geometricNormal, input.tangentWS, stroke.normalTS);
     }
     // SSR / AO が見る法線と粗さを、受光の前にデカールを適用した可視の材質（StaticPS）と揃える。
     {
@@ -192,10 +145,7 @@ float4 main(PSInput input) : SV_TARGET
         roughness = decalSurface.roughness;
         metallic = decalSurface.metallic;
     }
-    if (!terrainSurface)
-    {
-        roughness = HikariFilterPerceptualRoughness(roughness, ddx(n), ddy(n));
-    }
+    roughness = HikariFilterPerceptualRoughness(roughness, ddx(n), ddy(n));
     const float4 packedSurface = HikariPackSceneSurface(n, roughness, metallic);
 #if defined(HIKARI_GEOMETRY_AUX_WRITE_FEATURE_MASK)
     const HikariSurfaceGpuSceneInstance instance =

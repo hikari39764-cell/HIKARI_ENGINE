@@ -25,7 +25,7 @@
 #include "Render3D/Meshlet/HIKARI_MeshletRenderBackend.h"
 #include "RenderCore/Resources/HIKARI_RenderResourceHandle.h"
 #include "RenderCore/Resources/HIKARI_RenderResourcePool.h"
-#include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuFrameBuffer.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPoolGpuBuffer.h"
 #include "Render3D/Vfx/HIKARI_FluidVolumePass.h"
 #include "Render3D/Vfx/HIKARI_ParticleGpuDrivenPass.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
@@ -112,7 +112,7 @@ struct MeshRendererState {
     RENDER3D::GPUDRIVEN::MassGpuSceneFrameBuffer massGpuSceneBuffer{};
     RENDER3D::WATER::WaterSurfaceGpuFrameBuffer waterSurfaceGpuFrameBuffer{};
     RENDER3D::WATER::SPECTRUM::OceanSpectrumRuntime oceanSpectrumRuntime{};
-    RENDER3D::TERRAIN::TerrainSurfaceGpuFrameBuffer terrainSurfaceGpuFrameBuffer{};
+    RENDER3D::RUNTIME::SceneSurfaceFloatPoolGpuBuffer surfaceFeatureFloatGpuBuffer{};
     RENDER3D::GPUDRIVEN::GpuTraditionalCommandStreamBuffer traditionalCommandStreamBuffer{};
     MeshTraditionalIndirectOwner traditionalIndirectOwner{};
     RENDER3D::GPUDRIVEN::GpuDrivenFrame gpuDrivenFrame{};

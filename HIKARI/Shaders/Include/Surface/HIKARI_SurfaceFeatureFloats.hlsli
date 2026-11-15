@@ -1,8 +1,8 @@
 #ifndef HIKARI_SURFACE_FEATURE_FLOATS_INCLUDED
 #define HIKARI_SURFACE_FEATURE_FLOATS_INCLUDED
 
-// ROOT_PARAM::SurfaceFeatureFloats (t1, space7)。地形 field と水面 coverage が
-// 共有する単一 float pool。offset 0 は 4 個の zero を指す neutral 値。
+// ROOT_PARAM::SurfaceFeatureFloats (t1, space7)。水面 coverage などの面の field を並べる
+// 単一 float pool。offset 0 は 4 個の zero を指す neutral 値。
 StructuredBuffer<float> gSurfaceFeatureFloats : register(t1, space7);
 
 // 正方形格子 (gridResolution+1)^2 の field を uv で双線形サンプルする。

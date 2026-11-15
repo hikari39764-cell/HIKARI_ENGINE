@@ -33,7 +33,6 @@ enum class SurfaceGpuSceneInstanceFlags : uint32_t {
     PassForwardTransparent = 1u << 14,
     PassShadow = 1u << 15,
     Skinned = 1u << 16,
-    TerrainSurface = 1u << 17,
     CameraCenteredOcean = 1u << 18,
     FoliageWind = 1u << 19,
     // 材質 program（式・風格化）を持つ材質。Forward は標準 PBR の面と別 PSO で描く。

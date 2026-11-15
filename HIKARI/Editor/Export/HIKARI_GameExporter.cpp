@@ -351,10 +351,8 @@ bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const 
         const bool textureSource =
             textureDomain && local.starts_with("textures/") && !local.starts_with("textures/cooked/");
         const bool surfaceSource = domain == "painterly" && (local.starts_with("sources/") || local == "readme.md");
-        // 旧地形の内蔵テクスチャは、どの機能も使わなくなったので運ばない。
-        const bool unusedTerrain = domain == "terrain" || domain == "sand";
         if (IsForbiddenGamePackagePath(std::filesystem::path("EngineContent") / relative) || textureSource ||
-            surfaceSource || unusedTerrain) {
+            surfaceSource) {
             sourceOnlyExclusions.insert(key);
         }
     }

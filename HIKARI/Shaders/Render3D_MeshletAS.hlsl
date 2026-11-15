@@ -181,14 +181,6 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     HikariMeshletVisibleRange visible = (HikariMeshletVisibleRange)0;
     if (rangeOffset < gMeshletVisibleRangeCount)
         visible = gMeshletVisibleRanges[visibleRangeIndex];
-#if HIKARI_SURFACE_PARTITION != HIKARI_SURFACE_PARTITION_ALL
-    // 地形と一般面は同じ可視範囲を別 PSO で 2 回 dispatch する。担当外の範囲は
-    // 空として扱い、mesh shader を起動しない。
-    const bool terrainRange =
-        (visible.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE) != 0u;
-    if (terrainRange != (HIKARI_SURFACE_PARTITION == HIKARI_SURFACE_PARTITION_TERRAIN))
-        visible = (HikariMeshletVisibleRange)0;
-#endif
 #if HIKARI_MATERIAL_CLASS != HIKARI_MATERIAL_CLASS_ANY
     // 標準 PBR と材質 program の面も同じ可視範囲を別 PSO で dispatch する。
     const bool programRange =
@@ -280,7 +272,7 @@ void main(uint groupIndex : SV_GroupIndex, uint3 groupId : SV_GroupID)
     float4 cullMin = cluster.boundsMin, cullMax = cluster.boundsMax;
     float4 cullSphere = cluster.sphereCenterRadius;
     bool requiresFineCull = HikariClusterHasConservativeBounds(instance);
-    // 頂点変形する地形/有限水面も、変形包絡で広げた bounds で剔除する。
+    // 頂点変形する有限水面も、変形包絡で広げた bounds で剔除する。
     if (clusterValid && !requiresFineCull &&
         HikariMeshletResolveDeformedClusterBounds(instance, gInvViewProj, gCameraPos, cullMin, cullMax))
     {

@@ -20,8 +20,6 @@ std::optional<RuntimeRayTracingExclusion> ClassifyRayExclusion(const GPUDRIVEN::
         return Skinned;
     if (record.foliageWind)
         return FoliageWind;
-    if (record.terrainSurface)
-        return Terrain;
     if (record.key.customVertexShader)
         return CustomVertex;
     if (record.key.materialFx)
@@ -38,17 +36,11 @@ bool IsValidRayTransform(const MATH::Mat4& world) {
 RayRecordInputs ReadRayRecordInputs(const GPUDRIVEN::GpuSceneSurfaceRecord& record, size_t index,
                                     std::span<const uint32_t> materialSlots,
                                     std::span<const MATERIAL::GpuMaterialData> materials) {
-    const bool flags[] = {record.visible,
-                          record.valid,
-                          record.skinned,
-                          record.foliageWind,
-                          record.waterSurface,
-                          record.terrainSurface,
-                          record.key.customVertexShader,
-                          record.key.materialFx,
-                          record.jointPaletteMatrixCount != 0,
-                          record.key.doubleSided,
-                          record.castShadow,
+    const bool flags[] = {record.visible,         record.valid,
+                          record.skinned,         record.foliageWind,
+                          record.waterSurface,    record.key.customVertexShader,
+                          record.key.materialFx,  record.jointPaletteMatrixCount != 0,
+                          record.key.doubleSided, record.castShadow,
                           record.key.transparent};
     uint32_t bits = 0;
     for (size_t b = 0; b < std::size(flags); ++b)
@@ -63,7 +55,6 @@ RayRecordInputs ReadRayRecordInputs(const GPUDRIVEN::GpuSceneSurfaceRecord& reco
             record.meshIndex,
             record.primitiveIndex,
             slot < materials.size() ? materials[slot].materialProgramIndex : 0xffffffffu,
-            record.terrainSurfaceGpuDataIndex,
             bits};
 }
 

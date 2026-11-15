@@ -29,7 +29,6 @@ struct RayRecordInputs {
     uint32_t geometryIndex = 0, geometryGeneration = 0;
     uint32_t node = 0, mesh = 0, primitive = 0;
     uint32_t materialProgram = 0;
-    uint32_t terrainIndex = 0;
     uint32_t bits = 0;
     friend bool operator==(const RayRecordInputs&, const RayRecordInputs&) = default;
 };

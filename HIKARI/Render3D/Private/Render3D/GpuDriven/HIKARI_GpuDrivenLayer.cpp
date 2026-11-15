@@ -256,14 +256,14 @@ bool GpuDrivenLayer::Initialize(ID3D12Device* device, ID3D12RootSignature* stati
 void GpuDrivenLayer::Attach(SurfaceGpuSceneFrameBuffer* sceneBuffer, MassGpuSceneFrameBuffer* massSceneBuffer,
                             GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer,
                             IGpuDrivenProducer* producer, WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer,
-                            TERRAIN::TerrainSurfaceGpuFrameBuffer* terrainSurfaceBuffer) {
+                            RUNTIME::SceneSurfaceFloatPoolGpuBuffer* surfaceFeatureFloatBuffer) {
     if (sceneBuffer_ != sceneBuffer) {
         sceneUploadHistory_ = {};
     }
     sceneBuffer_ = sceneBuffer;
     massSceneBuffer_ = massSceneBuffer;
     waterSurfaceBuffer_ = waterSurfaceBuffer;
-    terrainSurfaceBuffer_ = terrainSurfaceBuffer;
+    surfaceFeatureFloatBuffer_ = surfaceFeatureFloatBuffer;
     traditionalCommandStreamBuffer_ = traditionalCommandStreamBuffer;
     producer_ = producer;
     frameContext_.scene.instanceBuffer = sceneBuffer_;
@@ -303,12 +303,11 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
                                          frameSource_ != nullptr ? frameSource_->waterSurfaceGpuData : nullptr);
     sceneUploadStats_.waterSurfaceDataResident = waterSurfaceDataResident;
 
-    const bool terrainSurfaceDataResident =
-        terrainSurfaceBuffer_ == nullptr ||
-        terrainSurfaceBuffer_->UploadFrame(desc.frameIndex, desc.commandList,
-                                           frameSource_ != nullptr ? frameSource_->terrainSurfaceGpuData : nullptr,
-                                           frameSource_ != nullptr ? &frameSource_->surfaceFeatureFloats : nullptr);
-    sceneUploadStats_.terrainSurfaceDataResident = terrainSurfaceDataResident;
+    const bool surfaceFeatureFloatsResident =
+        surfaceFeatureFloatBuffer_ == nullptr ||
+        surfaceFeatureFloatBuffer_->UploadFrame(desc.frameIndex, desc.commandList, nullptr,
+                                                frameSource_ != nullptr ? &frameSource_->surfaceFeatureFloats
+                                                                        : nullptr);
     if (sceneBuffer_ != nullptr) {
         sceneBuffer_->BeginFrame(desc.frameIndex);
     }
@@ -332,7 +331,7 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
     // surface payload と Scene records は同じ frame transaction。どちらかの
     // upload が失敗した frame へ、offset を持つ surface instance record は
     // 送信しない。独立した Mass residency はこの失敗から隔離する。
-    if (sceneBuffer_ == nullptr || source == nullptr || !waterSurfaceDataResident || !terrainSurfaceDataResident) {
+    if (sceneBuffer_ == nullptr || source == nullptr || !waterSurfaceDataResident || !surfaceFeatureFloatsResident) {
         if (sceneBuffer_ != nullptr) {
             sceneBuffer_->ResetFrame();
             sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
@@ -397,7 +396,7 @@ const GpuDrivenSceneUploadStats& GpuDrivenLayer::UploadSceneFrame(const GpuDrive
 
     sceneUploadStats_.bufferStats = sceneBuffer_->GetStats();
     sceneUploadStats_.sceneResident = sceneCommitted && sourceInstanceCount != 0u && waterSurfaceDataResident &&
-                                      terrainSurfaceDataResident &&
+                                      surfaceFeatureFloatsResident &&
                                       sceneUploadStats_.bufferStats.overflowInstanceCount == 0u &&
                                       sceneUploadStats_.bufferStats.uploadedInstanceCount == sourceInstanceCount;
     if (desc.residency != nullptr) {

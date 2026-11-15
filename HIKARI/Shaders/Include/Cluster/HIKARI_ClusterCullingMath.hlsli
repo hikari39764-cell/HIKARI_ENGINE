@@ -8,7 +8,6 @@ bool HikariClusterHasConservativeBounds(HikariSurfaceGpuSceneInstance instance)
 {
     const uint unsupported = HIKARI_SURFACE_GPU_SCENE_FLAG_SKINNED |
         HIKARI_SURFACE_GPU_SCENE_FLAG_WATER_SURFACE |
-        HIKARI_SURFACE_GPU_SCENE_FLAG_TERRAIN_SURFACE |
         HIKARI_SURFACE_GPU_SCENE_FLAG_CAMERA_CENTERED_OCEAN;
     return (instance.flags & unsupported) == 0u &&
         ((instance.flags & HIKARI_SURFACE_GPU_SCENE_FLAG_FOLIAGE_WIND) == 0u ||
