@@ -202,6 +202,13 @@ float3 HikariExpressionBlendNormals(float3 baseNormal, float3 detailNormal)
     return normalize(t * (dot(t, u) / max(t.z, 1.0e-6f)) - u);
 }
 
+// 材質が式の program を持つか。持たなければ HikariEvaluateMaterialExpression は何も出さない。
+bool HikariMaterialHasExpression(HikariMeshMaterialData materialData)
+{
+    return asuint(HikariLoadMaterialProgramParameter(
+        materialData, HIKARI_MATERIAL_EXPRESSION_HEADER_BASE, 0.0f.xxxx)).x == HIKARI_MATERIAL_EXPRESSION_MAGIC;
+}
+
 HikariMaterialExpressionResult HikariEvaluateMaterialExpression(
     HikariMeshMaterialData materialData,
     HikariMaterialExpressionContext context,

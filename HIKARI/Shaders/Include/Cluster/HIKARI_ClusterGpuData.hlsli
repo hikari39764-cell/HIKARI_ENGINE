@@ -486,6 +486,19 @@ HikariClusterVertex HikariLoadClusterVertex(
         buffer.Load2(attributeOffset + 16u));
 }
 
+// 頂点の uv0（xy）と uv1（zw）だけを読む。属性の 12 byte 目からの half × 4 で、並びは HikariDecodeClusterVertex と同じ。
+float4 HikariLoadClusterVertexUv(
+    ByteAddressBuffer buffer,
+    HikariClusterGeometryHeader header,
+    uint vertexIndex)
+{
+    const uint3 packed = buffer.Load3(HikariClusterVertexAttributeOffset(header, vertexIndex) + 12u);
+    return float4(
+        HikariUnpackHalf16(packed.x >> 16u),
+        HikariUnpackHalf16x2(packed.y),
+        HikariUnpackHalf16(packed.z));
+}
+
 HikariClusterVertex HikariLoadClusterVertexShading(
     ByteAddressBuffer buffer,
     HikariClusterGeometryHeader header,

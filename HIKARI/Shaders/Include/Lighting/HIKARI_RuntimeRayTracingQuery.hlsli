@@ -109,25 +109,19 @@ HikariMaterialTextureFootprint HikariRayTriangleFootprint(
     return footprint;
 }
 
-// 当たった三角形の面を復元する（切り抜きの判定の候補と、確定した一つで同じものを使う）。
-// Raster と同じ HCMESH decode / UV / material-expression API を使用する。
+// 記録の中の三角形番号から、HCMESH の頭、頂点を持つ buffer の番号、頂点 3 つの番号を引く。
 // BLAS 分割点は meshlet 境界と一致する必要がない。
-bool HikariDecodeRayTriangle(uint recordIndex, uint recordPrimitive, float2 bary, float rayT,
-    float3x4 objectToWorld, float3x4 worldToObject, float3 rayDirection, float2 rayCone,
-    out HikariRaySurface surface, out uint flags)
+bool HikariResolveRayTriangleVertices(HikariRayTracingHitRecord record, uint recordPrimitive,
+    out HikariClusterGeometryHeader header, out uint geometry, out uint3 vertices)
 {
-    surface = (HikariRaySurface)0;
-    flags = 0u;
-    const HikariRayTracingHitRecord record = gRuntimeRayHits[recordIndex];
-#ifdef HIKARI_RAY_SURFACE_HIT_RECORD
-    surface.hitRecord = recordIndex;
-#endif
-    const uint geometry = record.geometryDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
+    header = (HikariClusterGeometryHeader)0;
+    vertices = 0u.xxx;
+    geometry = record.geometryDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
     const uint metadata = record.metadataDescriptor-HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_BEGIN;
     if (record.materialIndex == 0xffffffffu || geometry >= HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT ||
         metadata >= HIKARI_SHADER_CLUSTER_GEOMETRY_SRV_COUNT || recordPrimitive >= record.primitiveCount)
         return false;
-    const HikariClusterGeometryHeader header = HikariLoadClusterGeometryHeader(gRuntimeRayGeometry[NonUniformResourceIndex(metadata)]);
+    header = HikariLoadClusterGeometryHeader(gRuntimeRayGeometry[NonUniformResourceIndex(metadata)]);
     if (!HikariIsValidClusterGeometryHeader(header) || record.firstCluster >= header.clusterCount ||
         record.clusterCount > header.clusterCount-record.firstCluster) return false;
     const uint primitive = record.firstPrimitive + recordPrimitive;
@@ -146,7 +140,41 @@ bool HikariDecodeRayTriangle(uint recordIndex, uint recordPrimitive, float2 bary
     const uint3 local = HikariLoadMeshletPrimitiveIndices(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, primitive);
     if (any(local >= cluster.vertexCount) || cluster.firstVertex >= header.vertexCount ||
         any(local >= header.vertexCount-cluster.firstVertex)) return false;
-    const uint3 vertices = cluster.firstVertex + local;
+    vertices = cluster.firstVertex + local;
+    return true;
+}
+
+// 切り抜きの判定だけに使う軽い復元。当たった点の uv0（xy）と uv1（zw）だけを返し、位置・法線・接線は読まない
+// （uv は変形しても変わらない）。
+bool HikariLoadRayTriangleUv(HikariRayTracingHitRecord record, uint recordPrimitive, float2 bary, out float4 uv01)
+{
+    uv01 = 0.0f.xxxx;
+    HikariClusterGeometryHeader header;
+    uint geometry;
+    uint3 vertices;
+    if (!HikariResolveRayTriangleVertices(record, recordPrimitive, header, geometry, vertices)) return false;
+    uv01 = HikariLoadClusterVertexUv(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.x) * (1.0f-bary.x-bary.y) +
+        HikariLoadClusterVertexUv(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.y) * bary.x +
+        HikariLoadClusterVertexUv(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.z) * bary.y;
+    return all(isfinite(uv01));
+}
+
+// 当たった三角形の面を復元する（切り抜きの判定の候補と、確定した一つで同じものを使う）。
+// Raster と同じ HCMESH decode / UV / material-expression API を使用する。
+bool HikariDecodeRayTriangle(uint recordIndex, uint recordPrimitive, float2 bary, float rayT,
+    float3x4 objectToWorld, float3x4 worldToObject, float3 rayDirection, float2 rayCone,
+    out HikariRaySurface surface, out uint flags)
+{
+    surface = (HikariRaySurface)0;
+    flags = 0u;
+    const HikariRayTracingHitRecord record = gRuntimeRayHits[recordIndex];
+#ifdef HIKARI_RAY_SURFACE_HIT_RECORD
+    surface.hitRecord = recordIndex;
+#endif
+    HikariClusterGeometryHeader header;
+    uint geometry;
+    uint3 vertices;
+    if (!HikariResolveRayTriangleVertices(record, recordPrimitive, header, geometry, vertices)) return false;
     HikariClusterVertex a = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.x);
     HikariClusterVertex b = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.y);
     HikariClusterVertex c = HikariLoadClusterVertex(gRuntimeRayGeometry[NonUniformResourceIndex(geometry)], header, vertices.z);
@@ -241,6 +269,23 @@ bool HikariTraceRuntimeSceneCore(RayDesc ray, uint hitRecordCount, uint material
             continue;
         }
         ++materialTests;
+#ifdef HIKARI_RAY_CUTOUT_UV_ONLY
+        // 式を持たない切り抜きは底色の alpha だけで決まるので、uv だけ読んで決める。面全体の復元は頂点 3 つの位置・法線・
+        // 接線と footprint まで作り、葉の板を何枚も抜ける影の光線ではそれが判定の重さの大半になる（林の中の太陽の影で
+        // 9.2 → 7.6 ms）。include する shader が選ぶ：動的 GI の更新や前向の shader は資源の臨界にあり、足せない。
+        if (cutout && !transmissive)
+        {
+            const HikariMeshMaterialData cutoutMaterial = HikariGetMeshMaterialData(record.materialIndex);
+            if (!HikariMaterialHasExpression(cutoutMaterial))
+            {
+                float4 uv01;
+                if (!HikariLoadRayTriangleUv(record, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics(), uv01)) continue;
+                if (HikariResolveMaterialBaseColor(cutoutMaterial, uv01.xy, uv01.zw, materialSampler, true).a < cutoutMaterial.pbrParams.w) continue;
+                query.CommitNonOpaqueTriangleHit();
+                continue;
+            }
+        }
+#endif
         HikariRaySurface candidate;
         uint flags;
         if (!HikariDecodeRayTriangle(recordIndex, query.CandidatePrimitiveIndex(), query.CandidateTriangleBarycentrics(),
