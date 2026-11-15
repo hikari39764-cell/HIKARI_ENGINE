@@ -42,7 +42,6 @@ void PhysicsSystem::OnWorldAttached(World& world) {
         service_ = nullptr;
         return;
     }
-    terrainCollisionProjections_.Refresh(world);
     ReconcileBodies(world, 0u);
     // The editor can attach a world while Play is paused.  Keep the
     // active state separate from the reconciliation frame so that the
@@ -63,7 +62,6 @@ void PhysicsSystem::OnWorldDetached(World&) {
         kinematicMotion_->Clear();
     }
     failures_.clear();
-    terrainCollisionProjections_.Clear();
     lastStepResult_ = {};
     wasRuntimeActive_ = false;
     lastReconcileFrame_ = (std::numeric_limits<uint64_t>::max)();
@@ -82,7 +80,6 @@ void PhysicsSystem::PreFixedUpdate(World& world, const FrameContext& frame) {
         wasRuntimeActive_ = false;
         return;
     }
-    terrainCollisionProjections_.Refresh(world);
     if (!wasRuntimeActive_) {
         lastReconcileFrame_ = (std::numeric_limits<uint64_t>::max)();
     }

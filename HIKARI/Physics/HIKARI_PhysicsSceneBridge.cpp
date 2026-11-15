@@ -15,7 +15,6 @@
 #include "Physics/HIKARI_PhysicsBodyValidator.h"
 #include "Physics/HIKARI_PhysicsCollisionGeometryStore.h"
 #include "Physics/HIKARI_PhysicsDefinitionScale.h"
-#include "Physics/HIKARI_TerrainCollisionProjection.h"
 
 namespace HIKARI::PHYSICS {
 namespace {
@@ -166,7 +165,6 @@ bool TryGetPhysicsWorldPoseAndScale(const GameObject& object, PhysicsPose& outPo
 PhysicsBodyBuildResult BuildPhysicsBodyCreateInfo(const GameObject& object, PhysicsBodyCreateInfo& outCreateInfo,
                                                   MATH::Vec3& outWorldScale,
                                                   PhysicsCollisionGeometryStore* collisionGeometryStore,
-                                                  const TerrainCollisionProjection* terrainProjection,
                                                   const MATH::Vec3* retainedDefinitionScale) {
     PhysicsBodyBuildResult result{};
     PhysicsPose pose{};
@@ -185,17 +183,9 @@ PhysicsBodyBuildResult BuildPhysicsBodyCreateInfo(const GameObject& object, Phys
     outWorldScale = ResolvePhysicsDefinitionScale(outWorldScale, retainedDefinitionScale);
 
     outCreateInfo = {};
-    // Terrain page は数百の immutable chunk shape を公開し得る。source
-    // gate が rebuild を許可した時だけ、正確な容量を先に確保する。
-    const std::size_t terrainShapeCapacity =
-        terrainProjection != nullptr
-            ? (!terrainProjection->chunkShapes.empty() ? terrainProjection->chunkShapes.size()
-                                                       : (terrainProjection->geometry != nullptr ? 1u : 0u))
-            : 0u;
     const std::size_t authoredShapeCapacity = object.GetComponents().size();
-    if (authoredShapeCapacity <= outCreateInfo.shapes.max_size() &&
-        terrainShapeCapacity <= outCreateInfo.shapes.max_size() - authoredShapeCapacity) {
-        outCreateInfo.shapes.reserve(terrainShapeCapacity + authoredShapeCapacity);
+    if (authoredShapeCapacity <= outCreateInfo.shapes.max_size()) {
+        outCreateInfo.shapes.reserve(authoredShapeCapacity);
     }
     outCreateInfo.initialPose = pose;
     const PhysicsBodyComponent* bodyComponent = object.GetComponent<PhysicsBodyComponent>();
@@ -206,42 +196,6 @@ PhysicsBodyBuildResult BuildPhysicsBodyCreateInfo(const GameObject& object, Phys
     }
     uint32_t componentOrdinal = 0u;
     bool appendFailed = false;
-    bool terrainCollisionAppended = false;
-    const auto appendTerrainShape = [&](const std::shared_ptr<const PhysicsGeometryBuffer>& geometry,
-                                        uint64_t contentRevision, uint32_t terrainShapeOrdinal) {
-        if (geometry == nullptr || geometry->vertices.size() < 3u || geometry->indices.size() < 3u ||
-            geometry->vertices.size() > (std::numeric_limits<uint32_t>::max)() ||
-            geometry->indices.size() > (std::numeric_limits<uint32_t>::max)()) {
-            return;
-        }
-        PhysicsShapeDesc terrainShape{};
-        // "TERRAIN"。authored Collider component の ordinal と衝突しない
-        // domain-owned stable shape identity。
-        terrainShape.key.sourceShapeId = kTerrainCollisionShapeSourceId;
-        terrainShape.key.componentOrdinal = terrainShapeOrdinal;
-        terrainShape.type = PhysicsShapeType::TriangleMesh;
-        terrainShape.localScale = Absolute(outWorldScale);
-        terrainShape.geometry = geometry;
-        terrainShape.vertexCount = static_cast<uint32_t>(geometry->vertices.size());
-        terrainShape.indexCount = static_cast<uint32_t>(geometry->indices.size());
-        terrainShape.geometryContentRevision = contentRevision;
-        terrainShape.material = PhysicsMaterialDesc{0.8f, 0.0f, 1.0f};
-        terrainShape.filter = PhysicsCollisionFilter{1u, 0xFFFFFFFFu};
-        outCreateInfo.shapes.push_back(std::move(terrainShape));
-        terrainCollisionAppended = true;
-        result.hasDefinition = true;
-        result.sourceRevision ^=
-            contentRevision + 0x9E3779B97F4A7C15ull + (result.sourceRevision << 6u) + (result.sourceRevision >> 2u);
-    };
-    if (terrainProjection != nullptr) {
-        uint32_t terrainShapeOrdinal = 1u;
-        for (const TerrainCollisionChunkShape& chunk : terrainProjection->chunkShapes) {
-            appendTerrainShape(chunk.geometry, chunk.contentRevision, terrainShapeOrdinal++);
-        }
-        if (!terrainCollisionAppended) {
-            appendTerrainShape(terrainProjection->geometry, terrainProjection->contentRevision, 0u);
-        }
-    }
     object.ForEachComponent<ColliderComponent>([&](const ColliderComponent& collider) {
         ++componentOrdinal;
         if (!collider.IsEnabled()) {
@@ -304,7 +258,6 @@ uint64_t ComputePhysicsBodyDefinitionSignature(const PhysicsBodyCreateInfo& crea
 }
 
 uint64_t ComputePhysicsBodyDefinitionSourceSignature(const GameObject& object, uint64_t collisionGeometrySourceRevision,
-                                                     const TerrainCollisionProjection* terrainProjection,
                                                      const MATH::Vec3* retainedDefinitionScale) noexcept {
     uint64_t signature = HASH::kFnv1a64OffsetBasis;
     HashValue(signature, object.GetRuntimeHandle().ToValue());
@@ -338,14 +291,6 @@ uint64_t ComputePhysicsBodyDefinitionSourceSignature(const GameObject& object, u
     HashValue(signature, bodyComponent != nullptr ? 1u : 0u);
     HashBodyDefinitionFields(signature, body, definitionScale, initialLinearVelocity, initialAngularVelocity);
 
-    HashValue(signature, terrainProjection != nullptr ? 1u : 0u);
-    if (terrainProjection != nullptr) {
-        HashValue(signature, terrainProjection->sourceRevision);
-        HashValue(signature, terrainProjection->contentRevision);
-        HashValue(signature, terrainProjection->chunkShapes.size());
-        HashValue(signature, terrainProjection->geometry != nullptr ? 1u : 0u);
-    }
-
     uint32_t componentOrdinal = 0u;
     object.ForEachComponent<ColliderComponent>([&](const ColliderComponent& collider) {
         ++componentOrdinal;
@@ -357,7 +302,7 @@ uint64_t ComputePhysicsBodyDefinitionSourceSignature(const GameObject& object, u
             return;
         }
         // allocation-free な proxy でも Geometry fit provider を解決し、
-        // terrain shape を実体化せず model 由来寸法を gate に含める。
+        // shape を実体化せず model 由来寸法を gate に含める。
         for (const PhysicsShapeDesc& shape : BuildPhysicsShapeDescs(collider, definitionScale, componentOrdinal)) {
             HashShapeDefinitionFields(signature, shape);
         }

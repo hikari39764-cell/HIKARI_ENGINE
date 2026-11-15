@@ -36,7 +36,6 @@ class SaveGameView;
 class SceneCaptureView;
 class SequenceView;
 class SceneFlowView;
-class TerrainView;
 class TimeDilationView;
 class UiView;
 class VfxView;
@@ -61,7 +60,6 @@ struct GameProjectSdkAccess {
     static MotionView MakeMotionView(World& world) noexcept;
     static PhysicsQueryView MakePhysicsQueryView(World& world) noexcept;
     static NavigationView MakeNavigationView(World& world) noexcept;
-    static TerrainView MakeTerrainView(World& world) noexcept;
     static CameraView MakeCameraView(World& world) noexcept;
     static TimeDilationView MakeTimeDilationView(World& world) noexcept;
     static PresentationModelView MakePresentationModelView(World& world) noexcept;

@@ -27,7 +27,6 @@
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_PresentationTransformService.h"
-#include "Scene/Terrain/HIKARI_TerrainGrassModelFactory.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/HIKARI_SceneRuntimeBuilder.h"
@@ -645,7 +644,6 @@ void RenderSubmissionSystem::InvalidateSceneResources(bool clearProceduralCache)
     SHADOW::InvalidateSceneCache();
     if (clearProceduralCache) {
         PROCEDURAL::ClearCache();
-        TERRAIN::ClearTerrainGrassModelCache();
     }
 }
 

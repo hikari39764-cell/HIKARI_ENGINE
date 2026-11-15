@@ -66,8 +66,6 @@ GameObject* CreatePrimitiveObject(DocumentSceneBase& scene, const CreatePrimitiv
 GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request,
                                      WATER::WaterSurfaceGeometryMode geometryMode);
 
-GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
-
 GameObject* CreateDialogueTriggerObject(DocumentSceneBase& scene, const CreateObjectRequest& request);
 
 GameObject* CreateReflectionProbeObject(DocumentSceneBase& scene, const CreateObjectRequest& request);

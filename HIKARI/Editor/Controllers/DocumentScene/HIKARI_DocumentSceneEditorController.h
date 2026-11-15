@@ -1,5 +1,4 @@
 #pragma once
-#include "Editor/Authoring/HIKARI_TerrainAuthoringOperations.h"
 #include "Editor/Authoring/HIKARI_SceneObjectOperations.h"
 #include "Editor/Authoring/HIKARI_EditorAuthoringSessionHost.h"
 
@@ -68,7 +67,6 @@
 #include "Editor/Workspaces/RuntimeBinding/HIKARI_RuntimeBindingWorkspaceController.h"
 #include "Editor/Workspaces/Vfx/HIKARI_VfxWorkspaceController.h"
 #include "Editor/Workspaces/Dialogue/HIKARI_DialogueWorkspaceController.h"
-#include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainSurfaceWorkspaceController.h"
 #include "Editor/HIKARI_SelectionSyncService.h"
 #include "Editor/HIKARI_StatsPanel.h"
 #include "Editor/Controllers/DocumentScene/HIKARI_DocumentToolbarController.h"
@@ -212,7 +210,6 @@ private:
     EDITOR::RuntimeBindingWorkspaceController runtimeBindingWorkspaceController_{};
     EDITOR::VfxWorkspaceController vfxWorkspaceController_{};
     EDITOR::DialogueWorkspaceController dialogueWorkspaceController_{};
-    EDITOR::TerrainSurfaceWorkspaceController terrainSurfaceWorkspaceController_{};
     EDITOR::VfxWorkspaceController& VfxWorkspace() {
         return authoringSessions_.ResolveController("vfx", vfxWorkspaceController_);
     }
@@ -263,7 +260,6 @@ private:
     EDITOR::LookDevWorkspace lookDevWorkspace_{};
     void DrawGameViewportWindow(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession,
                                 std::string_view stableWindowId = "Game View");
-    void HandleTerrainBrush(DocumentSceneBase& scene, const EDITOR::SceneViewportRect& viewport, bool viewportHovered);
     void ToggleGamePreview(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void LaunchWindowedGamePreview(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     bool PrepareGamePreview(DocumentSceneBase& scene);
@@ -271,7 +267,6 @@ private:
     void DrawWorkspaceContent(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void DrawSceneWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void DrawCinematicsWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
-    void DrawTerrainSurfaceWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     // 布景：視口・摆放（置く物・機位・物体）・检查器・灯光与画面。場面の物体と履歴は場面の工作区と同じ経路。
     void DrawLookDevWorkspace(DocumentSceneBase& scene, EDITOR::EditorPlaySession& playSession);
     void DrawLookDevPlaceWindow(DocumentSceneBase& scene);
@@ -439,8 +434,6 @@ private:
     void TickAgentPanel();
     void RecordAgentOperation(const std::string& action, const EDITOR::EditorOperationResult& result);
     EDITOR::AGENT::AgentPanelState agentPanel_{};
-    EDITOR::EditorOperationResult ExecuteTerrainOperation(EDITOR::TerrainAuthoringOperation operation,
-                                                          const nlohmann::json& parameters);
     EDITOR::EditorOperationResult ExecuteSceneObjectOperation(EDITOR::SceneObjectOperation operation,
                                                               const nlohmann::json& parameters);
     EDITOR::EditorOperationResult ExecuteAiCapturePreview(const nlohmann::json& parameters);
@@ -496,14 +489,6 @@ private:
     Camera3D sceneViewEditorCameraSnapshot_{};
     DebugCameraController3D sceneViewDebugCameraSnapshot_{};
     bool historyExternalDirty_ = false;
-    bool terrainStrokeActive_ = false;
-    bool terrainBrushStrokeChanged_ = false;
-    SceneObjectId terrainBrushTargetObjectId_{};
-    RuntimeObjectHandle terrainBrushTargetRuntimeHandle_{};
-    SceneComponentId terrainBrushTargetComponentId_{};
-    MATH::Vec3 terrainBrushPreviousLocalHit_{};
-    bool terrainBrushHasPreviousLocalHit_ = false;
-    bool terrainBrushDirtyBefore_ = false;
     struct LookDevObjectDrag {
         SceneObjectId objectId{};
         std::string label{};

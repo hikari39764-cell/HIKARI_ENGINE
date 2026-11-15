@@ -1,4 +1,5 @@
 #include <array>
+#include <cmath>
 #include <cstdio>
 #include <memory>
 #include <string>
@@ -7,12 +8,16 @@
 #include <vector>
 
 #include "HIKARI/Project/GameComponent.h"
+#include "HIKARI/Project/NavigationSource.h"
 #include "HIKARI/Project/WorldQuery.h"
 #include "HIKARI/Project/WorldView.h"
 #include "HIKARI/Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
+#include "Physics/Backends/Jolt/HIKARI_JoltPhysicsBackend.h"
+#include "Physics/HIKARI_PhysicsWorldService.h"
 #include "Scene/Components/HIKARI_IComponent.h"
 #include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
+#include "Scene/Navigation/HIKARI_NavigationWorldService.h"
 #include "Tools/Tests/Internal/HIKARI_ContractAssert.h"
 
 namespace {
@@ -214,10 +219,130 @@ void TestExpiredWorldQuery() {
     assert(result.code == HIKARI::GameProjectWorldQueryResultCode::InvalidWorld);
 }
 
+// SDK の静的高さ場：穴は空洞になり、穴の無い呼び出しと壊れた穴マスクは従来どおり扱われる。
+void VerifyHeightFieldHoles() {
+    using namespace HIKARI;
+    using namespace PHYSICS;
+    World world;
+    PhysicsWorldService physics;
+    assert(physics.InstallBackend(CreateJoltPhysicsBackend()) && physics.AttachWorld(world) &&
+           world.Services().Register(physics));
+    const WorldView view = GameProjectSdkAccess::MakeWorldView(world);
+    std::vector<float> heights(17u * 17u, 0.0f);
+    std::vector<uint8_t> holes(heights.size(), 0u);
+    for (size_t z = 6u; z <= 10u; ++z)
+        for (size_t x = 6u; x <= 10u; ++x)
+            holes[z * 17u + x] = 1u;
+    const auto owner = GameProjectSdkAccess::MakeObjectView(*world.CreateObject("heightfield")).GetHandle();
+    const uint64_t solid = view.AddStaticHeightField(owner, 32.0f, 0.0f, 1.0f, 17u, heights);
+    const uint64_t cut = view.AddStaticHeightField(owner, 0.0f, 0.0f, 1.0f, 17u, heights, holes);
+    assert(solid != 0u && cut != 0u);
+    assert(view.AddStaticHeightField({}, 64.0f, 0.0f, 1.0f, 17u, heights, std::span(holes).first(1u)) == 0u);
+    PhysicsRaycastQuery ray;
+    ray.direction = {0, -1, 0};
+    ray.maxDistance = 20.0f;
+    PhysicsHit hit;
+    for (const float x : {2.0f, 40.0f}) {
+        ray.origin = {x, 10.0f, 8.0f};
+        assert(physics.Raycast(ray, hit) && std::fabs(hit.position.y) <= 0.02f);
+    }
+    ray.origin = {8.0f, 10.0f, 8.0f};
+    assert(!physics.Raycast(ray, hit));
+    PhysicsBodyCreateInfo box;
+    box.body.object = world.CreateObject("falling box")->GetRuntimeHandle();
+    box.body.motionType = PhysicsMotionType::Dynamic;
+    box.initialPose.position = {8.0f, 3.0f, 8.0f};
+    box.shapes.emplace_back().halfExtents = {0.25f, 0.25f, 0.25f};
+    const auto falling = physics.CreateBody(box);
+    box.initialPose.position.x = 2.0f;
+    box.body.object = world.CreateObject("standing box")->GetRuntimeHandle();
+    const auto standing = physics.CreateBody(box);
+    assert(falling.Succeeded() && standing.Succeeded());
+    for (int tick = 0; tick < 90; ++tick)
+        assert(physics.Step(1.0f / 60.0f).Succeeded());
+    PhysicsBodyState below, above;
+    assert(physics.TryGetBodyState(falling.handle, below) && physics.TryGetBodyState(standing.handle, above));
+    assert(below.pose.position.y <= -3.0f && std::fabs(above.pose.position.y - 0.25f) <= 0.05f);
+    view.RemoveStaticHeightField(cut);
+    view.RemoveStaticHeightField(solid);
+    physics.DetachWorld();
+}
+
+// モジュールの道案内ソース：版が変われば差分で作り直し、古い作業は公開せず、ソースが消えれば結果も消える。
+class FlatNavigationSource final : public HIKARI::INavigationGeometrySource {
+public:
+    float height = 0.0f;
+    uint64_t revision = 1u;
+
+    uint32_t GetNavigationChunkCount() const override { return 1u; }
+    bool GetNavigationChunk(uint32_t index, int32_t& outX, int32_t& outZ, uint64_t& outRevision) const override {
+        if (index != 0u)
+            return false;
+        outX = 0;
+        outZ = 0;
+        outRevision = revision;
+        return true;
+    }
+    void AppendNavigationChunk(int32_t, int32_t, HIKARI::INavigationGeometrySink& sink) const override {
+        const float xyz[] = {0.0f, height, 0.0f, 32.0f, height, 0.0f, 32.0f, height, 32.0f, 0.0f, height, 32.0f};
+        const int32_t triangles[] = {0, 2, 1, 0, 3, 2};
+        sink.Append(xyz, triangles);
+    }
+    void Raise(float value) {
+        height = value;
+        ++revision;
+    }
+};
+
+void VerifyNavigationSourcePublication() {
+    using namespace HIKARI;
+    using namespace NAVIGATION;
+    World world;
+    FlatNavigationSource source;
+    world.AddNavigationGeometrySource(source);
+    NavigationWorldService nav;
+    assert(nav.Synchronize(world) && nav.GetDiagnostics().fullBuildCount == 1);
+    MATH::Vec3 projected, points[8];
+    uint8_t flags[8]{};
+    const MATH::Vec3 extents{1, 3, 1};
+    assert(nav.ProjectPoint(world, {6, 1, 6}, extents, projected));
+    const auto initial = nav.GetSourceRevision();
+    assert(nav.Synchronize(world) && nav.GetDiagnostics().unchangedStampFastPaths == 1);
+    const auto path = nav.FindPath(world, {6, 1, 6}, {24, 1, 24}, extents, points, flags, 8);
+    assert(path.status == QueryStatus::Success && path.pointCount >= 2 && path.pathLength >= 20);
+    assert(nav.FindPath(world, {6, 1, 6}, {24, 1, 24}, extents, points, flags, 1).status ==
+           QueryStatus::BufferTooSmall);
+    float distance = 0;
+    assert(nav.Raycast(world, {6, 1, 6}, {24, 1, 24}, extents, projected, distance) && distance >= 0.99f);
+    source.Raise(0.25f);
+    assert(nav.Synchronize(world) && nav.GetSourceRevision() != initial &&
+           nav.GetDiagnostics().incrementalBuildCount == 1);
+    assert(nav.ProjectPoint(world, {6, 1, 6}, extents, projected) && projected.y >= 0.2f);
+    source.Raise(0.5f);
+    const auto liveRevision = nav.GetSourceRevision();
+    nav.Synchronize(world, SynchronizationMode::Background);
+    assert(nav.GetDiagnostics().buildPending && nav.GetSourceRevision() == liveRevision);
+    source.Raise(0.75f);
+    assert(nav.Synchronize(world) && nav.GetDiagnostics().discardedBuildCount == 1 &&
+           !nav.GetDiagnostics().buildPending);
+    assert(nav.ProjectPoint(world, {6, 1, 6}, extents, projected) && projected.y >= 0.7f);
+    source.Raise(1.0f);
+    nav.Synchronize(world, SynchronizationMode::Background);
+    nav.Clear();
+    assert(!nav.GetDiagnostics().buildPending && !nav.ProjectPoint(world, {6, 1, 6}, extents, projected) &&
+           nav.Synchronize(world));
+    world.RemoveNavigationGeometrySource(source);
+    assert(!nav.Synchronize(world) && nav.GetSourceRevision() == 0u &&
+           !nav.ProjectPoint(world, {6, 1, 6}, extents, projected));
+    nav.Clear();
+}
+
 } // namespace
 
 int main() {
     TestPublicWorldQueries();
     TestExpiredWorldQuery();
+    VerifyHeightFieldHoles();
+    VerifyNavigationSourcePublication();
     return 0;
 }

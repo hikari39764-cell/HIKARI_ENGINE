@@ -38,7 +38,6 @@
 #include "Scene/HIKARI_World.h"
 #include "Scene/Features/HIKARI_RuntimeExtension.h"
 #include "Scene/Features/HIKARI_RuntimeFeatureCatalog.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/Ui/HIKARI_GameUiPresentationService.h"
 #include "Scene/Vfx/HIKARI_ActionPostReactionService.h"
 #include "Scene/Vfx/HIKARI_FluidInteractionService.h"
@@ -82,7 +81,6 @@ struct DocumentSceneRuntimeState {
     // composition root が所有し、WaterSurfaceQueryService は借用する。
     std::unique_ptr<WATER::IWaterBathymetryProvider> waterBathymetryProvider{};
     WATER::WaterSurfaceQueryService waterSurfaceQueryService{};
-    TERRAIN::TerrainSurfaceQueryService terrainSurfaceQueryService{};
     PresentationModelService presentationModelService{};
     LocalFogService localFogService{};
     FluidInteractionService fluidInteractionService{};

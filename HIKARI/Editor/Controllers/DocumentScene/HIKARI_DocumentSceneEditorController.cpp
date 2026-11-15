@@ -229,8 +229,7 @@ bool DocumentSceneEditorController::IsUserEditingScene() const {
     // 文字の入力欄（智能体への依頼など）は数えない。マウスで動かしている間だけ。布景の寸法・开口の手柄は離した時に
     // 押し始めの設定から書き戻すので、その間に智能体が同じ形を変えると上書きされる。
     return viewportTransformHistory_.Active() || lookDevDrag_.has_value() || lookDevShapeDrag_.has_value() ||
-           lookDevMainLightDrag_ || terrainStrokeActive_ ||
-           (ImGui::IsAnyItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left));
+           lookDevMainLightDrag_ || (ImGui::IsAnyItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left));
 }
 
 EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneObjectOperation(
@@ -242,26 +241,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteSceneObjectO
     if (context.history)
         CommitSceneObjectAuthoringHistory(*aiOperationScene_, std::move(*context.history));
     return result;
-}
-
-EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteTerrainOperation(
-    EDITOR::TerrainAuthoringOperation operation, const nlohmann::json& parameters) {
-    auto* scene = aiOperationScene_;
-    if (!scene)
-        return {false, "NO_SCENE", "Scene context unavailable."};
-    const bool externalDirtyBefore = IsDirtyOutsideHistory(*scene);
-    auto output = operation(*scene, parameters);
-    if (output.command)
-        CommitAppliedDocumentCommand(*scene, std::move(output.command), 0u, externalDirtyBefore,
-                                     EDITOR::EditorDocumentImpact::None);
-    if (output.reveal.value) {
-        SelectViewportObjects(*scene, {output.reveal}, EditorObjectSelectionMode::Replace);
-        EDITOR::EditorWorkspaceOpenRequest request;
-        request.workspaceId = EDITOR::EditorWorkspaceId::TerrainSurface;
-        if (!workspaceHost_.RequestOpen(std::move(request)))
-            output.result.details.push_back("Terrain edited, but the workspace could not be opened.");
-    }
-    return std::move(output.result);
 }
 
 DocumentSceneEditorController::~DocumentSceneEditorController() { Shutdown(); }

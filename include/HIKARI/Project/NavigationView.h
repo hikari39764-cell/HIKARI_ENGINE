@@ -13,7 +13,7 @@ struct GameProjectSdkAccess;
 // It is valid only while that World remains alive and must be used from
 // the main gameplay thread; queries are not re-entrant or thread-safe.
 // The host prepares navigation once at Play entry and once per frame, so
-// query calls never rebuild terrain or retain caller buffers. IsValid()
+// query calls never rebuild the navigation mesh or retain caller buffers. IsValid()
 // describes only the World lease; when the optional Navigation Feature
 // is inactive, FindPath returns Unavailable and other queries return
 // false without installing or building a navigation service.

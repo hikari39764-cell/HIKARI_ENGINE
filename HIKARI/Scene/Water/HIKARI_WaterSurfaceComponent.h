@@ -104,7 +104,7 @@ inline constexpr auto kWaterSurfaceFields = [](auto&& field) {
     field("waves", &S::waves, Label{"Wave"}, Elements{kWaterGerstnerWaveFields}, Group{"Geometric Waves"});
 };
 
-// 独立した水面コンポーネント。TerrainSurface とは分離し、
+// 独立した水面コンポーネント。
 // 単一の GameObject が外観と波形だけを保持する。
 class WaterSurfaceComponent final : public IComponent {
 public:

@@ -5,7 +5,6 @@
 #include <unordered_map>
 
 #include "Physics/HIKARI_PhysicsTypes.h"
-#include "Physics/HIKARI_TerrainCollisionProjection.h"
 #include "Scene/HIKARI_ISystem.h"
 
 namespace HIKARI {
@@ -98,10 +97,8 @@ private:
     const RuntimePlayStateService* runtimePlayState_ = nullptr;
     std::unordered_map<uint64_t, BodyBinding> bindings_{};
     // 完全な body descriptor を確保する前に軽量 source signature を見る。
-    // 未変更 terrain は毎 frame 数百 chunk shape を再構築/hash しない。
     std::unordered_map<uint64_t, uint64_t> definitionSourceSignatures_{};
     std::unordered_map<uint64_t, ReconcileFailure> failures_{};
-    TerrainCollisionProjectionCache terrainCollisionProjections_{};
     PhysicsStepResult lastStepResult_{};
     // 编辑器暂停期间仍可能修改碰撞几何。进入 Play 时必须强制重新
     // reconcile 一次，不能只依赖 frameIndex（它可能从 0 重新开始）。

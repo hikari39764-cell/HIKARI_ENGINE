@@ -24,7 +24,5 @@ inline constexpr std::array kEditorWorkspacePresentations{
     EditorWorkspacePresentation{EditorWorkspaceId::RuntimeBinding, "menu.workspace.runtimeBinding",
                                 EditorGlyph::Dependency},
     EditorWorkspacePresentation{EditorWorkspaceId::Vfx, "menu.workspace.vfx", EditorGlyph::Vfx},
-    EditorWorkspacePresentation{EditorWorkspaceId::Dialogue, "menu.workspace.dialogue", EditorGlyph::List},
-    EditorWorkspacePresentation{EditorWorkspaceId::TerrainSurface, "menu.workspace.terrainSurface",
-                                EditorGlyph::TerrainRaise}};
+    EditorWorkspacePresentation{EditorWorkspaceId::Dialogue, "menu.workspace.dialogue", EditorGlyph::List}};
 } // namespace HIKARI::EDITOR

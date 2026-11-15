@@ -19,7 +19,6 @@ enum class EditorWorkspaceId : uint8_t {
     RuntimeBinding,
     Vfx,
     Dialogue,
-    TerrainSurface,
     Project,
     GameplayCamera,
     Text,
@@ -42,7 +41,6 @@ constexpr std::string_view EditorWorkspaceOperationId(EditorWorkspaceId id) noex
     case EditorWorkspaceId::RuntimeBinding: return "runtime_binding";
     case EditorWorkspaceId::Vfx: return "vfx";
     case EditorWorkspaceId::Dialogue: return "dialogue";
-    case EditorWorkspaceId::TerrainSurface: return "terrain_surface";
     case EditorWorkspaceId::Project: return "project";
     default: return "general";
     }

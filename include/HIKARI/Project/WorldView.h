@@ -54,7 +54,6 @@ class SaveGameView;
 class SceneCaptureView;
 class SceneFlowView;
 class SequenceView;
-class TerrainView;
 class TimeDilationView;
 class UiView;
 class VfxView;
@@ -240,7 +239,6 @@ public:
     HIKARI_GAME_PROJECT_SDK_API MotionView GetMotion() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API PhysicsQueryView GetPhysicsQueries() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API NavigationView GetNavigation() const noexcept;
-    HIKARI_GAME_PROJECT_SDK_API TerrainView GetTerrain() const noexcept;
     HIKARI_GAME_PROJECT_SDK_API LocalFogView GetLocalFog() const noexcept;
     // VFX の流体烟雾を押す障碍物・冲量・力（毎フレーム提出）。
     HIKARI_GAME_PROJECT_SDK_API FluidView GetFluid() const noexcept;

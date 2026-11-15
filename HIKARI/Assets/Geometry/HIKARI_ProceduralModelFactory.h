@@ -20,7 +20,7 @@ struct ClusterGeometryPackedBytes;
 
 namespace HIKARI::PROCEDURAL {
 
-// 実行時に生成する clustered geometry（手続き形状・地形の草など）の HCMESH 置き場：
+// 実行時に生成する clustered geometry（手続き形状など）の HCMESH 置き場：
 // <project>/Library/Generated/<category>/<sourceId>-hcmesh<版>.hcmesh。Shipping では同梱物があればそれを使い、
 // 無ければ利用者のキャッシュ（<runtime user>/Cache/Generated/...）へ書く。
 std::filesystem::path ResolveGeneratedClusterGeometryPath(const std::filesystem::path& projectRoot,
@@ -44,7 +44,7 @@ struct ProceduralModelDebugStats {
 const ModelAsset* GetOrCreateModel(const ProceduralMeshSettings& settings);
 std::string GetOrCreateClusteredGeometryPath(const ProceduralMeshSettings& settings,
                                              const std::filesystem::path& projectRoot);
-// 高密度 terrain response 用 model/hcmesh を worker で準備する。
+// 高密度な手続き形状の model/hcmesh を worker で準備する。
 // Try は main thread を cook せず、model と path の両方が publish 済みの
 // ときだけ true を返す。
 void RequestClusteredGeometryWarmUp(const ProceduralMeshSettings& settings, const std::filesystem::path& projectRoot);

@@ -31,7 +31,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteAiCapturePre
         switch (workspace) {
         case EditorWorkspaceId::Scene:
         case EditorWorkspaceId::LookDev:
-        case EditorWorkspaceId::TerrainSurface:
         case EditorWorkspaceId::Cinematics: view = RENDER3D::kPrimaryRenderViewId; break;
         case EditorWorkspaceId::GameplayCamera:
             view = aiOperationScene_->IsRuntimePlayActive()
@@ -92,13 +91,11 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteBackgroundSc
     if (aiOperationScene_->IsRuntimePlayActive())
         return {false, "PLAY_ACTIVE", "Stop Play before editing the scene."};
     if (ImGui::IsAnyItemActive() && (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::Scene) ||
-                                     workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev) ||
-                                     workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::TerrainSurface)))
+                                     workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev)))
         return {false, "DOCUMENT_BUSY", "用户正在编辑场景。请等待当前操作完成后重试。"};
     auto& scene = *aiOperationScene_;
     const auto selection = context_.selection;
     const auto windows = context_.windows;
-    const auto terrain = context_.terrainTool;
     const auto camera = scene.GetCamera();
     const std::optional<EDITOR::EditorWorkspaceOpenRequest> pending =
         workspaceHost_.PeekPending() ? std::optional{*workspaceHost_.PeekPending()} : std::nullopt;
@@ -106,7 +103,6 @@ EDITOR::EditorOperationResult DocumentSceneEditorController::ExecuteBackgroundSc
         context_.selection = selection;
         context_.selection.RepairObjectSelection(scene.GetWorld(), selection.GetActiveObjectId());
         context_.windows = windows;
-        context_.terrainTool = terrain;
         scene.GetCamera() = camera;
         workspaceHost_.CancelPending();
         if (pending)

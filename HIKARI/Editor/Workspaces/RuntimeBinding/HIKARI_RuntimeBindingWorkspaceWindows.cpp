@@ -96,7 +96,7 @@ void RuntimeBindingWorkspaceController::DrawToolbarWindow(DocumentSceneBase& sce
     ToolbarDivider();
     ImGui::SameLine();
 
-    if (IconTextButton(EditorGlyph::Add, TEXT::Localize("ui.terrain.proceduralBlendAdd").c_str(), "RuntimeBindingAdd",
+    if (IconTextButton(EditorGlyph::Add, TEXT::Localize("ui.common.add").c_str(), "RuntimeBindingAdd",
                        EditorButtonTone::Neutral, ImVec2(0.0f, 28.0f),
                        TEXT::Localize("editor.ui.create.a.variable.or.event.29a9e7").c_str())) {
         ImGui::OpenPopup("AddRuntimeBindingItem");

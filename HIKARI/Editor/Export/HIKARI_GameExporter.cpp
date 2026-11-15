@@ -319,15 +319,8 @@ bool WriteRuntimeConfig(const std::filesystem::path& outputDirectory, const Game
     return true;
 }
 
-// 地形の機能（地表の触れ合いは地形を要る）を使わない項目は、地形と砂の内蔵テクスチャを運ばない。
-// 実行時の登録は、この二つの領域が丸ごと無ければ省いたものとして扱う（RegisterEngineContentTextures）。
-bool ProjectUsesTerrainContent(const std::vector<std::string>& enabledRuntimeFeatures) {
-    return std::any_of(enabledRuntimeFeatures.begin(), enabledRuntimeFeatures.end(),
-                       [](const std::string& id) { return id == "Terrain" || id == "SurfaceInteraction"; });
-}
-
 bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const std::filesystem::path& outputDirectory,
-                                bool includeTerrainContent, std::string& errorMessage) {
+                                std::string& errorMessage) {
     const std::filesystem::path engineContentSource = runtimeRoot / "EngineContent";
     std::error_code engineContentError{};
     if (!std::filesystem::is_directory(engineContentSource, engineContentError) || engineContentError) {
@@ -354,12 +347,12 @@ bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const 
         const std::string_view domain = std::string_view(key).substr(0u, separator);
         const std::string_view local =
             separator == std::string::npos ? std::string_view{} : std::string_view(key).substr(separator + 1u);
-        const bool textureDomain = domain == "sand" || domain == "terrain" || domain == "vfx" || domain == "painterly";
+        const bool textureDomain = domain == "vfx" || domain == "painterly";
         const bool textureSource =
             textureDomain && local.starts_with("textures/") && !local.starts_with("textures/cooked/");
-        const bool surfaceSource =
-            (domain == "terrain" || domain == "painterly") && (local.starts_with("sources/") || local == "readme.md");
-        const bool unusedTerrain = !includeTerrainContent && (domain == "terrain" || domain == "sand");
+        const bool surfaceSource = domain == "painterly" && (local.starts_with("sources/") || local == "readme.md");
+        // 旧地形の内蔵テクスチャは、どの機能も使わなくなったので運ばない。
+        const bool unusedTerrain = domain == "terrain" || domain == "sand";
         if (IsForbiddenGamePackagePath(std::filesystem::path("EngineContent") / relative) || textureSource ||
             surfaceSource || unusedTerrain) {
             sourceOnlyExclusions.insert(key);
@@ -372,24 +365,6 @@ bool CopyInstalledEngineContent(const std::filesystem::path& runtimeRoot, const 
     if (!CopyDirectoryChecked(engineContentSource, outputDirectory / "EngineContent", errorMessage, false,
                               &sourceOnlyExclusions)) {
         return false;
-    }
-    // 運ばなかった地形・砂の領域は、複写がフォルダだけ作るので空のフォルダごと取り除く（ファイルが残っていれば触らない）。
-    if (!includeTerrainContent) {
-        for (const char* domain : {"Terrain", "Sand"}) {
-            const std::filesystem::path root = outputDirectory / "EngineContent" / domain;
-            std::error_code ec{};
-            bool empty = true;
-            for (std::filesystem::recursive_directory_iterator it(root, ec), last; !ec && it != last;
-                 it.increment(ec)) {
-                if (it->is_regular_file(ec)) {
-                    empty = false;
-                    break;
-                }
-            }
-            if (empty) {
-                std::filesystem::remove_all(root, ec);
-            }
-        }
     }
     return true;
 }
@@ -629,9 +604,7 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
     if (!ValidateGameExportIdentity(projectRoot, identity, cookManifestError))
         return {false, {}, cookManifestError};
     ProjectSettingsService projectSettings{};
-    bool includeTerrainContent = true;
     if (projectSettings.Load(projectRoot)) {
-        includeTerrainContent = ProjectUsesTerrainContent(projectSettings.GetSettings().enabledRuntimeFeatures);
         if (effectiveOptions.startupSceneGuid.empty() &&
             IsValidAssetGuid(projectSettings.GetSettings().startupSceneGuid.value)) {
             effectiveOptions.startupSceneGuid = projectSettings.GetSettings().startupSceneGuid.value;
@@ -779,7 +752,7 @@ GameExportResult GameExporter::Export(const GameExportOptions& options) {
                                                       errorMessage) ||
         !WriteRuntimeConfig(stagingDirectory, effectiveOptions, renderQuality,
                             cookManifest.allowTraditionalGeometryFallback, errorMessage) ||
-        !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, includeTerrainContent, errorMessage)) {
+        !CopyInstalledEngineContent(sourceExe.parent_path(), stagingDirectory, errorMessage)) {
         result.message = errorMessage;
         HIKARI_LOG_WARN(std::string("[GameExporter] ") + result.message);
         return result;

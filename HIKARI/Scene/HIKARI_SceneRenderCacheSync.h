@@ -19,18 +19,6 @@ class SceneRenderCache;
 
 class SceneRenderCacheSync {
 public:
-    struct DebugStats {
-        uint64_t terrainFullProjectionCount = 0u;
-        uint64_t terrainIncrementalProjectionCount = 0u;
-        uint64_t terrainProjectionReuseCount = 0u;
-        uint64_t terrainProjectedVertexCount = 0u;
-        uint64_t terrainProjectionAllocationCount = 0u;
-        uint64_t terrainResponseWarmRequestCount = 0u;
-        uint64_t terrainResponseWarmPendingCount = 0u;
-        uint64_t terrainGrassRenderInstanceCount = 0u;
-        uint64_t terrainGrassRenderSkippedCount = 0u;
-    };
-
     SceneRenderCacheSync();
     ~SceneRenderCacheSync();
     SceneRenderCacheSync(const SceneRenderCacheSync&) = delete;
@@ -49,8 +37,6 @@ public:
                    const AssetRegistry* assetRegistry = nullptr, std::filesystem::path projectRoot = {},
                    RENDER3D::RenderViewPurpose purpose = RENDER3D::RenderViewPurpose::Game,
                    ModelManager* modelManager = nullptr);
-
-    const DebugStats& GetDebugStats() const noexcept;
 
 private:
     struct State;

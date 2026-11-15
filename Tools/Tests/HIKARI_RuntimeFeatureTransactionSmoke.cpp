@@ -569,13 +569,6 @@ int main(int, char** argv) {
         assert(builtIn.FindOwningFeatureForComponent("LightComponent") == HIKARI::RuntimeFeatureIds::Lighting);
         assert(builtIn.FindOwningFeatureForSystem("WaterSurfaceSystem") == HIKARI::RuntimeFeatureIds::Water);
         assert(builtIn.FindOwningFeatureForComponent("BuoyancyComponent") == HIKARI::RuntimeFeatureIds::Buoyancy);
-        assert(builtIn.FindOwningFeatureForComponent("TerrainSurfaceComponent") == HIKARI::RuntimeFeatureIds::Terrain);
-        assert(builtIn.FindOwningFeatureForComponent("TerrainSurfaceFollowerComponent") ==
-               HIKARI::RuntimeFeatureIds::SurfaceInteraction);
-        assert(builtIn.FindOwningFeatureForSystem("TerrainInteractionSourceSystem") ==
-               HIKARI::RuntimeFeatureIds::SurfaceInteraction);
-        assert(builtIn.FindOwningFeatureForSystem("TerrainSurfaceSystem") ==
-               HIKARI::RuntimeFeatureIds::SurfaceInteraction);
         const auto resolution = builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::Buoyancy)});
         assert(resolution.success);
         assert((resolution.resolvedFeatures ==
@@ -583,14 +576,6 @@ int main(int, char** argv) {
                                          std::string(HIKARI::RuntimeFeatureIds::Water),
                                          std::string(HIKARI::RuntimeFeatureIds::Physics),
                                          std::string(HIKARI::RuntimeFeatureIds::Buoyancy)}));
-        const auto surfaceResolution =
-            builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::SurfaceInteraction)});
-        assert(surfaceResolution.success);
-        assert((surfaceResolution.resolvedFeatures ==
-                std::vector<std::string>{std::string(HIKARI::RuntimeFeatureIds::Rendering),
-                                         std::string(HIKARI::RuntimeFeatureIds::Terrain),
-                                         std::string(HIKARI::RuntimeFeatureIds::Physics),
-                                         std::string(HIKARI::RuntimeFeatureIds::SurfaceInteraction)}));
         const auto navigationResolution =
             builtIn.ResolveEnabledFeatures({std::string(HIKARI::RuntimeFeatureIds::Navigation)});
         assert(navigationResolution.success);

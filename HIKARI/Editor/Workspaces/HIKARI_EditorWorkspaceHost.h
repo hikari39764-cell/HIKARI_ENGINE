@@ -38,8 +38,6 @@ public:
     const EditorViewInstance& GetModelMaterialCompareView() const noexcept;
     EditorViewInstance& GetVfxPreviewView() noexcept;
     const EditorViewInstance& GetVfxPreviewView() const noexcept;
-    EditorViewInstance& GetTerrainSurfaceGameView() noexcept;
-    const EditorViewInstance& GetTerrainSurfaceGameView() const noexcept;
     EditorViewInstance* FindView(RENDER3D::RenderViewId renderViewId) noexcept;
     const EditorViewInstance* FindView(RENDER3D::RenderViewId renderViewId) const noexcept;
 
@@ -51,7 +49,6 @@ private:
         ModelMaterialPreview,
         ModelMaterialCompare,
         VfxPreview,
-        TerrainSurfaceGame,
         GameplayCameraObserver,
         GameplayCameraPreview,
         Count,

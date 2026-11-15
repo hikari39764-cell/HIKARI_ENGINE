@@ -207,7 +207,7 @@ bool DocumentSceneBase::BeginRuntimePlay(std::string_view spawnPointId, uint64_t
         RuntimeSceneContext::ResolvePendingSceneEntry(state_->runtime.world, state_->identity.sceneId);
     }
     // Navigation is prepared at the Play boundary so the first enemy
-    // query cannot synchronously scan and build the whole terrain.
+    // query cannot synchronously scan and build the whole navigation mesh.
     if (NAVIGATION::NavigationWorldService* navigation =
             state_->runtime.world.Services().Find<NAVIGATION::NavigationWorldService>()) {
         (void)navigation->Synchronize(state_->runtime.world);
@@ -358,8 +358,6 @@ bool DocumentSceneBase::RegisterRuntimeFeatures() {
 bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     const bool physicsEnabled = state_->runtime.featureCatalog.IsFeatureActive(RuntimeFeatureIds::Physics);
     const bool waterEnabled = state_->runtime.featureCatalog.IsFeatureActive(RuntimeFeatureIds::Water);
-    const bool surfaceInteractionEnabled =
-        state_->runtime.featureCatalog.IsFeatureActive(RuntimeFeatureIds::SurfaceInteraction);
     const bool navigationEnabled = state_->runtime.featureCatalog.IsFeatureActive(RuntimeFeatureIds::Navigation);
     const bool vfxEnabled = state_->runtime.featureCatalog.IsFeatureActive(RuntimeFeatureIds::Vfx);
     const bool actionPresentationEnabled =
@@ -384,7 +382,6 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     state_->runtime.fluidInteractionService.Clear();
     state_->runtime.sceneCaptureService.Reset();
     state_->runtime.runtimeObjectActivityService.Clear();
-    state_->runtime.terrainSurfaceQueryService.Clear();
     state_->runtime.waterSurfaceQueryService.Clear();
     state_->runtime.navigationWorldService.Clear();
     MESHRENDERER::ReleaseParticleNamespace(state_->runtime.vfxPlaybackService.GetPlaybackNamespace());
@@ -497,7 +494,6 @@ bool DocumentSceneBase::ConfigureRuntimeWorldServices() {
     success = services.Register(state_->runtime.gameUiPresentationService) && success;
     success = services.Register(state_->runtime.dialogueSessionService) && success;
     success = (!waterEnabled || services.Register(state_->runtime.waterSurfaceQueryService)) && success;
-    success = (!surfaceInteractionEnabled || services.Register(state_->runtime.terrainSurfaceQueryService)) && success;
     success = services.Register(state_->camera.sequencePlayback) && success;
     success = services.Register(state_->runtime.sceneCaptureService) && success;
     success = services.Register(state_->runtime.playStateService) && success;

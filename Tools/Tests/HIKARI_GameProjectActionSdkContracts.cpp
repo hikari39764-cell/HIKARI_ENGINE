@@ -37,7 +37,6 @@
 #include <HIKARI/Project/SpriteMaterialView.h>
 #include <HIKARI/Project/SpriteShader.h>
 #include <HIKARI/Project/RuntimeRegistration.h>
-#include <HIKARI/Project/TerrainView.h>
 #include <HIKARI/Project/UiTypes.h>
 #include <HIKARI/Project/UiView.h>
 #include <HIKARI/Project/ValueTypes.h>
@@ -155,7 +154,6 @@ static_assert(sizeof(HIKARI::RuntimeSessionView) == sizeof(void*));
 static_assert(sizeof(HIKARI::WorldView) == sizeof(void*));
 static_assert(sizeof(HIKARI::ProjectDataView) == sizeof(HIKARI::GameProjectWorldHandle));
 static_assert(sizeof(HIKARI::NavigationView) == sizeof(void*));
-static_assert(sizeof(HIKARI::TerrainView) == sizeof(void*));
 static_assert(sizeof(HIKARI::GameProjectNavigationPathPoint) == 16u);
 static_assert(sizeof(HIKARI::GameProjectNavigationPathResult) == 12u);
 static_assert(sizeof(HIKARI::ObjectView) == sizeof(HIKARI::GameProjectObjectHandle));
@@ -635,7 +633,6 @@ static_assert(HasAddress(&HIKARI::WorldView::GetAnimation));
 static_assert(HasAddress(&HIKARI::WorldView::GetMotion));
 static_assert(HasAddress(&HIKARI::WorldView::GetPhysicsQueries));
 static_assert(HasAddress(&HIKARI::WorldView::GetNavigation));
-static_assert(HasAddress(&HIKARI::WorldView::GetTerrain));
 static_assert(HasAddress(&HIKARI::WorldView::GetCamera));
 static_assert(HasAddress(&HIKARI::WorldView::GetTimeDilation));
 static_assert(HasAddress(&HIKARI::WorldView::GetPresentationModels));
@@ -653,7 +650,6 @@ static_assert(HasAddress(&HIKARI::NavigationView::ProjectPoint));
 static_assert(HasAddress(&HIKARI::NavigationView::FindPath));
 static_assert(HasAddress(&HIKARI::NavigationView::Raycast));
 static_assert(HasAddress(&HIKARI::NavigationView::GetSourceRevision));
-static_assert(HasAddress(&HIKARI::TerrainView::IsTerrainSurfaceAt));
 static_assert(HasAddress(&HIKARI::RuntimeFeatureContext::RegisterMassRenderProxy));
 
 // The two existing view surfaces are also included to catch accidental

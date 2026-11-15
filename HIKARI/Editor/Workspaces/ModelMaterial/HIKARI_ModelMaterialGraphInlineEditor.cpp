@@ -218,7 +218,7 @@ bool ModelMaterialWorkspaceController::DrawMaterialGraphNodeInlineControls(Docum
         int alphaMode = static_cast<int>(source.surface.alphaMode);
         const char* kAlphaModes[]{TEXT::Localize("ui.inspector.worldSprite.alphaOpaque").c_str(),
                                   TEXT::Localize("ui.vfx.uvTarget.Mask").c_str(),
-                                  TEXT::Localize("ui.terrain.rampBlend").c_str()};
+                                  TEXT::Localize("ui.materialGraph.rampBlend").c_str()};
         ImGui::SetNextItemWidth(width);
         if (ImGui::Combo("##SurfaceAlphaMode", &alphaMode, kAlphaModes, 3)) {
             MaterialAssetData before = source;
