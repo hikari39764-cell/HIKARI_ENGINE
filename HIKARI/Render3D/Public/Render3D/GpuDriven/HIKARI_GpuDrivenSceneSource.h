@@ -12,7 +12,6 @@
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
-#include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuData.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
@@ -74,7 +73,6 @@ struct GpuDrivenSceneSource {
     const std::vector<GpuSceneSurfaceRecord>* surfaceRecords = nullptr;
     GpuSceneJointPaletteSnapshotPtr meshShaderJointPalettes{};
     const std::vector<WATER::WaterSurfaceGpuData>* waterSurfaceGpuData = nullptr;
-    const std::vector<TERRAIN::TerrainSurfaceGpuData>* terrainSurfaceGpuData = nullptr;
     // 材質 program を持つ面があるか。無ければ Forward は標準 PBR の PSO だけを dispatch する。
     bool materialProgramSurfacesPresent = false;
     RUNTIME::SurfaceFeatureFloatPoolSource surfaceFeatureFloats{};

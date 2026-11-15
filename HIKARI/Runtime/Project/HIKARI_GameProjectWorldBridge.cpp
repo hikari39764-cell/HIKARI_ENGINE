@@ -1,5 +1,4 @@
 #include "HIKARI/Project/WorldView.h"
-#include "HIKARI/Project/TerrainView.h"
 
 #include <algorithm>
 #include <cmath>
@@ -8,7 +7,6 @@
 #include "Runtime/Project/Internal/HIKARI_GameProjectAuthoringInternal.h"
 #include "Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h"
 #include "Scene/HIKARI_GameObject.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
 #include "Scene/HIKARI_World.h"
 
 namespace HIKARI {
@@ -210,34 +208,6 @@ bool WorldView::ReadCommandFailure(uint32_t index, GameProjectWorldCommandFailur
 uint32_t WorldView::GetCommandFailureOverflowCount() const noexcept {
     const World* world = GameProjectSdkAccess::GetWorld(*this);
     return world != nullptr ? world->GetCommandFailureOverflowCount() : 0u;
-}
-
-TerrainView GameProjectSdkAccess::MakeTerrainView(World& world) noexcept { return TerrainView(&world); }
-
-TerrainView WorldView::GetTerrain() const noexcept {
-    World* world = GameProjectSdkAccess::GetWorld(*this);
-    return world != nullptr ? GameProjectSdkAccess::MakeTerrainView(*world) : TerrainView{};
-}
-
-bool TerrainView::IsTerrainSurfaceAt(GameProjectFloat3 worldPosition, float maximumVerticalDistance) const noexcept {
-    try {
-        if (world_ == nullptr || !std::isfinite(worldPosition.x) || !std::isfinite(worldPosition.y) ||
-            !std::isfinite(worldPosition.z) || !std::isfinite(maximumVerticalDistance) ||
-            maximumVerticalDistance < 0.0f || maximumVerticalDistance > 10.0f) {
-            return false;
-        }
-        auto* world = static_cast<World*>(world_);
-        TERRAIN::TerrainSurfaceQueryService* query = world->Services().Find<TERRAIN::TerrainSurfaceQueryService>();
-        if (query == nullptr) {
-            return false;
-        }
-        float height = 0.0f;
-        MATH::Vec3 normal{};
-        return query->SampleWorldHeight({worldPosition.x, worldPosition.y, worldPosition.z}, height, normal) &&
-               std::abs(worldPosition.y - height) <= maximumVerticalDistance;
-    } catch (...) {
-        return false;
-    }
 }
 
 } // namespace HIKARI

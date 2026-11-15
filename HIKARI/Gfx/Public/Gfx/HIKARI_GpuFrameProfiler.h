@@ -81,7 +81,6 @@ enum class Pass : uint32_t {
     // 前向き不透明の Meshlet Draw Forward の中を、描く PSO の種類で分けた入れ子の区間。
     MeshletForwardStandard,
     MeshletForwardMaterialProgram,
-    MeshletForwardTerrain,
     GameUi,
     // 流体の解算（Fluid Simulation）と描画（Fluid Render）の中を工程で分けた入れ子の区間。解算は子步ごとに計る。
     FluidSolveActivity,

@@ -69,7 +69,6 @@ if(HIKARI_WITH_EDITOR_BUILD)
     hikari_add_contract(GameplayCameraContracts camera Editor)
     target_sources(HIKARI_GameplayCameraContracts PRIVATE
         "${HIKARI_SOURCE_ROOT}/Tools/Tests/HIKARI_KinematicMotionContracts.cpp")
-    hikari_add_contract(TerrainSurfaceContracts terrain Editor)
     foreach(name IN ITEMS NativeVfxSmoke VfxPresetSmoke VfxSpecialOutputSmoke)
         hikari_add_contract(${name} vfx Editor)
     endforeach()

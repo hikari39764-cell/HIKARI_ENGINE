@@ -27,7 +27,7 @@ constexpr OwnerInfo kOwners[] = {
     {"fluids", Kind::PerFrame, "Fluid domain substep constants and source tables."},
     {"gpuScene", Kind::SceneData, "GPU scene instance records (full or dirty-range patches)."},
     {"massScene", Kind::SceneData, "Mass render proxy records (full or dirty-range patches)."},
-    {"surfaceFeatures", Kind::SceneData, "Terrain and water surface records and their float pools."},
+    {"surfaceFeatures", Kind::SceneData, "Water surface records and the shared surface float pool."},
     {"worldSprites", Kind::SceneData, "World sprite instance records."},
     {"materials", Kind::SceneData, "Material data and material program blocks."},
     {"jointPalettes", Kind::SceneData, "Skinning joint matrices."},

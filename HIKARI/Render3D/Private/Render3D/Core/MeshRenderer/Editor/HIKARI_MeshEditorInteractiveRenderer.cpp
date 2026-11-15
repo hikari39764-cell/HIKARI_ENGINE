@@ -12,6 +12,7 @@
 #include "Render3D/Core/MeshRenderer/Bindings/HIKARI_MeshResourceBindings.h"
 #include "Render3D/Core/MeshRenderer/Data/HIKARI_MeshDrawDataBuilder.h"
 #include "Render3D/Core/MeshRenderer/Internal/HIKARI_MeshRendererInternal.h"
+#include "Render3D/Extensions/HIKARI_RenderSurfaceRuntime.h"
 #include "Render3D/GpuDriven/HIKARI_GpuDrivenWorkBuilder.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneJointPaletteUpload.h"
 #include "Render3D/Lighting/HIKARI_IblEnvironment.h"
@@ -231,8 +232,17 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     MeshPassResources passResources = settings.passResources;
     passResources.compositionTarget = settings.targetAccess;
     passResources.fallbackAoTextureHandle = gMeshRendererState.fallbackTextureHandle;
+    // モジュールの面（地形と草など）：主視点がこのフレームに準備したものを、この視点の相机で描く。主視点と同じく不透明の
+    // 網より先に描き、深度は Forward で書く（この経路には深度の前段が無い）。
+    const SurfaceRecordCamera surfaceCamera{&overrides, cameraData.viewProj, cameraPosition};
+    const bool moduleSurfaces = RENDER3D::SURFACE_EXTENSIONS::PrepareForView(graphics, view.surfaceExtensions);
+    const bool moduleDepthAware = moduleSurfaces && RENDER3D::SURFACE_EXTENSIONS::HasDepthAwareWork();
     const bool stylizedSurfacePassReady = ExecuteEditorInteractiveStylizedSurfacePass(
         graphics, screenWidth, screenHeight, settings, passResources, layer, overrides);
+    if (moduleSurfaces &&
+        !RecordViewSurfaceExtensions(graphics, RenderSurfacePass::Forward, passResources, surfaceCamera)) {
+        return EditorInteractiveMeshRenderResult::ForwardPassFailed;
+    }
     const GeometryBackendExecutionResult opaqueResult = ExecuteEditorInteractiveGeometryBackendPlan(
         graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardOpaque, passResources, MeshDrawPassKind::Forward,
         RENDER3D::MESHLET::MeshletPipelineKind::ForwardOpaque, layer, overrides);
@@ -243,7 +253,7 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
         layer.GetPassExecutionState(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware).hasSource;
     const bool hasTransparentSource =
         layer.GetPassExecutionState(RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardTransparent).hasSource;
-    if (hasDepthAwareSource || hasTransparentSource) {
+    if (hasDepthAwareSource || moduleDepthAware || hasTransparentSource) {
         const RENDER3D::RenderTextureView opaqueSceneColor =
             settings.captureSceneColor != nullptr ? settings.captureSceneColor(settings.targetAccess.userData)
                                                   : RENDER3D::RenderTextureView{};
@@ -255,9 +265,10 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
     }
 
     GeometryBackendExecutionResult depthAwareResult{};
-    const bool needsDepthRead = hasDepthAwareSource || settings.renderDepthAwareOverlay != nullptr;
+    bool moduleDepthAwareResult = true;
+    const bool needsDepthRead = hasDepthAwareSource || moduleDepthAware || settings.renderDepthAwareOverlay != nullptr;
     if (needsDepthRead) {
-        if ((hasDepthAwareSource && !passResources.sceneDepth.IsSampleable()) ||
+        if (((hasDepthAwareSource || moduleDepthAware) && !passResources.sceneDepth.IsSampleable()) ||
             !settings.targetAccess.BeginDepthRead()) {
             return EditorInteractiveMeshRenderResult::ForwardPassFailed;
         }
@@ -266,10 +277,16 @@ EditorInteractiveMeshRenderResult RenderEditorInteractiveOpaque(const RENDER3D::
                 graphics, RENDER3D::GPUDRIVEN::GpuDrivenPassKind::ForwardDepthAware, passResources,
                 MeshDrawPassKind::Forward, RENDER3D::MESHLET::MeshletPipelineKind::ForwardDepthAware, layer, overrides);
         }
+        moduleDepthAwareResult =
+            !moduleDepthAware ||
+            RecordViewSurfaceExtensions(graphics, RenderSurfacePass::DepthAware, passResources, surfaceCamera);
         if (settings.renderDepthAwareOverlay != nullptr) {
             settings.renderDepthAwareOverlay(settings.depthAwareOverlayUserData);
         }
         settings.targetAccess.EndDepthRead();
+    }
+    if (!moduleDepthAwareResult) {
+        return EditorInteractiveMeshRenderResult::ForwardPassFailed;
     }
     // 流体の煙：水の後、透明物体の前に重ねる（粒子は相機体積で手前の煙を受ける）。描けないフレームは煙だけを飛ばす。
     if (gMeshRendererState.fluidPass.HasRenderableDomains() && passResources.sceneDepth.IsSampleable() &&

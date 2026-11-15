@@ -22,7 +22,7 @@ constexpr UINT kJobConstantCount = 20u;
 constexpr uint32_t kThreadsPerGroup = 64u;
 constexpr D3D12_RESOURCE_STATES kReadState = D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE;
 
-// shader の RayTracingDeformJob と同じ並び（world の 1..3 行、番号、数、骨格、出力位置、種類）。
+// shader の RayTracingDeformJob と同じ並び（world の 1..3 行、番号、数、骨格、出力位置）。
 std::array<uint32_t, kJobConstantCount> PackJob(const RuntimeRayTracingDeformJob& job) {
     std::array<uint32_t, kJobConstantCount> constants{};
     std::array<float, 12> rows{};
@@ -35,7 +35,6 @@ std::array<uint32_t, kJobConstantCount> PackJob(const RuntimeRayTracingDeformJob
     constants[14] = job.paletteOffsetBytes;
     constants[15] = job.paletteMatrixCount;
     constants[16] = job.outputBase;
-    constants[17] = job.kind;
     return constants;
 }
 } // namespace
@@ -54,15 +53,13 @@ bool RuntimeRayTracingDeformation::EnsurePipeline(const GFX::Context& graphics) 
     if (pipelineFailed_ || !GFX::SupportsShaderModel6(graphics.device))
         return false;
     pipelineFailed_ = true;
-    std::array<CD3DX12_ROOT_PARAMETER, 6> parameters;
+    std::array<CD3DX12_ROOT_PARAMETER, 4> parameters;
     CD3DX12_DESCRIPTOR_RANGE geometry;
     geometry.Init(D3D12_DESCRIPTOR_RANGE_TYPE_SRV, GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaCapacity, 0, 1);
     parameters[0].InitAsConstants(kJobConstantCount, 0);
     parameters[1].InitAsShaderResourceView(0, 3); // 骨格の行列（描画と同じ upload arena）
     parameters[2].InitAsDescriptorTable(1, &geometry);
     parameters[3].InitAsUnorderedAccessView(0);
-    parameters[4].InitAsShaderResourceView(4, 7); // 地形の記録（描画と同じ t4,space7）
-    parameters[5].InitAsShaderResourceView(1, 7); // 地形の高さ場の float pool（t1,space7）
     const CD3DX12_ROOT_SIGNATURE_DESC rootDesc(UINT(parameters.size()), parameters.data());
     if (!HIKARI_DX_CHECK(GFX::CreateRootSignature(graphics.device, rootDesc, root_.GetAddressOf()),
                          "RayTracingDeform root signature"))
@@ -104,18 +101,11 @@ bool RuntimeRayTracingDeformation::EnsurePool(const GFX::Context& graphics, uint
 
 bool RuntimeRayTracingDeformation::Dispatch(const GFX::Context& graphics,
                                             std::span<const RuntimeRayTracingDeformJob> jobs,
-                                            D3D12_GPU_VIRTUAL_ADDRESS palettes,
-                                            D3D12_GPU_VIRTUAL_ADDRESS terrainRecords,
-                                            D3D12_GPU_VIRTUAL_ADDRESS surfaceFloats) {
+                                            D3D12_GPU_VIRTUAL_ADDRESS palettes) {
     if (jobs.empty())
         return true;
-    bool skinned = false, terrain = false;
-    for (const RuntimeRayTracingDeformJob& job : jobs) {
-        skinned = skinned || job.kind == kRuntimeRayTracingDeformSkinned;
-        terrain = terrain || job.kind == kRuntimeRayTracingDeformTerrain;
-    }
-    if (!pool_ || (skinned && palettes == 0) || (terrain && (terrainRecords == 0 || surfaceFloats == 0)) ||
-        graphics.cmdList == nullptr || graphics.srvHeap == nullptr || !EnsurePipeline(graphics))
+    if (!pool_ || palettes == 0 || graphics.cmdList == nullptr || graphics.srvHeap == nullptr ||
+        !EnsurePipeline(graphics))
         return false;
     auto* commands = graphics.cmdList;
     GFX::PIX::ScopedGpuEvent event(commands, GFX::PIX::kColorRender, "RayTracing.Deform");
@@ -130,14 +120,10 @@ bool RuntimeRayTracingDeformation::Dispatch(const GFX::Context& graphics,
     commands->SetComputeRootSignature(root_.Get());
     commands->SetPipelineState(pipeline_.Get());
     const UINT stride = graphics.device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
-    // 使わない種類の資源も有効な番地を束ねる（pool は常にある）。
-    const D3D12_GPU_VIRTUAL_ADDRESS fallback = pool_->GetGPUVirtualAddress();
-    commands->SetComputeRootShaderResourceView(1, palettes != 0 ? palettes : fallback);
+    commands->SetComputeRootShaderResourceView(1, palettes);
     commands->SetComputeRootDescriptorTable(
         2, GFX::DESCRIPTOR::GpuAt(graphics.srvHeap, stride, GFX::DESCRIPTOR::kClusterGeometryDescriptorArenaBegin));
     commands->SetComputeRootUnorderedAccessView(3, pool_->GetGPUVirtualAddress());
-    commands->SetComputeRootShaderResourceView(4, terrainRecords != 0 ? terrainRecords : fallback);
-    commands->SetComputeRootShaderResourceView(5, surfaceFloats != 0 ? surfaceFloats : fallback);
     for (const RuntimeRayTracingDeformJob& job : jobs) {
         if (job.vertexCount == 0)
             continue;

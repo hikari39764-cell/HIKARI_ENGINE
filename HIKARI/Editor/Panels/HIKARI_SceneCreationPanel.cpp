@@ -101,11 +101,6 @@ void SceneCreationPanel::DrawCreationMenu(DocumentSceneBase& scene, EditorContex
             return EDITOR::CreateWaterSurfaceObject(scene, request, WATER::WaterSurfaceGeometryMode::FiniteAuthored);
         });
     }
-    if (menuItem("ui.sceneCreation.terrain")) {
-        createInView("Create Terrain", [&](const CreateObjectRequest& request) {
-            return EDITOR::CreateTerrainSurfaceObject(scene, request);
-        });
-    }
     if (menuItem("ui.sceneCreation.dialogueTrigger")) {
         createInView("Create Dialogue Trigger", [&](const CreateObjectRequest& request) {
             return EDITOR::CreateDialogueTriggerObject(scene, request);

@@ -126,10 +126,6 @@ bool CreateShadowDepthPipelineState(ShadowRendererState& state, const GFX::Conte
     params[PIPELINE::kShadowStaticRootParamCullingCamera] = MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_CBV, 9);
     params[PIPELINE::kShadowStaticRootParamDeformationPalettes] =
         MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 3);
-    params[PIPELINE::kShadowStaticRootParamTerrainSurfaceData] =
-        MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 4, 7);
-    params[PIPELINE::kShadowStaticRootParamSurfaceFeatureFloats] =
-        MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 1, 7);
     params[PIPELINE::kShadowStaticRootParamMaterialProgramParameters] =
         MakeRootDescriptor(D3D12_ROOT_PARAMETER_TYPE_SRV, 0, 6);
     params[PIPELINE::kShadowStaticRootParamMaterialProgramResources] =
@@ -207,7 +203,7 @@ bool CreateShadowPipelineState(ShadowRendererState& state, const GFX::Context& g
     }
     state.clusterGpuDrivenProducer.Attach(&state.clusterGpuCullingPass);
     state.gpuDrivenLayer.Attach(&state.surfaceGpuSceneBuffer, nullptr, &state.traditionalCommandStreamBuffer,
-                                &state.clusterGpuDrivenProducer, nullptr, &state.terrainSurfaceGpuFrameBuffer);
+                                &state.clusterGpuDrivenProducer);
     if (!state.gpuDrivenLayer.Initialize(device, state.rootSig.Get(),
                                          PIPELINE::kShadowStaticRootParamSurfaceGpuSceneControl,
                                          RENDER3D::GPUDRIVEN::kGpuTraditionalCommandStreamRootConstantCount)) {

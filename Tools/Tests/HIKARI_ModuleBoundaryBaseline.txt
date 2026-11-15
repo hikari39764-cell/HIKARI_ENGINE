@@ -119,13 +119,6 @@ Scene/HIKARI_SceneRenderCacheSync.cpp -> Animation/Runtime/HIKARI_AnimationPoseS
 Scene/HIKARI_SceneTransitionBus.cpp -> Runtime/Services/HIKARI_RuntimeServices.h
 Scene/HIKARI_WorldPrefabInstancing.cpp -> Runtime/Project/Internal/HIKARI_GameProjectTransformBridgeInternal.h
 Scene/HIKARI_WorldPrefabInstancing.cpp -> Runtime/Project/Internal/HIKARI_GameProjectWorldBridgeInternal.h
-Scene/Navigation/HIKARI_NavigationGeometry.cpp -> Physics/HIKARI_TerrainCollisionProjection.h
-Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_KinematicMotionService.h
-Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_PhysicsRuntimeStatusService.h
-Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_PhysicsSceneBridge.h
-Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_PhysicsTypes.h
-Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_PhysicsWorldService.h
-Scene/Terrain/HIKARI_TerrainInteractionSourceSystem.cpp -> Physics/HIKARI_TerrainCollisionProjection.h
 Scene/Vfx/HIKARI_VfxAttachmentResolver.cpp -> Animation/Runtime/HIKARI_AnimationPoseService.h
 Scene/Vfx/HIKARI_VfxAttachmentResolver.cpp -> Animation/Runtime/HIKARI_AnimationSocketService.h
 Scene/Vfx/HIKARI_VfxBindingResolver.h -> Runtime/Binding/HIKARI_RuntimeBindingStore.h

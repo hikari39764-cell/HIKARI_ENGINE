@@ -48,17 +48,6 @@ void BindShadowGpuDrivenFrameResources(ShadowRendererState& state, const GFX::Co
         cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamDeformationPalettes,
                                                frame.meshJointPaletteAddress);
     }
-    const D3D12_GPU_VIRTUAL_ADDRESS terrainDataAddress =
-        state.terrainSurfaceGpuFrameBuffer.GetRecordGpuVirtualAddress();
-    if (terrainDataAddress != 0u) {
-        cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamTerrainSurfaceData, terrainDataAddress);
-    }
-    const D3D12_GPU_VIRTUAL_ADDRESS terrainHeightAddress =
-        state.terrainSurfaceGpuFrameBuffer.GetFloatPoolGpuVirtualAddress();
-    if (terrainHeightAddress != 0u) {
-        cmd->SetGraphicsRootShaderResourceView(PIPELINE::kShadowStaticRootParamSurfaceFeatureFloats,
-                                               terrainHeightAddress);
-    }
     cmd->SetGraphicsRoot32BitConstant(PIPELINE::kShadowStaticRootParamMaterialIndex, 0u, 0);
 }
 

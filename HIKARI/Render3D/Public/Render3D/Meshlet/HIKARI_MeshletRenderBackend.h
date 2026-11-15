@@ -105,8 +105,6 @@ struct MeshletRenderExecutionContext {
     // GeometryAux が当該フレームの不透明面の深度を全部書いた（MeshPassResources::opaqueDepthComplete）。
     bool opaqueDepthComplete = false;
     ForwardShadingCostMode forwardCostMode = ForwardShadingCostMode::Full;
-    // Forward/GeometryAux は一般面と地形を別 PSO で描く。地形が無ければ地形 dispatch を省く。
-    bool terrainSurfacesPresent = false;
     // Forward は標準 PBR の面と材質 program の面を別 PSO で描く。program の面が無ければその dispatch を省く。
     bool materialProgramSurfacesPresent = false;
     // debug view 中の Forward は全経路 PSO で描き、分割前と同じ表示を保つ。
@@ -152,17 +150,11 @@ public:
                                           ForwardShadingCostMode costMode = ForwardShadingCostMode::Full) const;
 
 private:
-    // 地形専用 PSO を持つ kind だけ非 null。
-    ID3D12PipelineState* GetTerrainPipelineState(MeshletPipelineKind kind,
-                                                 GPUDRIVEN::GpuDrivenCommandBucket bucket) const;
-    // 分割した kind は分割したすべての PSO（一般面・材質 program・地形）が揃って初めて描ける。
-    void ApplySurfacePartitionReadiness();
+    // Forward は標準 PBR と材質 program の両方の PSO が揃って初めて描ける。
+    void ApplyMaterialProgramReadiness();
     // AS・MS・PS から bucket ごとの Forward PSO を作る。どれかが失敗すれば out を変えない。
     bool CreateForwardBucketPipelines(const char* amplificationId, const char* pixelId, const wchar_t* debugName,
                                       PipelineBucketArray& out);
-    // 診断モードで地形の面を描く PSO（全 mode を 1 つで扱い、mode を実行時に読む）。最初の要求時にだけ作り、
-    // 失敗は Reset まで再試行しない。通常の地形 PSO は Full だけを持つ。
-    bool PrepareTerrainDiagnosticPipelines();
     bool AreReflectionPipelinesReady(bool captureSubsurface) const;
 
     // 深度を読む Forward を光照贴图の有無で分けた PSO。AS が面の flag で可視範囲を振り分け、光照贴图の面の PS は探針を
@@ -180,7 +172,7 @@ private:
         }
     };
 
-    // Forward capture の PSO。captureSubsurface と深度の扱い（書く／読むだけ）ごとに標準 PBR の面・材質 program の面・地形を
+    // Forward capture の PSO。captureSubsurface と深度の扱い（書く／読むだけ）ごとに標準 PBR の面と材質 program の面を
     // 別 PSO で描く（通常の Forward と同じ分割。4 番目 = 次表面散乱の拡散光、持たない時は UNKNOWN）。
     static constexpr size_t kCaptureVariantCount = 4u;
     static size_t CaptureVariantIndex(bool captureSubsurface, bool readDepth) noexcept {
@@ -189,7 +181,6 @@ private:
     struct ReflectionCapturePipelines {
         std::array<PipelineBucketArray, kCaptureVariantCount> standard{};
         std::array<PipelineBucketArray, kCaptureVariantCount> program{};
-        std::array<PipelineBucketArray, kCaptureVariantCount> terrain{};
         // 深度を読む capture の光照贴图での分割（[次表面散乱の拡散光を持つか]）。
         std::array<LightingSplitPipelines, 2> lightingRead{};
     };
@@ -200,7 +191,6 @@ private:
     struct ReadDepthForwardPipelines {
         PipelineBucketArray standard{};
         PipelineBucketArray program{};
-        PipelineBucketArray terrain{};
         LightingSplitPipelines lighting{};
     };
     void CollectReadDepthPipelines();
@@ -229,13 +219,8 @@ private:
     PipelineBucketArray visibilityOverlayPipelineStates_{};
     PipelineBucketArray depthPrepassPipelineStates_{};
     PipelineBucketArray waterVisibilityPipelineStates_{};
-    PipelineBucketArray terrainForwardPipelineStates_{};
-    PipelineBucketArray terrainGeometryAuxPipelineStates_{};
-    PipelineBucketArray terrainGeometryFeatureMaskPipelineStates_{};
     PipelineBucketArray forwardDebugPipelineStates_{};
     bool forwardDebugAttempted_ = false;
-    PipelineBucketArray terrainDiagnosticPipelineStates_{};
-    bool terrainDiagnosticAttempted_ = false;
     uint32_t pipelineMask_ = MeshletPipelineMask::All;
     MeshletRenderBackendStats stats_{};
 };

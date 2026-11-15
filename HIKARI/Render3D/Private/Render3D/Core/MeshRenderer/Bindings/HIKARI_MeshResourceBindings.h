@@ -70,8 +70,6 @@ void BindSurfaceGpuSceneControl(const MeshBindingContext& ctx, uint32_t baseInst
 
 void BindSurfaceFeatureData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS featureDataAddress);
 
-void BindTerrainSurfaceData(const MeshBindingContext& ctx, D3D12_GPU_VIRTUAL_ADDRESS terrainDataAddress);
-
 void BindOceanSpectrumData(const MeshBindingContext& ctx, D3D12_GPU_DESCRIPTOR_HANDLE spectrumTable, bool valid,
                            uint32_t resolution);
 

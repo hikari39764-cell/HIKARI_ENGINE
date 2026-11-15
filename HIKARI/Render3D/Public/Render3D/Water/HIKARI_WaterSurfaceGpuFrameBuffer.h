@@ -5,7 +5,7 @@
 #include <cmath>
 #include <vector>
 
-#include "Render3D/Terrain/HIKARI_TerrainGpuFrameBuffer.h"
+#include "Render3D/Surface/HIKARI_SurfaceGpuFrameBuffer.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuData.h"
 
 namespace HIKARI::RENDER3D::WATER {
@@ -22,8 +22,8 @@ struct WaterSurfaceFrameBufferTraits {
 };
 
 class WaterSurfaceGpuFrameBuffer final
-    : public RENDER3D::TERRAIN::SurfaceGpuFrameBuffer<WaterSurfaceGpuData, WaterSurfaceFrameBufferTraits> {
-    using Base = RENDER3D::TERRAIN::SurfaceGpuFrameBuffer<WaterSurfaceGpuData, WaterSurfaceFrameBufferTraits>;
+    : public RENDER3D::SURFACE::SurfaceGpuFrameBuffer<WaterSurfaceGpuData, WaterSurfaceFrameBufferTraits> {
+    using Base = RENDER3D::SURFACE::SurfaceGpuFrameBuffer<WaterSurfaceGpuData, WaterSurfaceFrameBufferTraits>;
 
 public:
     bool Initialize(ID3D12Device* device) {

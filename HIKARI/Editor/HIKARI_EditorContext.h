@@ -9,7 +9,6 @@
 #include "Runtime/HIKARI_RuntimeResourceRefreshService.h"
 #include "Scene/Debug/HIKARI_ComponentGizmoRegistry.h"
 #include "Scene/Debug/HIKARI_ViewportDebugState.h"
-#include "Scene/Terrain/HIKARI_TerrainProcedural.h"
 
 namespace HIKARI {
 
@@ -24,40 +23,6 @@ enum class EditorTransformGizmoMode {
     Local,
 };
 
-enum class EditorTerrainToolMode : uint8_t {
-    Raise,
-    Lower,
-    Smooth,
-    Flatten,
-    Mound,
-    Pit,
-    Ridge,
-    Terrace,
-    Shaft,
-    Hole,
-    CliffOpening,
-    Ramp,
-    Noise,
-};
-
-enum class EditorTerrainPaintMode : uint8_t {
-    None,
-    Sand,
-    Snow,
-    Dirt,
-    Grass,
-    Rock,
-    Erase,
-};
-
-enum class EditorTerrainWorkspacePage : uint8_t {
-    Sculpt,
-    Paint,
-    Foliage,
-    Place,
-    Generate,
-};
-
 struct EditorTransformGizmoState {
     bool enabled = true;
     EditorTransformGizmoOperation operation = EditorTransformGizmoOperation::Translate;
@@ -68,38 +33,6 @@ struct EditorTransformGizmoState {
     MATH::Vec3 translateSnap{0.5f, 0.5f, 0.5f};
     float rotateSnapDeg = 15.0f;
     float scaleSnap = 0.1f;
-};
-
-// 地形工作区のセッション状態。ドキュメントには保存しない。
-struct EditorTerrainToolState {
-    // Terrain target is independent from the scene selection. This keeps
-    // sculpting stable and lets Place operate on selected props without
-    // losing the active terrain.
-    SceneObjectId targetObjectId{};
-    EditorTerrainWorkspacePage page = EditorTerrainWorkspacePage::Sculpt;
-    EditorTerrainToolMode mode = EditorTerrainToolMode::Raise;
-    EditorTerrainPaintMode paint = EditorTerrainPaintMode::None;
-    bool active = false;
-    bool hasHit = false;
-    MATH::Vec3 hitPoint{};
-    bool sampleHeightRequested = false;
-    bool sampledHeightReady = false;
-    float sampledHeight = 0.0f;
-    bool rampAnchorSet = false;
-    MATH::Vec3 rampStartLocal{};
-    float rampHalfWidth = 2.0f;
-    float rampShoulderWidth = 1.0f;
-    float rampBlendAmount = 1.0f;
-    float openingWidth = 3.0f;
-    float openingHeight = 3.0f;
-    float openingDepth = 2.0f;
-    float openingFeather = 0.20f;
-    float placementOffset = 0.0f;
-    TERRAIN::TerrainProceduralSpec procedural{};
-    TERRAIN::TerrainProceduralPreview proceduralPreview{};
-    bool proceduralPreviewRequested = false;
-    SceneObjectId proceduralPreviewObjectId{};
-    uint64_t proceduralPreviewTerrainRevision = 0u;
 };
 
 struct ViewportWindowState {
@@ -157,7 +90,6 @@ struct EditorContext {
     EditorAiIntegrationSettings aiIntegration{};
     ComponentGizmoState gizmos{};
     EditorTransformGizmoState transformGizmo{};
-    EditorTerrainToolState terrainTool{};
     ViewportOverlayState overlays{};
     ViewportPerformanceState viewportPerformance{};
     ViewportDebugViewState viewportDebug{};

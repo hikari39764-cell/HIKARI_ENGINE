@@ -3,13 +3,11 @@
 #include "Scene/HIKARI_RuntimeSceneContext.h"
 #include "Editor/Shell/HIKARI_EditorDockLayout.h"
 #include "Editor/Play/HIKARI_EditorPlaySession.h"
-#include "Editor/History/HIKARI_SceneComponentPropertiesHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSettingsHistoryCommand.h"
 #include "Editor/History/HIKARI_SceneSystemsHistoryCommand.h"
 #include "Editor/Widgets/HIKARI_EditorTexturePreview.h"
 #include "Editor/Widgets/HIKARI_MaterialTextureSlotWidget.h"
 #include "Editor/Workspaces/HIKARI_AssetWorkspaceActivationRouter.h"
-#include "Editor/Workspaces/TerrainSurface/HIKARI_TerrainPlacementAuthoring.h"
 #include "Editor/HIKARI_EditorViewportInput.h"
 #include "Runtime/Services/HIKARI_RuntimeServices.h"
 #include "Runtime/Presentation/HIKARI_FramePresentationService.h"
@@ -34,7 +32,6 @@
 namespace HIKARI {
 namespace {
 constexpr uint64_t kEnvironmentPanelMergeGroup = 0x454e5649524f4e4dull;
-constexpr uint64_t kTerrainSurfaceWorkspaceMergeGroup = 0x5445525241494e53ull;
 
 std::string SummarizeRuntimeRefreshReport(const RuntimeResourceRefreshReport& report) {
     return "Runtime refresh: texture " + std::to_string(report.textureInvalidatedCount) + ", sky " +
@@ -203,10 +200,6 @@ void DocumentSceneEditorController::DrawWorkspaceContent(DocumentSceneBase& scen
         DrawCinematicsWorkspace(scene, playSession);
         return;
     }
-    if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::TerrainSurface)) {
-        DrawTerrainSurfaceWorkspace(scene, playSession);
-        return;
-    }
     if (workspaceHost_.IsActive(EDITOR::EditorWorkspaceId::LookDev)) {
         DrawLookDevWorkspace(scene, playSession);
         return;
@@ -274,56 +267,6 @@ void DocumentSceneEditorController::DrawCinematicsWorkspace(DocumentSceneBase& s
     }
     FinishWorkspaceFrame(scene, false, result.statusMessage);
     SaveRenderQualityWhenIdle(scene);
-}
-
-void DocumentSceneEditorController::DrawTerrainSurfaceWorkspace(DocumentSceneBase& scene,
-                                                                EDITOR::EditorPlaySession& playSession) {
-    terrainSurfaceWorkspaceController_.DrawDockSpace(
-        workspaceHost_.ConsumeReset(EDITOR::EditorWorkspaceId::TerrainSurface));
-    DrawOptionalGameViewport(scene, playSession, "TerrainSurface/GameView");
-    const bool externalDirtyBefore = IsDirtyOutsideHistory(scene);
-    EDITOR::TerrainSurfaceWorkspaceResult terrainResult = terrainSurfaceWorkspaceController_.Draw(scene, context_);
-    if (terrainResult.componentChanged) {
-        std::unique_ptr<EDITOR::IEditorDocumentCommand> command =
-            terrainResult.terrainDelta
-                ? EDITOR::MakeSceneTerrainSurfaceEditDeltaHistoryCommand(
-                      terrainResult.historyLabel.empty() ? "Edit Terrain Surface" : terrainResult.historyLabel,
-                      terrainResult.objectId, terrainResult.componentId, std::move(terrainResult.beforePatch),
-                      std::move(terrainResult.afterPatch), EDITOR::EditorDocumentImpact::RuntimeWorld)
-                : EDITOR::MakeSceneComponentPropertiesPatchHistoryCommand(
-                      "Edit Terrain Surface Settings", terrainResult.objectId, terrainResult.componentId,
-                      std::move(terrainResult.beforePatch), std::move(terrainResult.afterPatch),
-                      EDITOR::EditorDocumentImpact::RuntimeWorld);
-        CommitAppliedDocumentCommand(scene, std::move(command),
-                                     terrainResult.editActive ? kTerrainSurfaceWorkspaceMergeGroup : 0u,
-                                     externalDirtyBefore, EDITOR::EditorDocumentImpact::None);
-    }
-    if (terrainResult.placeSelectionRequested) {
-        std::vector<SceneObjectData> beforeObjects = scene.GetSceneDocument().objects;
-        const SceneCameraSettings beforeCamera = scene.GetSceneDocument().camera;
-        const EDITOR::TerrainPlacementResult placement = EDITOR::PlaceSelectedObjectsOnTerrain(
-            scene, context_.selection, terrainResult.terrainTargetObjectId, terrainResult.placementOffset);
-        if (!placement.changedObjectIds.empty()) {
-            CommitSceneObjectAuthoringHistory(scene, SceneObjectAuthoringHistoryRequest{
-                                                         "Place Objects on Terrain",
-                                                         std::move(beforeObjects),
-                                                         scene.GetSceneDocument().objects,
-                                                         beforeCamera,
-                                                         scene.GetSceneDocument().camera,
-                                                         externalDirtyBefore,
-                                                         true,
-                                                         false,
-                                                     });
-            viewportDropMessage_ =
-                "Placed " + std::to_string(placement.changedObjectIds.size()) + " object(s) on terrain.";
-        } else {
-            viewportDropMessage_ = "No selected object intersects the active terrain.";
-        }
-    }
-    if (!terrainResult.editActive) {
-        documentHistory_.SealMerge();
-    }
-    DrawPendingSceneOpenModal(scene);
 }
 
 void DocumentSceneEditorController::DrawSceneWorkspace(DocumentSceneBase& scene,

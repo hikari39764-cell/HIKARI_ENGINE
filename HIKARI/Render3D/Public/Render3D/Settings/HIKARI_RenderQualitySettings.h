@@ -60,7 +60,7 @@ inline constexpr TEXT::EnumName<GeometryPipelineMode> kGeometryPipelineModeLabel
 // 前向き不透明の診断モード。Full は通常の描画（標準 PBR の面は専用 PS、材質 program の面は別 PS）で、それ以外は一般面
 // すべてを描く 1 本の PS から 1 項目だけを省く。GeneralFull は何も省かない同じ PS で、診断モードの差を測る基準にする
 // （Full との差が専用 PS の効果）。SSR / 次表面散乱の capture 中は PSO を切り替えず、capture の PS が mode を
-// 実行時に読んで省く。地形の PS は NoShadow だけを読む。HLSL の HIKARI_FORWARD_COST_* と BuiltinShaderCatalog.json の
+// 実行時に読んで省く。HLSL の HIKARI_FORWARD_COST_* と BuiltinShaderCatalog.json の
 // 診断 PS の define は、この列挙の番号と同じ並びにする。
 enum class ForwardShadingCostMode : uint8_t {
     Full = 0,

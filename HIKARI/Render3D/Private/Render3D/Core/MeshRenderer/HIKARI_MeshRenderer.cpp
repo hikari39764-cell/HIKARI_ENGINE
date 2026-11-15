@@ -135,7 +135,7 @@ void SetGpuDrivenSceneSource(const RENDER3D::GPUDRIVEN::GpuDrivenSceneSource* so
         gMeshRendererState.gpuDrivenSceneSource.sourceInstanceCount == source->sourceInstanceCount &&
         gMeshRendererState.gpuDrivenSceneSource.sourceRecordCount == source->sourceRecordCount) {
         gMeshRendererState.gpuDrivenSceneSource.dirtyBaseSourceVersion = source->dirtyBaseSourceVersion;
-        // float pool は record 配置と独立に差分更新される。
+        // float pool は record 配置と独立に更新される。
         gMeshRendererState.gpuDrivenSceneSource.surfaceFeatureFloats = source->surfaceFeatureFloats;
         for (size_t passIndex = 0; passIndex < RENDER3D::GPUDRIVEN::kGpuDrivenPassCount; ++passIndex) {
             gMeshRendererState.gpuDrivenSceneSource.passes[passIndex].dirtyRanges =
@@ -383,15 +383,6 @@ RENDER3D::LIGHTING::CloudSolarVisibilityGpuData GetFluidSolarVisibility() {
 RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings() {
     const MeshFrameResources& frame = GetActiveMeshFrameResources();
     return frame.view.Bindings().localLights;
-}
-
-TerrainSurfaceGpuBindings GetTerrainSurfaceGpuBindings() {
-    const auto& buffer = gMeshRendererState.terrainSurfaceGpuFrameBuffer;
-    const auto* terrain = gMeshRendererState.gpuDrivenSceneSource.terrainSurfaceGpuData;
-    if (terrain == nullptr || terrain->size() <= 1u)
-        return {};
-    return {buffer.GetRecordGpuVirtualAddress(), buffer.GetFloatPoolGpuVirtualAddress(),
-            gMeshRendererState.gpuDrivenSceneSource.surfaceFeatureFloats.version};
 }
 
 void EndFrame() {

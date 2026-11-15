@@ -189,7 +189,7 @@ bool EnsureCaptureResources(SecondaryMeshViewResources& resources, const GFX::Co
         &resources.surfaceGpuSceneBuffer, nullptr,
         resources.traditionalCommandStreamReady ? &resources.traditionalCommandStreamBuffer : nullptr,
         resources.clusterGpuDrivenReady ? &resources.clusterGpuDrivenProducer : nullptr,
-        &resources.waterSurfaceGpuFrameBuffer, &gMeshRendererState.terrainSurfaceGpuFrameBuffer);
+        &resources.waterSurfaceGpuFrameBuffer, &gMeshRendererState.surfaceFeatureFloatGpuBuffer);
     if (!resources.gpuDrivenLayer.Initialize(device, GetStaticRootSignature(gMeshRendererState.pipelines),
                                              ROOT_PARAM::SurfaceGpuSceneControl, 4u)) {
         ResetCaptureResources(resources);

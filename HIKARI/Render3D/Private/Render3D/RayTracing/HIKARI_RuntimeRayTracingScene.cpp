@@ -291,7 +291,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             state.stats.sourceSurfaces = state.sourceSurfaceCount;
             state.stats.excluded = state.lastExcluded;
             // 蒙皮は配置が同じでも毎フレーム動く。頂点を変形して BLAS と TLAS をその場で refit する。
-            if (!state.deformed.empty() && (!state.DeformAndRefit(graphics, source, budget, surfaces) ||
+            if (!state.deformed.empty() && (!state.DeformAndRefit(graphics, source, budget) ||
                                             (state.deformedRefreshed && !state.topLevel->RefitInPlace(graphics)))) {
                 state.deformationBroken = true;
                 return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
@@ -317,15 +317,12 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
         if (!record.visible)
             continue;
         ++state.stats.sourceSurfaces;
-        // 骨格の蒙皮は描画と同じ骨格の行列で、地形は高さ場で頂点を変形して入れる（変形の pass が使えない時は外す）。
+        // 骨格の蒙皮は描画と同じ骨格の行列で頂点を変形して入れる（変形の pass が使えない時は外す）。
         // 風に揺れる植生・自定义頂点・材質特効は静止した形で入れる（拡散 GI と反射には足りる。影は揺れを追わない）。
         const auto exclusion = ClassifyRayExclusion(record);
         const bool deformSkin = exclusion == Skinned && record.jointPaletteMatrixCount != 0 && !state.deformationBroken;
-        const bool deformTerrain = exclusion == Terrain && record.terrainSurfaceGpuDataIndex != 0 &&
-                                   surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0 &&
-                                   !state.deformationBroken;
         const bool approximate = exclusion == FoliageWind || exclusion == CustomVertex || exclusion == MaterialEffect;
-        if (exclusion && !deformSkin && !deformTerrain && !approximate) {
+        if (exclusion && !deformSkin && !approximate) {
             excluded.Add(*exclusion, record.castShadow);
             continue;
         }
@@ -343,7 +340,7 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             continue;
         }
         included[i] = true;
-        deforms[i] = deformSkin || deformTerrain;
+        deforms[i] = deformSkin;
     }
     state.stats.sharedAssets = static_cast<uint32_t>(state.assets.size());
     ++state.serial;
@@ -371,12 +368,10 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
             materialSlots[i], (record.key.doubleSided ? 1u : 0u) | (record.castShadow ? 2u : 0u) |
                                   (record.key.transparent ? kRuntimeRayTracingHitTransmissive : 0u)};
         if (deforms[i]) {
-            Deformed& entry = state.deformed[{record.objectId.value, record.objectLifetimeGeneration, assetKey,
-                                              record.terrainSurface ? record.terrainSurfaceGpuDataIndex : 0u}];
+            Deformed& entry = state.deformed[{record.objectId.value, record.objectLifetimeGeneration, assetKey}];
             if (entry.touched != state.serial) {
                 entry.touched = state.serial;
                 entry.asset = asset;
-                entry.terrain = record.terrainSurface;
                 entry.records.clear();
                 entry.surfaces.assign(asset->source->surfaceRanges.size(), {0xffffffffu, 0u});
             }
@@ -563,9 +558,9 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
         entry.job.outputBase = static_cast<uint32_t>(deformedBytes);
         deformedBytes += (uint64_t(entry.job.vertexCount) * kRuntimeRayTracingDeformedVertexBytes + 255u) & ~255ull;
     }
-    if (!state.deformed.empty() && (deformedBytes > UINT32_MAX || deformedBytes > state.Available(budget) ||
-                                    !state.deformation.EnsurePool(graphics, deformedBytes) ||
-                                    !state.DeformAndRefit(graphics, source, budget, surfaces))) {
+    if (!state.deformed.empty() &&
+        (deformedBytes > UINT32_MAX || deformedBytes > state.Available(budget) ||
+         !state.deformation.EnsurePool(graphics, deformedBytes) || !state.DeformAndRefit(graphics, source, budget))) {
         state.deformationBroken = true;
         return state.Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
     }
@@ -813,7 +808,6 @@ RuntimeRayTracingFrame RuntimeRayTracingScene::Prepare(
     state.materialCount = materials.size();
     state.recordUses = std::move(recordUses);
     state.groupUses = std::move(groupUses);
-    state.terrainBound = surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0;
     return state.Publish(graphics, budget);
 }
 

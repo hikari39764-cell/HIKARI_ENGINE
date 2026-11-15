@@ -9,6 +9,7 @@
 #include "Core/HIKARI_Logger.h"
 #include "Core/Text/HIKARI_Localization.h"
 #include "Editor/Project/HIKARI_GameProjectEditorModuleLibrary.h"
+#include "Editor/Project/HIKARI_GameProjectEditorWorkspaceUi.h"
 #include "Editor/Views/HIKARI_EditorViewportGeometry.h"
 #include "Platform/HIKARI_Win32Window.h"
 #include "Render3D/Core/HIKARI_Camera3D.h"
@@ -39,8 +40,10 @@ bool CallModule(const std::string& moduleId, const std::string& itemId, Call&& c
 
 class ViewportCanvas final : public EDITOR_PROJECT::IEditorViewportCanvas {
 public:
-    ViewportCanvas(const Camera3D& camera, const SceneViewportRect& viewport, ImDrawList& drawList)
-        : viewProjection_(camera.GetViewProj()), viewport_(viewport), drawList_(drawList) {}
+    // textOwner は工具を持つモジュール。案内の字はその文字表で引く（作業区の面板と同じ）。
+    ViewportCanvas(const Camera3D& camera, const SceneViewportRect& viewport, ImDrawList& drawList,
+                   std::string_view textOwner)
+        : viewProjection_(camera.GetViewProj()), viewport_(viewport), drawList_(drawList), textOwner_(textOwner) {}
 
     void DrawLine(const GameProjectFloat3& from, const GameProjectFloat3& to,
                   EDITOR_PROJECT::EditorWorkspaceColor color, float thickness) override {
@@ -65,12 +68,13 @@ public:
     }
 
     void DrawHint(std::string_view utf8Text, EDITOR_PROJECT::EditorWorkspaceColor color) override {
+        const std::string_view shown = ModuleDisplayText(textOwner_, utf8Text);
         const ImVec2 position(viewport_.x + 14.0f, viewport_.y + 14.0f + 22.0f * static_cast<float>(hintLines_++));
-        const ImVec2 size = ImGui::CalcTextSize(utf8Text.data(), utf8Text.data() + utf8Text.size());
+        const ImVec2 size = ImGui::CalcTextSize(shown.data(), shown.data() + shown.size());
         drawList_.AddRectFilled(ImVec2(position.x - 6.0f, position.y - 2.0f),
                                 ImVec2(position.x + size.x + 6.0f, position.y + size.y + 2.0f), IM_COL32(0, 0, 0, 170),
                                 3.0f);
-        drawList_.AddText(position, ToColor(color), utf8Text.data(), utf8Text.data() + utf8Text.size());
+        drawList_.AddText(position, ToColor(color), shown.data(), shown.data() + shown.size());
     }
 
 private:
@@ -89,6 +93,7 @@ private:
     MATH::Mat4 viewProjection_{};
     SceneViewportRect viewport_{};
     ImDrawList& drawList_;
+    std::string_view textOwner_{};
 };
 
 } // namespace
@@ -227,8 +232,8 @@ bool ModuleEditorExtensions::UpdateViewport(const Camera3D& camera, const SceneV
             input.groundPoint = ToFloat3(ground);
         }
     }
-    ViewportCanvas canvas(camera, viewport, drawList);
     const Tool& active = tools_[activeTool_];
+    ViewportCanvas canvas(camera, viewport, drawList, active.moduleId);
     if (!CallModule(active.moduleId, active.id, [&] { active.tool->Update(input, canvas); })) {
         (void)ActivateTool({});
     }

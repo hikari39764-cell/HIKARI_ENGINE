@@ -10,7 +10,7 @@
 
 #include "Core/Math/HIKARI_Math3D.h"
 #include "Scene/HIKARI_RuntimeObjectHandle.h"
-#include "Scene/Terrain/HIKARI_TerrainSnapshotService.h"
+#include "Scene/HIKARI_SnapshotService.h"
 #include "Scene/Water/HIKARI_WaterSurfaceTypes.h"
 
 namespace HIKARI::WATER {
@@ -101,7 +101,7 @@ public:
     void Clear();
 
 private:
-    TERRAIN::TerrainSnapshotService<WaterSurfaceSnapshotEntry> snapshotStore_{};
+    SnapshotService<WaterSurfaceSnapshotEntry> snapshotStore_{};
     std::atomic<const IWaterBathymetryProvider*> bathymetryProvider_{nullptr};
 };
 

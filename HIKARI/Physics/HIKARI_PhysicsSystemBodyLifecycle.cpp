@@ -47,9 +47,8 @@ void PhysicsSystem::ReconcileBodies(World& world, uint64_t frameIndex) {
         observedObjects.insert(objectKey);
         auto retained = bindings_.find(objectKey);
         BodyBinding* retainedBinding = retained != bindings_.end() ? &retained->second : nullptr;
-        const TerrainCollisionProjection* terrainProjection = terrainCollisionProjections_.Find(objectHandle);
         const uint64_t sourceSignature = ComputePhysicsBodyDefinitionSourceSignature(
-            object, collisionGeometrySourceRevision, terrainProjection,
+            object, collisionGeometrySourceRevision,
             retainedBinding != nullptr ? &retainedBinding->definitionWorldScale : nullptr);
         const auto cachedSource = definitionSourceSignatures_.find(objectKey);
         const bool sourceUnchanged =
@@ -91,7 +90,7 @@ void PhysicsSystem::ReconcileBodies(World& world, uint64_t frameIndex) {
         PhysicsBodyCreateInfo createInfo{};
         MATH::Vec3 worldScale{};
         PhysicsBodyBuildResult build =
-            BuildPhysicsBodyCreateInfo(object, createInfo, worldScale, collisionGeometryStore_, terrainProjection,
+            BuildPhysicsBodyCreateInfo(object, createInfo, worldScale, collisionGeometryStore_,
                                        retainedBinding != nullptr ? &retainedBinding->definitionWorldScale : nullptr);
         if (!build.hasDefinition) {
             auto stale = bindings_.find(objectKey);

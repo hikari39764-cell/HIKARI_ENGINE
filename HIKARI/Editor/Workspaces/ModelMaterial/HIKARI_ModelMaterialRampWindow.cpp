@@ -26,7 +26,7 @@ MaterialRampPointData* FindPoint(MaterialRampData& ramp, const std::string& id) 
 } // namespace
 
 void ModelMaterialWorkspaceController::DrawRampWindow(DocumentSceneBase& scene) {
-    if (!ImGui::Begin(TEXT::LocalizeWindow("ui.terrain.toolRamp", "ModelMaterial/Ramp").c_str())) {
+    if (!ImGui::Begin(TEXT::LocalizeWindow("ui.materialGraph.ramp", "ModelMaterial/Ramp").c_str())) {
         ImGui::End();
         return;
     }

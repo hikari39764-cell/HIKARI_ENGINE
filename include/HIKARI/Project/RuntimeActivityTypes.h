@@ -5,7 +5,7 @@
 namespace HIKARI {
 
 // Runtime-only activity hint for project-owned actors. The engine keeps
-// ownership of animation, rendering, physics, and terrain services.
+// ownership of animation, rendering, and physics services.
 enum class GameProjectRuntimeActivity : uint8_t { Active = 0, FrozenVisible = 1, SuspendedHidden = 2 };
 
 } // namespace HIKARI

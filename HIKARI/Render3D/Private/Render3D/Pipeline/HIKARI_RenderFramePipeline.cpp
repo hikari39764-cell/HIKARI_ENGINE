@@ -392,13 +392,11 @@ bool RenderMeshLightingFrame(const GFX::Context& graphics, const RenderViewConte
             materials) {
             GFX::GPU_PROFILE::ScopedGpuTimer rayTimer(frame.graphics.cmdList,
                                                       GFX::GPU_PROFILE::Pass::RuntimeRayScenePreparation);
-            const MESHRENDERER::TerrainSurfaceGpuBindings terrain = MESHRENDERER::GetTerrainSurfaceGpuBindings();
             const bool viewHasSurfaces = !view.surfaceExtensions.empty();
             rayScene =
                 gRuntimeRayScene.Prepare(frame.graphics, source, materials.materialSlots, materials.massMaterialSlots,
                                          materials.materialData, {}, {materials.dataVersion, materials.bindingVersion},
-                                         {terrain.records, terrain.floats, terrain.floatVersion,
-                                          MESHRENDERER::GetResidentMassGpuSceneRecords(),
+                                         {MESHRENDERER::GetResidentMassGpuSceneRecords(),
                                           viewHasSurfaces ? SURFACE_EXTENSIONS::GetRayProxies()
                                                           : std::span<const RAYTRACING::RuntimeRayTracingProxy>{},
                                           viewHasSurfaces ? SURFACE_EXTENSIONS::GetRayProxyVersion() : 0u});

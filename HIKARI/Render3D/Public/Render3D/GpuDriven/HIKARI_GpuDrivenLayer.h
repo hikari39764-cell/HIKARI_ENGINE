@@ -15,8 +15,8 @@
 #include "Render3D/GpuDriven/HIKARI_SurfaceGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/HIKARI_MassGpuSceneFrameBuffer.h"
 #include "Render3D/GpuDriven/CommandStream/HIKARI_GpuTraditionalCommandStreamBuffer.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPoolGpuBuffer.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceGpuFrameBuffer.h"
-#include "Render3D/Terrain/HIKARI_TerrainSurfaceGpuFrameBuffer.h"
 
 namespace HIKARI::RENDER3D::GPUDRIVEN {
 
@@ -38,7 +38,6 @@ struct GpuDrivenSceneUploadStats {
     bool reusedResidentFrame = false;
     bool patchedDirtyRanges = false;
     bool uploadedFullScene = false;
-    bool terrainSurfaceDataResident = false;
     std::array<uint32_t, kGpuDrivenPassCount> passInstanceCounts{};
     SurfaceGpuSceneFrameBufferStats bufferStats{};
     MassGpuSceneFrameBufferStats massBufferStats{};
@@ -83,7 +82,7 @@ public:
     void Attach(SurfaceGpuSceneFrameBuffer* sceneBuffer, MassGpuSceneFrameBuffer* massSceneBuffer,
                 GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer, IGpuDrivenProducer* producer,
                 WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer = nullptr,
-                TERRAIN::TerrainSurfaceGpuFrameBuffer* terrainSurfaceBuffer = nullptr);
+                RUNTIME::SceneSurfaceFloatPoolGpuBuffer* surfaceFeatureFloatBuffer = nullptr);
 
     void ResetFrame();
     bool BeginFrame(const GpuDrivenSceneSource* source);
@@ -145,7 +144,7 @@ private:
     SurfaceGpuSceneFrameBuffer* sceneBuffer_ = nullptr;
     MassGpuSceneFrameBuffer* massSceneBuffer_ = nullptr;
     WATER::WaterSurfaceGpuFrameBuffer* waterSurfaceBuffer_ = nullptr;
-    TERRAIN::TerrainSurfaceGpuFrameBuffer* terrainSurfaceBuffer_ = nullptr;
+    RUNTIME::SceneSurfaceFloatPoolGpuBuffer* surfaceFeatureFloatBuffer_ = nullptr;
     GpuTraditionalCommandStreamBuffer* traditionalCommandStreamBuffer_ = nullptr;
     IGpuDrivenProducer* producer_ = nullptr;
     const GpuDrivenSceneSource* frameSource_ = nullptr;

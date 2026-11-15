@@ -18,8 +18,6 @@ std::unique_ptr<IRuntimeFeature> CreatePhysicsRuntimeFeature();
 std::unique_ptr<IRuntimeFeature> CreateRenderingRuntimeFeature();
 std::unique_ptr<IRuntimeFeature> CreateSceneFlowRuntimeFeature();
 std::unique_ptr<IRuntimeFeature> CreateSequenceRuntimeFeature();
-std::unique_ptr<IRuntimeFeature> CreateSurfaceInteractionRuntimeFeature();
-std::unique_ptr<IRuntimeFeature> CreateTerrainRuntimeFeature();
 std::unique_ptr<IRuntimeFeature> CreateVfxRuntimeFeature();
 std::unique_ptr<IRuntimeFeature> CreateWaterRuntimeFeature();
 

@@ -26,7 +26,6 @@
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Assets/Models/HIKARI_ModelManager.h"
 #include "Render3D/Water/HIKARI_WaterSurfaceRenderData.h"
-#include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
 #include "Scene/Components/HIKARI_ProceduralMeshComponent.h"
 #include "Scene/Components/Rendering/MaterialFx/HIKARI_MaterialFxComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
@@ -38,17 +37,10 @@
 #include "Scene/HIKARI_RuntimeObjectActivityService.h"
 #include "Scene/HIKARI_World.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceQueryService.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceConversion.h"
-#include "Scene/Terrain/HIKARI_TerrainGrassRenderProjection.h"
-#include "Scene/Terrain/HIKARI_TerrainRenderProjection.h"
 
 namespace HIKARI {
 
 namespace {
-using namespace TERRAIN::RENDER;
 constexpr float kPi = 3.14159265358979323846f;
 RENDER3D::WATER::WaterSurfaceRenderData BuildWaterSurfaceRenderData(const WATER::WaterSurfaceSettings& authoredSettings,
                                                                     const ProceduralMeshComponent& procedural,
@@ -102,27 +94,6 @@ RENDER3D::WATER::WaterSurfaceRenderData BuildWaterSurfaceRenderData(const WATER:
     return data;
 }
 
-RENDER3D::TERRAIN::TerrainSurfaceRenderData BuildTerrainSurfaceRenderData(
-    const TERRAIN::TerrainSurfaceSettings& authoredSettings, const ProceduralMeshComponent& procedural) {
-    const ProceduralMeshSettings mesh = SanitizeProceduralMeshSettings(procedural.GetSettings());
-    const TERRAIN::TerrainSurfaceSettings settings = TERRAIN::SanitizeTerrainSurfaceSettings(authoredSettings);
-
-    RENDER3D::TERRAIN::TerrainSurfaceRenderData data{};
-    data.gridResolution = settings.gridResolution;
-    data.extents = {mesh.width, mesh.depth};
-    data.heightScale = settings.heightScale;
-    data.rimStrength = settings.rimStrength;
-    data.lightTint = settings.lightTint;
-    data.sparkleStrength = settings.sparkleStrength;
-    data.darkTint = settings.darkTint;
-    data.rippleAmount = settings.rippleAmount;
-    data.pitDarkening = settings.pitDarkening;
-    data.toonBandCount = settings.toonBandCount;
-    data.toonBandHardness = settings.toonBandHardness;
-    data.edgeDepth = settings.edgeDepth;
-    return data;
-}
-
 RENDER3D::RUNTIME::SceneRenderObjectId ResolveSceneRenderObjectId(const GameObject& object) {
     return RENDER3D::RUNTIME::SceneRenderObjectId{object.GetRenderStableId()};
 }
@@ -159,7 +130,7 @@ bool RenderSyncValidationEnabled() noexcept {
     return enabled;
 }
 
-// 描画の結果を変える項目のうち、違っていた最初の項目名（同じなら nullptr）。地形・水面・骨格動画は別の経路で更新する。
+// 描画の結果を変える項目のうち、違っていた最初の項目名（同じなら nullptr）。水面・骨格動画は別の経路で更新する。
 const char* FindRenderStateDifference(const RENDER3D::RUNTIME::SceneRenderObjectDesc& cached,
                                       const RENDER3D::RUNTIME::SceneRenderObjectDesc& rebuilt) {
     const MATH::Mat4 cachedWorld = cached.worldTransform.GetWorldMatrix();
@@ -199,13 +170,6 @@ public:
     ClusteredGeometryPathResolver(const AssetRegistry* assetRegistry, std::filesystem::path projectRoot)
         : assetRegistry_(assetRegistry), projectRoot_(std::move(projectRoot)) {}
 
-    // 地形メッシュに合わせて procedural 設定を直接解決する。
-    // (terrain は desc.model を差し替えるため、既定の object 経由では
-    //  旧平面の clustered 幾何が残ってしまう)
-    std::string ResolveProceduralSettings(const ProceduralMeshSettings& settings) {
-        return PROCEDURAL::GetOrCreateClusteredGeometryPath(settings, projectRoot_);
-    }
-
     const std::filesystem::path& GetProjectRoot() const noexcept { return projectRoot_; }
 
     std::string Resolve(const GameObject& object, const ModelComponent& model) {
@@ -235,10 +199,8 @@ private:
 RENDER3D::RUNTIME::SceneRenderObjectDesc BuildSceneRenderObjectDesc(
     const GameObject& object, ModelComponent& model, RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
     ClusteredGeometryPathResolver& clusteredGeometryPaths, const PresentationTransformService* presentationTransforms,
-    const ANIMATION::AnimationPoseService* animationPoses,
-    const TERRAIN::TerrainSurfaceQueryService* terrainSurfaceQuery,
-    const RuntimeObjectActivityService* runtimeActivityService, TerrainProjectionState& terrainProjection,
-    SceneRenderCacheSync::DebugStats& syncStats, RENDER3D::RenderViewPurpose purpose) {
+    const ANIMATION::AnimationPoseService* animationPoses, const RuntimeObjectActivityService* runtimeActivityService,
+    RENDER3D::RenderViewPurpose purpose) {
     RENDER3D::RUNTIME::SceneRenderObjectDesc desc{};
     desc.id = ResolveSceneRenderObjectId(object);
     const ModelRenderDebugMode debugMode = model.GetRenderDebugMode();
@@ -291,42 +253,6 @@ RENDER3D::RUNTIME::SceneRenderObjectDesc BuildSceneRenderObjectDesc(
     desc.postGroupMask = model.GetPostGroupMask();
 
     const auto* procedural = object.GetComponent<ProceduralMeshComponent>();
-    const auto* terrainSurface = object.GetComponent<TerrainSurfaceComponent>();
-    if (terrainSurface != nullptr && procedural != nullptr) {
-        const ProceduralMeshKind meshKind = procedural->GetSettings().kind;
-        if (meshKind == ProceduralMeshKind::Plane || meshKind == ProceduralMeshKind::GridPlane) {
-            const TERRAIN::TerrainSurface& surface = terrainSurface->GetSurface();
-            if (!surface.chunks.empty()) {
-                const float chunkSize = terrainSurface->GetChunkWorldSize();
-                const uint32_t cells = terrainSurface->GetChunkCells();
-
-                desc.terrainSurface = true;
-                desc.terrainSurfaceData =
-                    BuildTerrainSurfaceRenderData(TERRAIN::ToTerrainSurfaceSettings(surface), *procedural);
-                TerrainProjectionOutput projectionOutput{};
-                BakeTerrainChunksForRender(surface, *terrainSurface, object.GetRuntimeHandle(), terrainSurfaceQuery,
-                                           clusteredGeometryPaths.GetProjectRoot(), chunkSize, cells, terrainProjection,
-                                           syncStats, projectionOutput, desc);
-                const ProceduralMeshSettings& terrainSettings = projectionOutput.meshSettings;
-                const ModelAsset* terrainModel = projectionOutput.warmedModel != nullptr
-                                                     ? projectionOutput.warmedModel
-                                                     : PROCEDURAL::GetOrCreateModel(terrainSettings);
-                if (terrainModel != nullptr) {
-                    desc.model = terrainModel;
-                    desc.renderModel = renderModelCache.GetOrCreate(*terrainModel);
-                    desc.localBounds = terrainModel->bounds;
-                    desc.localBounds.min.y = (std::min)(desc.localBounds.min.y, projectionOutput.stableBoundsMinY);
-                    desc.localBounds.max.y = (std::max)(desc.localBounds.max.y, projectionOutput.stableBoundsMaxY);
-                    desc.worldBounds = BOUNDS::TransformBounds(desc.localBounds, desc.worldTransform.GetWorldMatrix());
-                    // CPU と meshlet の両経路で同じ手続き型モデルを使う。
-                    desc.clusteredGeometryPath = projectionOutput.warmedClusteredGeometryPath.empty()
-                                                     ? clusteredGeometryPaths.ResolveProceduralSettings(terrainSettings)
-                                                     : projectionOutput.warmedClusteredGeometryPath;
-                }
-            }
-        }
-    }
-
     const auto* water = object.GetComponent<WaterSurfaceComponent>();
     if (water != nullptr && procedural != nullptr) {
         const ProceduralMeshKind meshKind = procedural->GetSettings().kind;
@@ -354,11 +280,6 @@ RENDER3D::RUNTIME::SceneRenderObjectDesc BuildSceneRenderObjectDesc(
 } // namespace
 
 struct SceneRenderCacheSync::State {
-    DebugStats debugStats{};
-    std::unordered_map<const RENDER3D::RUNTIME::SceneRenderCache*, std::unordered_map<uint64_t, TerrainProjectionState>>
-        terrainProjections{};
-    std::unordered_map<const RENDER3D::RUNTIME::SceneRenderCache*, TERRAIN::TerrainGrassRenderProjectionState>
-        terrainGrassProjections{};
     std::unordered_set<std::string> presentationMissingAssetsLogged{};
     std::unordered_set<std::string> presentationMissingNodesLogged{};
     std::unordered_set<std::string> presentationAttachmentDiagnosticsLogged{};
@@ -374,8 +295,7 @@ struct SceneRenderCacheSync::State {
         std::unordered_set<const GameObject*> dirty(world.GetRenderDirtyObjects().begin(),
                                                     world.GetRenderDirtyObjects().end());
         world.ForEachObjectWith<ModelComponent>([&](GameObject& object, ModelComponent& model) {
-            if (dirty.contains(&object) || object.GetComponent<TerrainSurfaceComponent>() != nullptr ||
-                object.GetComponent<WaterSurfaceComponent>() != nullptr) {
+            if (dirty.contains(&object) || object.GetComponent<WaterSurfaceComponent>() != nullptr) {
                 return;
             }
             const RENDER3D::RUNTIME::SceneRenderObject* cached =
@@ -402,17 +322,11 @@ SceneRenderCacheSync::SceneRenderCacheSync() : state_(std::make_unique<State>())
 SceneRenderCacheSync::~SceneRenderCacheSync() = default;
 
 void SceneRenderCacheSync::Clear() noexcept {
-    state_->terrainProjections.clear();
-    state_->terrainGrassProjections.clear();
     state_->presentationMissingAssetsLogged.clear();
     state_->presentationMissingNodesLogged.clear();
     state_->presentationAttachmentDiagnosticsLogged.clear();
     state_->presentationMaterialDiagnosticsLogged.clear();
     state_->presentationMaterialOverrides.clear();
-}
-
-const SceneRenderCacheSync::DebugStats& SceneRenderCacheSync::GetDebugStats() const noexcept {
-    return state_->debugStats;
 }
 
 void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::RenderModelCache& renderModelCache,
@@ -422,26 +336,17 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
                                               ModelManager* modelManager, bool fullSync) {
     PROCEDURAL::PumpClusteredGeometryWarmUps();
     auto& presentationMaterials = presentationMaterialOverrides[&sceneRenderCache];
-    auto& cacheTerrainProjections = terrainProjections[&sceneRenderCache];
-    auto& grassProjections = terrainGrassProjections[&sceneRenderCache];
     if (fullSync) {
         sceneRenderCache.BeginSync(frameIndex);
-        cacheTerrainProjections.clear();
-        grassProjections.owners.clear();
-        grassProjections.activeRenderInstanceCount = 0u;
     } else {
         sceneRenderCache.BeginPatchSync(frameIndex);
         for (const uint64_t removedId : world.GetRemovedRenderObjectIds()) {
             sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{removedId});
-            cacheTerrainProjections.erase(removedId);
-            TERRAIN::RemoveTerrainGrassRenderObjects(sceneRenderCache, grassProjections, removedId);
         }
     }
     ClusteredGeometryPathResolver clusteredGeometryPaths(assetRegistry, std::move(projectRoot));
     const PresentationTransformService* presentationTransforms = world.Services().Find<PresentationTransformService>();
     const ANIMATION::AnimationPoseService* animationPoses = world.Services().Find<ANIMATION::AnimationPoseService>();
-    const TERRAIN::TerrainSurfaceQueryService* terrainSurfaceQuery =
-        world.Services().Find<TERRAIN::TerrainSurfaceQueryService>();
     const RuntimeObjectActivityService* runtimeActivityService = world.Services().Find<RuntimeObjectActivityService>();
 
     PresentationModelService* presentationModels = world.Services().Find<PresentationModelService>();
@@ -464,34 +369,10 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
         }
     }
 
-    const auto upsertModel = [&](GameObject& object, ModelComponent& model) {
-        const RENDER3D::RUNTIME::SceneRenderObjectId objectId = ResolveSceneRenderObjectId(object);
-        // 投影状態は地形だけが持つ。通常 model ごとに空の状態を作らない。
-        TerrainProjectionState unusedProjection{};
-        TerrainProjectionState& terrainProjection = object.GetComponent<TerrainSurfaceComponent>() != nullptr
-                                                        ? cacheTerrainProjections[objectId.value]
-                                                        : unusedProjection;
-        sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(
-            object, model, renderModelCache, clusteredGeometryPaths, presentationTransforms, animationPoses,
-            terrainSurfaceQuery, runtimeActivityService, terrainProjection, debugStats, purpose));
-    };
     const auto syncObject = [&](GameObject& object, ModelComponent& model) {
-        // 全量・差分のどちらも、再構築した地形へのマテリアルを保証する。
-        if (assetRegistry != nullptr && object.GetComponent<TerrainSurfaceComponent>() != nullptr) {
-            (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(model, *assetRegistry);
-        }
-        upsertModel(object, model);
-        if (const TerrainSurfaceComponent* terrain = object.GetComponent<TerrainSurfaceComponent>()) {
-            // 草は authored 入力が変わった時だけ作り直す (runtime 応答の dirty では維持)。
-            TERRAIN::TerrainGrassRenderProjectionStats grassStats{};
-            TERRAIN::SyncTerrainGrassRenderObjects(object, model, *terrain, renderModelCache,
-                                                   clusteredGeometryPaths.GetProjectRoot(), presentationTransforms,
-                                                   grassProjections, sceneRenderCache, purpose, grassStats);
-            debugStats.terrainGrassRenderInstanceCount += grassStats.renderedCount;
-            debugStats.terrainGrassRenderSkippedCount += grassStats.skippedCount;
-        } else {
-            TERRAIN::RemoveTerrainGrassRenderObjects(sceneRenderCache, grassProjections, object.GetRenderStableId());
-        }
+        sceneRenderCache.Upsert(BuildSceneRenderObjectDesc(object, model, renderModelCache, clusteredGeometryPaths,
+                                                           presentationTransforms, animationPoses,
+                                                           runtimeActivityService, purpose));
     };
     if (fullSync) {
         world.ForEachObjectWith<ModelComponent>(syncObject);
@@ -499,13 +380,10 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
         for (GameObject* object : world.GetRenderDirtyObjects()) {
             if (object == nullptr)
                 continue;
-            const uint64_t ownerId = object->GetRenderStableId();
             if (ModelComponent* model = object->GetComponent<ModelComponent>()) {
                 syncObject(*object, *model);
             } else {
-                TERRAIN::RemoveTerrainGrassRenderObjects(sceneRenderCache, grassProjections, ownerId);
-                sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{ownerId});
-                cacheTerrainProjections.erase(ownerId);
+                sceneRenderCache.Remove(RENDER3D::RUNTIME::SceneRenderObjectId{object->GetRenderStableId()});
             }
         }
     }
@@ -525,30 +403,11 @@ void SceneRenderCacheSync::State::Synchronize(World& world, RENDER3D::RUNTIME::R
     if (fullSync) {
         sceneRenderCache.EndSync();
     } else {
-        // 材質の原地変更（版本の更新）は ModelComponent が材質の通知を受けて物体を dirty にするので、ここで全物体を
-        // 見直さない。残るのは地形の非同期 warm-up の完了だけで、warm 待ちの地形投影だけを確かめる。
-        for (auto& entry : cacheTerrainProjections) {
-            TerrainProjectionState& projection = entry.second;
-            if (!projection.warmPending || !projection.warmSettingsValid) {
-                continue;
-            }
-            const ModelAsset* warmedModel = nullptr;
-            std::string warmedPath{};
-            if (!PROCEDURAL::TryGetWarmedClusteredGeometry(projection.warmSettings, projection.warmProjectRoot,
-                                                           warmedModel, warmedPath)) {
-                continue;
-            }
-            GameObject* object = world.FindObject(projection.sourceObject);
-            if (ModelComponent* model = object != nullptr ? object->GetComponent<ModelComponent>() : nullptr) {
-                upsertModel(*object, *model);
-            }
-        }
         if (RenderSyncValidationEnabled()) {
             ValidateCleanObjects(world, sceneRenderCache, [&](GameObject& object, ModelComponent& model) {
-                TerrainProjectionState unusedProjection{};
                 return BuildSceneRenderObjectDesc(object, model, renderModelCache, clusteredGeometryPaths,
-                                                  presentationTransforms, animationPoses, terrainSurfaceQuery,
-                                                  runtimeActivityService, unusedProjection, debugStats, purpose);
+                                                  presentationTransforms, animationPoses, runtimeActivityService,
+                                                  purpose);
             });
         }
         sceneRenderCache.EndPatchSync();

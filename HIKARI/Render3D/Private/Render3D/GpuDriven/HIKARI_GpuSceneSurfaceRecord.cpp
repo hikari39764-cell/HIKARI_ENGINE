@@ -350,7 +350,6 @@ GpuSceneResourceKey BuildResourceKey(const GpuSceneSurfaceRecord& record) {
     key.objectDataCompatible = shaderRoute.objectDataCompatible;
     key.materialFx = !record.materialFxProfileId.empty();
     key.waterMaterialFx = record.waterSurface;
-    key.terrainSurface = record.terrainSurface;
     key.materialFxUsesCustomVertexShader = key.materialFx && usesCustomVertexShader;
     key.materialFxUsesCustomPixelShader = key.materialFx && !waterMaterialFxPixelCompatible;
     key.customVertexShader = usesCustomVertexShader;
@@ -363,13 +362,9 @@ GpuSceneResourceKey BuildResourceKey(const GpuSceneSurfaceRecord& record) {
     const bool waterSurfaceMeshletMaterial = key.waterMaterialFx && !usesCustomVertexShader;
     // Cluster-compatible MaterialFX, including the built-in water
     // deformation contract, stays on the mesh-shader route.
-    // sand terrain は forward/depth/aux の shader 実装を共有しているが、
-    // runtime visibility 経路の実機検証が完了するまでは traditional
-    // VS/PS の authoritative route を維持する。
     // Blend のパス分割と深度書き込み無効化は key.transparent が所有する。
     key.clusterMainlineEligible = key.geometryBackend == RUNTIME::SurfaceGeometryBackend::ClusterGeometry &&
                                   clusterVertexCompatible && clusterPixelCompatible && key.objectDataCompatible &&
-                                  !key.terrainSurface &&
                                   (ordinaryMeshletMaterial || materialFxMeshletMaterial || waterSurfaceMeshletMaterial);
     if (key.clusterMainlineEligible) {
         key.backendRoute = RUNTIME::SurfaceBackendRoute::MeshShader;
@@ -417,9 +412,6 @@ uint32_t BuildInstanceFlags(const GpuSceneSurfaceRecord& record) {
     if (record.waterSurface &&
         record.waterSurfaceData.geometryMode == RENDER3D::WATER::WaterSurfaceGeometryMode::CameraCenteredOcean) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::CameraCenteredOcean);
-    }
-    if (record.key.terrainSurface) {
-        flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::TerrainSurface);
     }
     if (record.key.depthAware) {
         flags |= ToInstanceFlag(RUNTIME::SurfaceGpuSceneInstanceFlags::DepthAware);
@@ -570,8 +562,7 @@ RUNTIME::SurfaceGpuSceneInstance BuildGpuSceneInstance(const GpuSceneSurfaceReco
         instance.materialProgramFlags |= EditorSelectionOutline;
     }
     instance.postGroupMask = record.postGroupMask;
-    instance.surfaceFeatureDataIndex =
-        record.waterSurface ? record.waterSurfaceGpuDataIndex : record.terrainSurfaceGpuDataIndex;
+    instance.surfaceFeatureDataIndex = record.waterSurface ? record.waterSurfaceGpuDataIndex : 0u;
     if (record.skinned && record.jointPaletteMatrixCount != 0u) {
         instance.jointPaletteOffsetBytes = record.jointPaletteOffsetBytes;
         instance.jointPaletteMatrixCount = record.jointPaletteMatrixCount;
@@ -631,11 +622,7 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
     record.clusterWorldMatrix = surfaceInstance.clusterWorldMatrix;
     record.hasDrawWorldMatrix = surfaceInstance.hasDrawWorldMatrix;
     record.worldBounds = surfaceInstance.worldBounds;
-    // Terrain core residency is atomic. Never route an overflowed terrain
-    // through offset-zero neutral data: that produces a convincing but
-    // false flat sand plane and masks the real capacity failure.
-    record.visible =
-        surfaceInstance.visible && (!surfaceInstance.terrainSurface || surfaceInstance.terrainSurfaceCoreResident);
+    record.visible = surfaceInstance.visible;
     record.isStatic = surfaceInstance.isStatic;
     record.hasRuntimeAnimation = surfaceInstance.hasRuntimeAnimation;
     record.animationPose = surfaceInstance.animationPose;
@@ -658,14 +645,11 @@ GpuSceneSurfaceRecord BuildGpuSceneSurfaceRecord(const RUNTIME::SceneSurfaceInst
     record.foliageWindParams = surfaceInstance.foliageWindParams;
     record.waterSurface = surfaceInstance.waterSurface;
     record.waterSurfaceData = surfaceInstance.waterSurfaceData;
-    record.terrainSurface = surfaceInstance.terrainSurface && surfaceInstance.terrainSurfaceCoreResident;
-    record.terrainSurfaceData = surfaceInstance.terrainSurfaceData;
-    record.terrainSurfaceOffsets = surfaceInstance.terrainSurfaceOffsets;
     record.waterSurfaceLiquidCoverageOffset = surfaceInstance.waterSurfaceLiquidCoverageOffset;
 
     record.forwardCandidate = record.visible;
     record.shadowCandidate = record.visible && record.castShadow;
-    if (!record.visible && !record.waterSurface && !surfaceInstance.terrainSurface) {
+    if (!record.visible && !record.waterSurface) {
         // 非表示ノードは識別情報だけを保持し、表示時に資源を解決する。
         record.valid = surfaceInstance.valid;
         return record;

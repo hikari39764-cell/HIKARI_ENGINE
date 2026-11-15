@@ -94,7 +94,7 @@ std::optional<std::string> AddSystemPopup::Draw(const std::vector<SceneSystemAut
 
     std::optional<std::string> result{};
     ImGui::BeginDisabled(selectedSystemId_.empty());
-    if (ImGui::Button(TEXT::LocalizeWindow("ui.terrain.proceduralBlendAdd", "Add").c_str(), ImVec2(96.0f, 0.0f))) {
+    if (ImGui::Button(TEXT::LocalizeWindow("ui.common.add", "Add").c_str(), ImVec2(96.0f, 0.0f))) {
         result = selectedSystemId_;
         ImGui::CloseCurrentPopup();
     }

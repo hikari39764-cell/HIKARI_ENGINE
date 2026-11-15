@@ -204,8 +204,6 @@ bool PublishShadowSceneSources(ShadowRendererState& state, const RENDER3D::GPUDR
          {&state.shadowSceneSource, &state.staticShadowSceneSource, &state.dynamicShadowSceneSource}) {
         partition->meshShaderJointPalettes = state.gpuDrivenSceneSource->meshShaderJointPalettes;
         partition->waterSurfaceGpuData = state.gpuDrivenSceneSource->waterSurfaceGpuData;
-        partition->terrainSurfaceGpuData = state.gpuDrivenSceneSource->terrainSurfaceGpuData;
-        partition->surfaceFeatureFloats = state.gpuDrivenSceneSource->surfaceFeatureFloats;
     }
 
     state.frameHasStaticShadowWork = state.staticShadowSceneSource.sourceInstanceCount != 0u;
@@ -272,7 +270,8 @@ bool TryPatchShadowSceneSources(ShadowRendererState& state,
                 const auto& after = instances[location.localIndex];
                 const uint64_t object = (static_cast<uint64_t>(after.objectIdHigh) << 32) | after.objectIdLow;
                 const auto note = [&](const char* field, bool changed) {
-                    if (changed) ++layoutCounts[std::string(field) + "@" + std::to_string(object)];
+                    if (changed)
+                        ++layoutCounts[std::string(field) + "@" + std::to_string(object)];
                 };
                 note("record", before.sourceRecordIndex != after.sourceRecordIndex);
                 note("surface", before.sourceSurfaceInstanceIndex != after.sourceSurfaceInstanceIndex);
@@ -289,7 +288,8 @@ bool TryPatchShadowSceneSources(ShadowRendererState& state,
                     std::sort(top.begin(), top.end(), [](const auto& l, const auto& r) { return l.second > r.second; });
                     std::fprintf(stderr, "[ShadowSource] layout changes (400):");
                     for (size_t k = 0; k < top.size() && k < 12u; ++k)
-                        std::fprintf(stderr, " %s=%llu", top[k].first.c_str(), static_cast<unsigned long long>(top[k].second));
+                        std::fprintf(stderr, " %s=%llu", top[k].first.c_str(),
+                                     static_cast<unsigned long long>(top[k].second));
                     std::fprintf(stderr, "\n");
                     layoutCounts.clear();
                 }
@@ -306,26 +306,33 @@ bool TryPatchShadowSceneSources(ShadowRendererState& state,
     // 診断（HIKARI_SHADOW_TRACE）：影の元の更新の内訳を、影の描き手ごとに 240 回ごとに出す。
     static const bool trace = std::getenv("HIKARI_SHADOW_TRACE") != nullptr;
     if (trace) {
-        struct Tally { uint64_t calls = 0, dirty = 0, staticChanged = 0, dynamicChanged = 0; };
+        struct Tally {
+            uint64_t calls = 0, dirty = 0, staticChanged = 0, dynamicChanged = 0;
+        };
         static std::unordered_map<const void*, Tally> tallies;
         auto& tally = tallies[&state];
         ++tally.calls;
-        for (const auto& range : sourcePass.dirtyRanges) tally.dirty += range.instanceCount;
+        for (const auto& range : sourcePass.dirtyRanges)
+            tally.dirty += range.instanceCount;
         tally.staticChanged += staticChanged ? 1u : 0u;
         tally.dynamicChanged += dynamicChanged ? 1u : 0u;
         if (tally.calls % 240u == 0u) {
-            std::fprintf(stderr, "[ShadowSource] state=%p patch dirty=%.1f/call staticChanged=%llu dynamicChanged=%llu of 240 static=%zu dynamic=%zu full=%zu reuse=%zu\n",
-                         static_cast<const void*>(&state), tally.dirty / 240.0, static_cast<unsigned long long>(tally.staticChanged),
-                         static_cast<unsigned long long>(tally.dynamicChanged), state.staticShadowPrimaryInstances.size(),
-                         state.dynamicShadowPrimaryInstances.size(), state.debugStats.shadowSourceFullSyncCount,
-                         state.debugStats.shadowSourceReuseCount);
+            std::fprintf(
+                stderr,
+                "[ShadowSource] state=%p patch dirty=%.1f/call staticChanged=%llu dynamicChanged=%llu of 240 static=%zu dynamic=%zu full=%zu reuse=%zu\n",
+                static_cast<const void*>(&state), tally.dirty / 240.0,
+                static_cast<unsigned long long>(tally.staticChanged),
+                static_cast<unsigned long long>(tally.dynamicChanged), state.staticShadowPrimaryInstances.size(),
+                state.dynamicShadowPrimaryInstances.size(), state.debugStats.shadowSourceFullSyncCount,
+                state.debugStats.shadowSourceReuseCount);
             tally = {};
         }
     }
     static const auto hashTimer = CPU_PROFILE::RegisterDynamicPass("ShadowSource.Hash");
     // 並びが変わらなければ、書き換えた分の要約で版だけ進める（区画の全部の面を毎フレーム二度ハッシュしていた）。
     // 版は「中身が変わったら変わる」印として比べるだけなので、全部を数え直した値と一致しなくてよい。
-    const auto updateVersion = [&](RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& partition, bool changed, uint64_t digest) {
+    const auto updateVersion = [&](RENDER3D::GPUDRIVEN::GpuDrivenSceneSource& partition, bool changed,
+                                   uint64_t digest) {
         if (!changed)
             return;
         const CPU_PROFILE::ScopedDynamicCpuTimer hashScope(hashTimer);

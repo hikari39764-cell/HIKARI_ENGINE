@@ -330,35 +330,6 @@ bool AppendBuiltInMaterials(AssetRegistry& registry, const AssetDatabase& assetD
     return ok;
 }
 
-bool AppendBuiltInTerrainMaterials(AssetRegistry& registry, const AssetDatabase& assetDatabase) {
-    PbrMaterialAssetData sand{};
-    sand.materialName = "Terrain Surface (Stylized Layers)";
-    sand.baseColorFactor = {1.0f, 1.0f, 1.0f, 1.0f};
-    sand.baseColorTexture.useTexture = true;
-    sand.baseColorTexture.textureAssetGuid.value = std::string(ASSETS::MATERIAL::kBuiltInTerrainLayerAlbedoTextureId);
-    // Terrain shader が world-space tiling と atlas rect を所有する。
-    // uv1 は coverage 専用のため、マテリアル側では変換しない。
-    sand.baseColorTexture.uvScale = {1.0f, 1.0f};
-    sand.normalTexture.useTexture = true;
-    sand.normalTexture.textureAssetGuid.value = std::string(ASSETS::MATERIAL::kBuiltInTerrainLayerNormalTextureId);
-    sand.normalTexture.uvScale = {1.0f, 1.0f};
-    sand.normalScale = 1.0f;
-    sand.metallicFactor = 0.0f;
-    sand.roughnessFactor = 0.92f;
-    sand.doubleSided = true;
-
-    auto descriptor = std::make_unique<MaterialAssetDescriptor>();
-    descriptor->id.value = std::string(ASSETS::MATERIAL::kBuiltInSandMaterialAssetId);
-    descriptor->type = AssetType::Material;
-    descriptor->sourcePath = descriptor->id.value;
-    descriptor->version = 1u;
-    descriptor->sourceData = MakeStandardPbrMaterialAssetData(sand);
-    descriptor->compileResult =
-        CompileMaterialAsset(descriptor->sourceData, ASSETS::MATERIAL::MakeMaterialCompileOptions(assetDatabase));
-    descriptor->data = ProjectPbrMaterialAssetData(descriptor->sourceData);
-    return registry.RegisterDescriptor(std::move(descriptor));
-}
-
 } // namespace
 
 bool RegisterEngineContentTextures(const CONTENT::EngineContentContext& content, AssetRegistry& registry) {
@@ -367,27 +338,6 @@ bool RegisterEngineContentTextures(const CONTENT::EngineContentContext& content,
     }
 
     bool ok = AppendEngineContentTextureManifest(registry, content, "Vfx/BuiltinAssets.json", "VFX");
-    // 地形を使わない書き出しは Terrain と Sand の領域のファイルを運ばない（書き出しはフォルダだけ作ることがある）。
-    // 領域の中にファイルが一つも無い時だけ省いたものとして扱い、ファイルがあって目録が壊れている時は従来どおり失敗にする。
-    const auto hasFiles = [](const std::filesystem::path& root) {
-        std::error_code ec{};
-        if (root.empty() || !std::filesystem::is_directory(root, ec) || ec) {
-            return false;
-        }
-        for (std::filesystem::recursive_directory_iterator it(root, ec), end; !ec && it != end; it.increment(ec)) {
-            if (it->is_regular_file(ec)) {
-                return true;
-            }
-        }
-        return false;
-    };
-    for (const auto& [domain, manifest] : {std::pair{"Sand", "Sand/BuiltinAssets.json"}, std::pair{"Terrain", "Terrain/BuiltinAssets.json"}}) {
-        if (!hasFiles(content.Resolve(domain))) {
-            HIKARI_LOG_INFO(std::string("[AssetRegistryBuilder][EngineContent] ") + domain + " content is not packaged; skipped.");
-            continue;
-        }
-        ok = AppendEngineContentTextureManifest(registry, content, manifest, domain) && ok;
-    }
     ok = AppendEngineContentTextureManifest(registry, content, "Painterly/BuiltinAssets.json", "Painterly") && ok;
     return ok;
 }
@@ -396,7 +346,6 @@ bool AssetRegistryBuilder::RebuildRegistry(const AssetDatabase& assetDatabase, A
     AssetRegistry registry{};
     bool ok = RegisterEngineContentTextures(CONTENT::GetEngineContentContext(), registry);
     ok = AppendBuiltInMaterials(registry, assetDatabase) && ok;
-    ok = AppendBuiltInTerrainMaterials(registry, assetDatabase) && ok;
 
     const CONTENT::EngineContentContext& content = CONTENT::GetEngineContentContext();
     const ASSETS::SHADER::INTERNAL::ShaderAssetRegistryAdmissionContext shaderContext{

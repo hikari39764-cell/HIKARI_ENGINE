@@ -39,7 +39,7 @@ public:
     // 水平な円（y が中心の高さの XZ 平面上）。
     virtual void DrawCircle(const GameProjectFloat3& center, float radius, EditorWorkspaceColor color,
                             float thickness = 1.5f) = 0;
-    // 視口の左上に出す一行の案内。
+    // 視口の左上に出す一行の案内。固定の英文は面板と同じく文字の表で引かれる（Verbatim の印も同じ）。
     virtual void DrawHint(std::string_view utf8Text, EditorWorkspaceColor color) = 0;
 };
 

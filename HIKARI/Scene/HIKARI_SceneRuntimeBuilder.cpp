@@ -35,8 +35,6 @@
 #include "Render3D/Resources/HIKARI_SceneTextureAssetRequest.h"
 #include "RenderCore/Resources/HIKARI_TextureResourceSystem.h"
 #include "Scene/Components/HIKARI_IComponent.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceMaterialBinder.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelComponent.h"
 #include "Scene/Components/Rendering/Model/HIKARI_ModelRenderableAssetResolver.h"
 #include "Scene/Components/Rendering/WorldSprite/HIKARI_WorldSpriteComponent.h"
@@ -429,9 +427,6 @@ void FinalizeObjectAssets(GameObject& object, const AssetRegistry& assetRegistry
             BuildModelMaterialOverrides(*modelComponent, assetRegistry,
                                         ResolveRenderableModelAsset(object, *modelComponent), proceduralSelection,
                                         materials);
-            if (object.GetComponent<TerrainSurfaceComponent>() != nullptr) {
-                (void)TERRAIN::EnsureTerrainSurfaceMaterialOverride(*modelComponent, assetRegistry);
-            }
         }
     }
 }

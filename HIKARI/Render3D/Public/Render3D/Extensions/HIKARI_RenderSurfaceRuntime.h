@@ -14,6 +14,10 @@ namespace HIKARI::RENDER3D::SURFACE_EXTENSIONS {
 
 // 視点の描画の先頭で一度。モジュールに資源の準備をさせる。
 void BeginFrame(const GFX::Context& graphics, std::span<IRenderSurfaceExtension* const> extensions);
+// 主視点の後に描く視点（編集器の後台の視図）の先頭で。主視点がこのフレームに準備した分をそのまま使う（準備し直さず、
+// 帧の相机位置も変えない）。主視点がこのフレームを描かなかった時だけ、ここで一度準備する。準備した一覧が extensions
+// と違う時は偽（主視点の準備を後の視点で上書きしない）。
+bool PrepareForView(const GFX::Context& graphics, std::span<IRenderSurfaceExtension* const> extensions);
 bool HasWork() noexcept;
 bool HasDepthAwareWork() noexcept;
 // 登録中の拡張が報告した投影範囲。次の呼び出しまで有効。

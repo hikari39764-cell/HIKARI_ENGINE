@@ -17,11 +17,9 @@ inline constexpr UINT kShadowStaticRootParamClusterGeometryPool = 9;
 inline constexpr UINT kShadowStaticRootParamMeshletVisibleRanges = 10;
 inline constexpr UINT kShadowStaticRootParamCullingCamera = 11;
 inline constexpr UINT kShadowStaticRootParamDeformationPalettes = 12;
-inline constexpr UINT kShadowStaticRootParamTerrainSurfaceData = 13;
-inline constexpr UINT kShadowStaticRootParamSurfaceFeatureFloats = 14;
-inline constexpr UINT kShadowStaticRootParamMaterialProgramParameters = 15;
-inline constexpr UINT kShadowStaticRootParamMaterialProgramResources = 16;
-inline constexpr UINT kShadowStaticRootParamMaterialCamera = 17;
-inline constexpr UINT kShadowSkinnedRootParamJointPalette = 18;
+inline constexpr UINT kShadowStaticRootParamMaterialProgramParameters = 13;
+inline constexpr UINT kShadowStaticRootParamMaterialProgramResources = 14;
+inline constexpr UINT kShadowStaticRootParamMaterialCamera = 15;
+inline constexpr UINT kShadowSkinnedRootParamJointPalette = 16;
 
 } // namespace HIKARI::SHADOW::PIPELINE

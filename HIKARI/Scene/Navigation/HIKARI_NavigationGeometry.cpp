@@ -1,13 +1,8 @@
 #include "HIKARI_NavigationBuild.h"
 
 #include <algorithm>
-#include <cmath>
-#include <cstring>
 #include "HIKARI/Project/NavigationSource.h"
-#include "Physics/HIKARI_TerrainCollisionProjection.h"
-#include "Scene/HIKARI_GameObject.h"
 #include "Scene/HIKARI_World.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 
 namespace HIKARI::NAVIGATION::BUILD {
 constexpr uint64_t kHashOffset = 1469598103934665603ull;
@@ -21,38 +16,10 @@ uint64_t HashValue(uint64_t hash, uint64_t value) noexcept {
     return hash;
 }
 
-uint64_t HashFloat(uint64_t hash, float value) noexcept {
-    uint32_t bits = 0u;
-    static_assert(sizeof(bits) == sizeof(value));
-    std::memcpy(&bits, &value, sizeof(bits));
-    return HashValue(hash, bits);
-}
-
-uint64_t ComputeTerrainObjectSignature(const TerrainSurfaceComponent& terrain) noexcept {
-    uint64_t hash = kHashOffset;
-    constexpr std::array<MATH::Vec3, 4u> probes{MATH::Vec3{0.0f, 0.0f, 0.0f}, MATH::Vec3{1.0f, 0.0f, 0.0f},
-                                                MATH::Vec3{0.0f, 1.0f, 0.0f}, MATH::Vec3{0.0f, 0.0f, 1.0f}};
-    for (const MATH::Vec3& probe : probes) {
-        const MATH::Vec3 world = terrain.LocalToWorld(probe);
-        hash = HashFloat(hash, world.x);
-        hash = HashFloat(hash, world.y);
-        hash = HashFloat(hash, world.z);
-    }
-    hash = HashFloat(hash, terrain.GetChunkWorldSize());
-    return HashValue(hash, terrain.GetChunkCells());
-}
-
 NavigationSourceStamp GatherNavigationSourceStamp(World& world) {
     NavigationSourceStamp result{};
-    world.ForEachObjectWith<TerrainSurfaceComponent>([&](GameObject& object, TerrainSurfaceComponent& terrain) {
-        result.hasTerrain = true;
-        const RuntimeObjectHandle handle = object.GetRuntimeHandle();
-        const uint64_t objectValue = handle.ToValue();
-        result.objectSignatures[objectValue] = ComputeTerrainObjectSignature(terrain);
-        result.collisionRevisions[objectValue] = terrain.GetCollisionRevision();
-    });
     for (const INavigationGeometrySource* source : world.GetNavigationGeometrySources()) {
-        result.hasTerrain = true;
+        result.hasSources = true;
         const uint64_t sourceValue = reinterpret_cast<uintptr_t>(source);
         const uint32_t chunkCount = source->GetNavigationChunkCount();
         uint64_t revisions = kHashOffset;
@@ -75,22 +42,12 @@ NavigationSourceStamp GatherNavigationSourceStamp(World& world) {
         const auto collision = result.collisionRevisions.find(object);
         hash = HashValue(hash, collision != result.collisionRevisions.end() ? collision->second : 0u);
     }
-    result.revision = result.hasTerrain ? hash : 0u;
+    result.revision = result.hasSources ? hash : 0u;
     return result;
 }
 
 CurrentNavigationSources GatherCurrentSources(World& world, const NavigationSourceStamp& stamp) {
     CurrentNavigationSources result{};
-    world.ForEachObjectWith<TerrainSurfaceComponent>([&](GameObject& object, TerrainSurfaceComponent& terrain) {
-        const RuntimeObjectHandle handle = object.GetRuntimeHandle();
-        const uint64_t objectValue = handle.ToValue();
-        for (const auto& [key, chunk] : terrain.GetChunks()) {
-            (void)chunk;
-            const NavigationChunkKey navigationKey{objectValue, key.x, key.z};
-            result.chunks.emplace(navigationKey,
-                                  NavigationChunkSource{handle, &terrain, nullptr, key, terrain.GetChunkRevision(key)});
-        }
-    });
     for (const INavigationGeometrySource* source : world.GetNavigationGeometrySources()) {
         const uint64_t sourceValue = reinterpret_cast<uintptr_t>(source);
         const uint32_t chunkCount = source->GetNavigationChunkCount();
@@ -100,7 +57,7 @@ CurrentNavigationSources GatherCurrentSources(World& world, const NavigationSour
             uint64_t revision = 0u;
             if (source->GetNavigationChunk(index, x, z, revision)) {
                 result.chunks.emplace(NavigationChunkKey{sourceValue, x, z},
-                                      NavigationChunkSource{{}, nullptr, source, {x, z}, revision});
+                                      NavigationChunkSource{source, {x, z}, revision});
             }
         }
     }
@@ -112,68 +69,8 @@ CurrentNavigationSources GatherCurrentSources(World& world, const NavigationSour
         hash = HashValue(hash, static_cast<uint64_t>(static_cast<int64_t>(key.z)));
         hash = HashValue(hash, source.revision);
     }
-    result.revision = stamp.hasTerrain ? hash : 0u;
+    result.revision = stamp.hasSources ? hash : 0u;
     return result;
-}
-
-bool AppendTerrainGeometry(const TerrainSurfaceComponent& terrain,
-                           const PHYSICS::TerrainCollisionProjection& projection, NavigationGeometry& out,
-                           std::string& outDiagnostic) {
-    if (projection.geometry == nullptr || projection.geometry->indices.empty()) {
-        return true;
-    }
-    const MATH::Vec3 worldOrigin = terrain.LocalToWorld({});
-    const MATH::Vec3 worldX = terrain.LocalToWorld({1.0f, 0.0f, 0.0f}) - worldOrigin;
-    const MATH::Vec3 worldY = terrain.LocalToWorld({0.0f, 1.0f, 0.0f}) - worldOrigin;
-    const MATH::Vec3 worldZ = terrain.LocalToWorld({0.0f, 0.0f, 1.0f}) - worldOrigin;
-    const float determinant = MATH::Dot(MATH::Cross(worldX, worldY), worldZ);
-    if (!std::isfinite(determinant) || std::fabs(determinant) <= 1.0e-8f) {
-        outDiagnostic = "navigation terrain transform is singular or non-finite";
-        return false;
-    }
-    const bool reverseWinding = determinant < 0.0f;
-    if (projection.geometry->vertices.size() > static_cast<std::size_t>((std::numeric_limits<int>::max)()) ||
-        out.vertices.size() / 3u >
-            static_cast<std::size_t>((std::numeric_limits<int>::max)()) - projection.geometry->vertices.size()) {
-        outDiagnostic = "navigation terrain exceeds Recast int vertex capacity";
-        return false;
-    }
-
-    const int baseVertex = static_cast<int>(out.vertices.size() / 3u);
-    out.vertices.reserve(out.vertices.size() + projection.geometry->vertices.size() * 3u);
-    for (const MATH::Vec3& local : projection.geometry->vertices) {
-        const MATH::Vec3 world = terrain.LocalToWorld(local);
-        if (!std::isfinite(world.x) || !std::isfinite(world.y) || !std::isfinite(world.z)) {
-            outDiagnostic = "navigation terrain contains a non-finite world vertex";
-            return false;
-        }
-        out.vertices.push_back(world.x);
-        out.vertices.push_back(world.y);
-        out.vertices.push_back(world.z);
-        out.boundsMin[0] = (std::min)(out.boundsMin[0], world.x);
-        out.boundsMin[1] = (std::min)(out.boundsMin[1], world.y);
-        out.boundsMin[2] = (std::min)(out.boundsMin[2], world.z);
-        out.boundsMax[0] = (std::max)(out.boundsMax[0], world.x);
-        out.boundsMax[1] = (std::max)(out.boundsMax[1], world.y);
-        out.boundsMax[2] = (std::max)(out.boundsMax[2], world.z);
-    }
-    out.triangles.reserve(out.triangles.size() + projection.geometry->indices.size());
-    for (std::size_t triangle = 0u; triangle < projection.geometry->indices.size(); triangle += 3u) {
-        const std::array<uint32_t, 3u> indices{projection.geometry->indices[triangle],
-                                               projection.geometry->indices[triangle + 1u],
-                                               projection.geometry->indices[triangle + 2u]};
-        for (const uint32_t index : indices) {
-            if (index < projection.geometry->vertices.size()) {
-                continue;
-            }
-            outDiagnostic = "navigation terrain contains an out-of-range index";
-            return false;
-        }
-        out.triangles.push_back(baseVertex + static_cast<int>(indices[0]));
-        out.triangles.push_back(baseVertex + static_cast<int>(indices[reverseWinding ? 2u : 1u]));
-        out.triangles.push_back(baseVertex + static_cast<int>(indices[reverseWinding ? 1u : 2u]));
-    }
-    return true;
 }
 
 bool AppendNavigationGeometry(const NavigationGeometry& source, NavigationGeometry& out, std::string& outDiagnostic) {
@@ -231,23 +128,13 @@ private:
 } // namespace
 
 bool BuildChunkGeometry(const NavigationChunkSource& source, NavigationGeometry& out, std::string& outDiagnostic) {
-    if (source.moduleSource != nullptr) {
-        ModuleGeometrySink sink(out);
-        source.moduleSource->AppendNavigationChunk(source.key.x, source.key.z, sink);
-        return true;
-    }
-    if (source.terrain == nullptr) {
-        outDiagnostic = "navigation chunk lost its terrain owner";
+    if (source.moduleSource == nullptr) {
+        outDiagnostic = "navigation chunk lost its source";
         return false;
     }
-    const PHYSICS::TerrainCollisionProjection projection =
-        PHYSICS::BuildTerrainChunkCollisionProjection(source.object, *source.terrain, source.key);
-    if (!projection.buildSucceeded) {
-        outDiagnostic =
-            projection.diagnostic.empty() ? "terrain chunk collision projection failed" : projection.diagnostic;
-        return false;
-    }
-    return AppendTerrainGeometry(*source.terrain, projection, out, outDiagnostic);
+    ModuleGeometrySink sink(out);
+    source.moduleSource->AppendNavigationChunk(source.key.x, source.key.z, sink);
+    return true;
 }
 
 bool GatherGeometry(const CurrentNavigationSources& sources, NavigationGeometry& out, NavigationChunkCache& outChunks,

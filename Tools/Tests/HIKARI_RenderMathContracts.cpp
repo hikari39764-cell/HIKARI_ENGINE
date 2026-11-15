@@ -14,6 +14,7 @@
 #include "Render3D/Lighting/HIKARI_DynamicGiPlacement.h"
 #include "Render3D/RayTracing/HIKARI_RuntimeRayTracingChanges.h"
 #include "Render3D/GpuDriven/HIKARI_GpuSceneSurfaceRecord.h"
+#include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 #include "Vfx/Post/HIKARI_PostCommon.h"
 #include "Vfx/Post/HIKARI_PostProcessingTypes.h"
 #include <d3dcompiler.h>
@@ -181,6 +182,20 @@ int main() {
         assert(changes.minimum.x == 4 && changes.maximum.x == 6 && changes.minimum.w == 1);
         changes.Update({});
         assert(changes.minimum.w == 0);
+    }
+    {
+        // 水面の coverage は共有 float pool の先頭の 4 個の zero の後に並ぶ。入らない field は offset 0（全面が水）へ縮退する。
+        using namespace HIKARI::RENDER3D::RUNTIME;
+        std::vector<float> pool;
+        SceneSurfaceFloatPoolPacker packer(pool, kSceneSurfaceNeutralFloatCount + 9u + 4u);
+        const std::vector<float> coverage{0.0f, 0.1f, 0.2f, 0.3f, 0.4f, 0.5f, 0.6f, 0.7f, 0.8f};
+        uint32_t offset = ~0u;
+        assert(packer.TryPackSquareField(coverage, 2u, offset) && offset == kSceneSurfaceNeutralFloatCount);
+        assert(pool.size() == kSceneSurfaceNeutralFloatCount + coverage.size());
+        assert(pool[0] == 0.0f && pool[3] == 0.0f && pool[offset + 8u] == coverage[8]);
+        assert(!packer.TryPackSquareField(coverage, 2u, offset) && offset == 0u);
+        assert(!packer.TryPackSquareField({1.0f}, 2u, offset) && offset == 0u);
+        assert(pool.size() == kSceneSurfaceNeutralFloatCount + coverage.size());
     }
     {
         using namespace HIKARI::RENDER3D::DYNAMICGI::DETAIL;

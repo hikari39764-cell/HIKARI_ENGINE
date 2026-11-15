@@ -186,25 +186,6 @@ std::vector<SceneObjectOperationSpec> SceneObjectOperationSpecs() {
                    "finite_authored (default) or camera_centered_ocean"}}})},
     };
 }
-
-Parameters ProceduralTerrainParameters() {
-    return Concat(
-        {ObjectTargetParameters(),
-         {{"mode", EditorOperationParameterType::String, true, "noise_hills/island_coast/ridge/basin_crater/dunes"},
-          {"blendMode", EditorOperationParameterType::String, false, "add/replace/max，默认 add"},
-          {"seed", EditorOperationParameterType::Int, false, "确定性生成种子"},
-          {"centerX", EditorOperationParameterType::Float, false, "地形本地 X 中心"},
-          {"centerZ", EditorOperationParameterType::Float, false, "地形本地 Z 中心"},
-          {"extentX", EditorOperationParameterType::Float, false, "本地 X 半范围"},
-          {"extentZ", EditorOperationParameterType::Float, false, "本地 Z 半范围"},
-          {"amplitude", EditorOperationParameterType::Float, false, "高度振幅"},
-          {"baseHeight", EditorOperationParameterType::Float, false, "替换模式基准高度"},
-          {"scale", EditorOperationParameterType::Float, false, "特征尺度"},
-          {"edgeFalloff", EditorOperationParameterType::Float, false, "边缘衰减"},
-          {"blendAmount", EditorOperationParameterType::Float, false, "混合量"},
-          {"directionDegrees", EditorOperationParameterType::Float, false, "脊线/沙丘方向"},
-          {"octaves", EditorOperationParameterType::Int, false, "噪声层数"}}});
-}
 } // namespace
 
 void DocumentSceneEditorController::RegisterEditorOperations() {
@@ -404,54 +385,6 @@ void DocumentSceneEditorController::RegisterEditorOperations() {
              return MaterialNodeQueryResult(ok, std::move(message), std::move(details), std::move(code));
          }},
         EditorOperationKind::Query, false);
-
-    operationRegistry_.Register(
-        {"terrain.fill_layer",
-         "Fill an entire terrain object with one material layer while preserving authored height and coverage.",
-         "terrain_surface",
-         Concat({ObjectTargetParameters(),
-                 {{"presetId", EditorOperationParameterType::String, true, "要填充的地形材质层 preset id"}}}),
-         [this](const nlohmann::json& parameters) {
-             return ExecuteTerrainOperation(EDITOR::FillTerrainLayer, parameters);
-         }},
-        EditorOperationKind::Mutation);
-    operationRegistry_.Register(
-        {"terrain.describe",
-         "Describe a terrain: world bounds, surface presets, stroke tools and brush, plus heights at optional sample points.",
-         "terrain_surface",
-         Concat({ObjectTargetParameters(),
-                 {{"samples", EditorOperationParameterType::Json, false, "Optional world [x, z] points to sample"}}}),
-         [this](const nlohmann::json& parameters) {
-             return ExecuteTerrainOperation(EDITOR::DescribeTerrain, parameters);
-         }},
-        EditorOperationKind::Query);
-    operationRegistry_.Register(
-        {"terrain.stroke",
-         "Sculpt, paint a surface layer, cut holes (erase) or restore coverage along a world-space path or over a rectangle. One undo step.",
-         "terrain_surface",
-         Concat({ObjectTargetParameters(),
-                 {{"tool", EditorOperationParameterType::String, true, "Sculpt mode, paint, erase or restore"},
-                  {"presetId", EditorOperationParameterType::String, false, "Surface layer for paint"},
-                  {"points", EditorOperationParameterType::Json, false, "Path of world [x, z] points"},
-                  {"rect", EditorOperationParameterType::Json, false, "Area {\"min\":[x,z],\"max\":[x,z]}"},
-                  {"radius", EditorOperationParameterType::Float, false, "Brush radius in meters"},
-                  {"strength", EditorOperationParameterType::Float, false, "Brush strength"},
-                  {"hardness", EditorOperationParameterType::Float, false, "Brush hardness 0-1"},
-                  {"falloff", EditorOperationParameterType::Float, false, "Brush falloff 0-1"},
-                  {"flattenHeight", EditorOperationParameterType::Float, false, "Target height for flatten"},
-                  {"passes", EditorOperationParameterType::Int, false, "Repeat the stroke 1-16 times"}}}),
-         [this](const nlohmann::json& parameters) {
-             return ExecuteTerrainOperation(EDITOR::StrokeTerrain, parameters);
-         }},
-        EditorOperationKind::Mutation);
-    operationRegistry_.Register(
-        {"terrain.generate_procedural",
-         "Generate deterministic hills, islands, ridges, basins, or dunes into a TerrainSurface range.",
-         "terrain_surface", ProceduralTerrainParameters(),
-         [this](const nlohmann::json& parameters) {
-             return ExecuteTerrainOperation(EDITOR::GenerateTerrain, parameters);
-         }},
-        EditorOperationKind::Mutation);
 
     RegisterEnvironmentOperations();
     EDITOR::RegisterEnvironmentAssetOperations(operationRegistry_, environmentPanel_.Assets(),

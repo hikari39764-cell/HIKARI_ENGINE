@@ -11,6 +11,8 @@ struct GameProjectGroundHit {
     GameProjectFloat3 position{};
     GameProjectFloat3 normal{0.0f, 1.0f, 0.0f};
     float distance = 0.0f;
+    // 当たった所の地表の名前（地形の表面の枠の名前、例 "Grass"、"Sand"）。終端つき UTF-8。地表を持たない地面では空。
+    char surface[48]{};
 };
 
 // モジュールの地面（地形など）を世界の地面の問い合わせへ足す接口。WorldView::AddGroundSource で登録し、外すまで生かす。

@@ -57,13 +57,11 @@ RuntimeFeatureCatalog CreateBuiltInRuntimeFeatureCatalog() {
     RuntimeFeatureCatalog catalog;
     (void)catalog.Add(CreateRenderingRuntimeFeature());
     (void)catalog.Add(CreateLightingRuntimeFeature());
-    (void)catalog.Add(CreateTerrainRuntimeFeature());
     (void)catalog.Add(CreateWaterRuntimeFeature());
     (void)catalog.Add(CreateAnimationRuntimeFeature());
     (void)catalog.Add(CreateCameraRuntimeFeature());
     (void)catalog.Add(std::make_unique<NavigationRuntimeFeature>());
     (void)catalog.Add(CreatePhysicsRuntimeFeature());
-    (void)catalog.Add(CreateSurfaceInteractionRuntimeFeature());
     (void)catalog.Add(CreateBuoyancyRuntimeFeature());
     (void)catalog.Add(CreateGameplayRuntimeFeature());
     (void)catalog.Add(CreateSequenceRuntimeFeature());

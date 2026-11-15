@@ -15,8 +15,8 @@
 
 namespace HIKARI::MESHRENDERER {
 static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
-                                    const MeshPassResources& passResources, MeshDrawPassKind passKind,
-                                    bool featureMask);
+                                    const MeshPassResources& passResources, MeshDrawPassKind passKind, bool featureMask,
+                                    const INTERNAL::SurfaceRecordCamera* viewCamera = nullptr);
 } // namespace HIKARI::MESHRENDERER
 
 namespace HIKARI::MESHRENDERER::INTERNAL {
@@ -358,19 +358,21 @@ bool RenderVisibilityOverlayFeaturePass(const GFX::Context& graphics, const Mesh
 }
 
 // モジュールの面を今の描画先へ描く。場面の定数と光の束縛は通常の面と同じものを、モジュール用の root へ張る。
+// viewCamera が無ければ主視点（主相机の定数と帧の相机位置）。
 static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
-                                    const MeshPassResources& passResources, MeshDrawPassKind passKind,
-                                    bool featureMask) {
+                                    const MeshPassResources& passResources, MeshDrawPassKind passKind, bool featureMask,
+                                    const SurfaceRecordCamera* viewCamera) {
     if (!RENDER3D::SURFACE_EXTENSIONS::HasWork()) {
         return true;
     }
     const CameraCB* camera = GetCameraConstants();
     ID3D12RootSignature* rootSignature = gMeshRendererState.pipelines.surfaceExtensionRootSig.Get();
-    if (camera == nullptr || rootSignature == nullptr) {
+    if ((viewCamera == nullptr && camera == nullptr) || rootSignature == nullptr) {
         return false;
     }
     MeshBindingStateCache bindingCache{};
-    MeshDrawContext drawCtx = BuildDrawContext(graphics, false, passKind, passResources, nullptr);
+    MeshDrawContext drawCtx = BuildDrawContext(graphics, false, passKind, passResources,
+                                               viewCamera != nullptr ? viewCamera->bindings : nullptr);
     drawCtx.binding.cache = &bindingCache;
     drawCtx.staticRootSig = rootSignature;
     drawCtx.binding.surfaceExtensionRoot = true;
@@ -378,9 +380,15 @@ static bool RecordSurfaceExtensions(const GFX::Context& graphics, RenderSurfaceP
     RENDER3D::SURFACE_EXTENSIONS::RecordInput input{};
     input.pass = pass;
     input.geometryFeatureMask = featureMask;
-    input.viewProjection = camera->viewProj;
-    input.cameraPosition = RENDER3D::SURFACE_EXTENSIONS::GetFrameCameraPosition();
+    input.viewProjection = viewCamera != nullptr ? viewCamera->viewProjection : camera->viewProj;
+    input.cameraPosition =
+        viewCamera != nullptr ? viewCamera->position : RENDER3D::SURFACE_EXTENSIONS::GetFrameCameraPosition();
     return RENDER3D::SURFACE_EXTENSIONS::Record(graphics, rootSignature, input);
+}
+
+bool INTERNAL::RecordViewSurfaceExtensions(const GFX::Context& graphics, RenderSurfacePass pass,
+                                           const MeshPassResources& passResources, const SurfaceRecordCamera& camera) {
+    return RecordSurfaceExtensions(graphics, pass, passResources, MeshDrawPassKind::Forward, false, &camera);
 }
 
 bool RenderSurfaceExtensionsForward(const GFX::Context& graphics, const MeshPassResources& passResources) {

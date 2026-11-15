@@ -97,11 +97,6 @@ public:
             componentSystemPolicy.Register(ComponentSystemRule{"ColliderComponent", "PhysicsSystem", 120}) && success;
         success = componentSystemPolicy.Register(ComponentSystemRule{"PhysicsBodyComponent", "PhysicsSystem", 120}) &&
                   success;
-        // TerrainSurface は Collider component を持たなくても、Physics
-        // owner が authored height/coverage を static mesh へ投影する。
-        success =
-            componentSystemPolicy.Register(ComponentSystemRule{"TerrainSurfaceComponent", "PhysicsSystem", 120}) &&
-            success;
         return success;
     }
 };

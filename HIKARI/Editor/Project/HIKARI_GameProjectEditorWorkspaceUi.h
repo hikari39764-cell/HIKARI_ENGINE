@@ -137,8 +137,6 @@ public:
     std::string_view Translate(std::string_view englishText) override;
 
 private:
-    // モジュールの字を画面に出す形へ：「訳さない」印があれば外し、無ければ文字表で今の言語へ。
-    std::string_view Shown(std::string_view text) const;
     struct Thumbnail {
         int handle = -1;
         uint64_t revision = 0u;
@@ -191,5 +189,9 @@ private:
 
 // 控件の ImGui ラベル。表示名が変わっても状態が続くよう、ID は作業区と控件の安定 ID から作る。
 std::string MakeWorkspaceControlLabel(std::string_view label, std::string_view workspaceId, std::string_view controlId);
+
+// モジュールの字を画面に出す形へ：「訳さない」印があれば外し、無ければ owner（モジュール）の文字表で今の言語へ。
+// 作業区の面板と視口の工具の案内が同じ規則で引く。
+std::string_view ModuleDisplayText(std::string_view owner, std::string_view text);
 
 } // namespace HIKARI::EDITOR

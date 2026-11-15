@@ -285,7 +285,6 @@ void DocumentSceneBase::OnExit() {
     state_->runtime.stopGameProjectSessionAfterWorldDetach = false;
     state_->runtime.world.Services().Clear();
     state_->runtime.worldServicesConfigured = false;
-    state_->runtime.terrainSurfaceQueryService.Clear();
     state_->runtime.waterSurfaceQueryService.Clear();
     state_->runtime.navigationWorldService.Clear();
     state_->runtime.animationPoseService.Clear();

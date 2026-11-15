@@ -1,6 +1,6 @@
 [CmdletBinding()]
 param(
-    [ValidateSet('source', 'assets', 'editor', 'ui', 'camera', 'terrain', 'vfx', 'runtime', 'render', 'gpu', 'sdk')]
+    [ValidateSet('source', 'assets', 'editor', 'ui', 'camera', 'vfx', 'runtime', 'render', 'gpu', 'sdk')]
     [string]$Group = 'source'
 )
 $ErrorActionPreference = 'Stop'

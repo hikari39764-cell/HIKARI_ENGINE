@@ -41,12 +41,12 @@ inline constexpr std::string_view kClusterRayTracingRootLayoutCanonical =
     "Pipeline(Compute)|Flags(None)";
 
 inline constexpr std::string_view kMeshGraphicsRootLayoutId = "HIKARI.RenderGeometry.MeshGraphics.Root";
-inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 9u;
+inline constexpr uint32_t kMeshGraphicsRootLayoutVersion = 10u;
 inline constexpr std::string_view kMeshGraphicsRootLayoutHash =
-    "593991bf144425d628b2fa289f90f071fbfc29170e1876d210a7d4559206ed00";
+    "7ee4a623b4eadec4c1751d4f1d7ef46dc5aa8b68563dbac97981fb925e892352";
 inline constexpr std::string_view kMeshGraphicsRootLayoutCanonical =
-    "HIKARI.RenderGeometry.MeshGraphics.Root.v9|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
-    "RootParameters(43)|DwordCost(64)|ASVisibility(Table(t19,u0space8,b12,t3space8),QueryBytes(144,viewProj+control+historyViewProj))|VisibleRangeBytes(80)|PayloadBytes(832)|"
+    "HIKARI.RenderGeometry.MeshGraphics.Root.v10|MeshletDispatchControl(Base,Pass,Bucket,RangeCount)|Grid(MaxX65535)|"
+    "RootParameters(42)|DwordCost(62)|ASVisibility(Table(t19,u0space8,b12,t3space8),QueryBytes(144,viewProj+control+historyViewProj))|VisibleRangeBytes(80)|PayloadBytes(832)|"
     "RayTracedShadow(Table(t11,space7))|"
     "JointPaletteVariant(StaticSRV(t0,space3),SkinnedCBV(b3,space0))|"
     "SurfaceControlAlias(b8,TraditionalSurfaceGpuScene(Base,Enabled,ShellCount,ShellLodBits),MeshletDrawControl)|"
@@ -156,10 +156,10 @@ inline constexpr std::string_view kWorldTextDrawRootLayoutCanonical = "HIKARI.Re
                                                                       "Pipeline(Mesh,Pixel)|Flags(None)";
 
 inline constexpr std::string_view kShadowGraphicsRootLayoutId = "HIKARI.RenderGeometry.ShadowGraphics.Root";
-inline constexpr uint32_t kShadowGraphicsRootLayoutVersion = 2u;
+inline constexpr uint32_t kShadowGraphicsRootLayoutVersion = 3u;
 inline constexpr std::string_view kShadowGraphicsRootLayoutHash =
-    "b3a7556a0b35c164f85f551522484be832bc745e970af90d66db03f881f7a88c";
-inline constexpr std::string_view kShadowGraphicsRootLayoutCanonical = "HIKARI.RenderGeometry.ShadowGraphics.Root.v2|"
+    "1887bfabc0c5281533f281b14f8cb7bb02220874db15262a4aff902b5e5cdead";
+inline constexpr std::string_view kShadowGraphicsRootLayoutCanonical = "HIKARI.RenderGeometry.ShadowGraphics.Root.v3|"
                                                                        "0:CBV(b0,space0,All)|"
                                                                        "1:CBV(b1,space0,All)|"
                                                                        "2:Table(SRV(t0,space0,count1),Pixel)|"
@@ -173,14 +173,12 @@ inline constexpr std::string_view kShadowGraphicsRootLayoutCanonical = "HIKARI.R
                                                                        "10:SRV(t18,space0,All)|"
                                                                        "11:CBV(b9,space0,All)|"
                                                                        "12:SRV(t0,space3,All)|"
-                                                                       "13:SRV(t4,space7,All)|"
-                                                                       "14:SRV(t1,space7,All)|"
-                                                                       "15:SRV(t0,space6,All)|"
-                                                                       "16:SRV(t1,space6,All)|"
-                                                                       "17:CBV(b10,space0,All)|"
-                                                                       "SkinnedAppend(18:CBV(b3,space0,All))|"
-                                                                       "RootParameters(Static18,Skinned19)|"
-                                                                       "DwordCost(Static31,Skinned33)|"
+                                                                       "13:SRV(t0,space6,All)|"
+                                                                       "14:SRV(t1,space6,All)|"
+                                                                       "15:CBV(b10,space0,All)|"
+                                                                       "SkinnedAppend(16:CBV(b3,space0,All))|"
+                                                                       "RootParameters(Static16,Skinned17)|"
+                                                                       "DwordCost(Static27,Skinned29)|"
                                                                        "StaticSampler(s0,LinearWrap,Pixel)|"
                                                                        "Pipeline(Graphics,Amplification,Mesh)|"
                                                                        "Flags(AllowInputAssembler)";
@@ -419,9 +417,7 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 0u, 20u, 3968u) ||
                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 1u, 0u, 1024u) ||
                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 3u, 0u) ||
-               (binding.registerSpace == 6u && binding.registerIndex <= 1u && binding.count == 1u) ||
-               (binding.registerSpace == 7u && binding.count == 1u &&
-                (binding.registerIndex == 1u || binding.registerIndex == 4u));
+               (binding.registerSpace == 6u && binding.registerIndex <= 1u && binding.count == 1u);
     case RenderGeometryRootLayout::MeshGraphics:
         if (binding.kind == Kind::UnorderedAccess) {
             return MatchesRenderGeometryBinding(binding, Kind::UnorderedAccess, 8u, 0u) &&
@@ -448,7 +444,7 @@ inline bool IsRenderGeometryBindingAllowed(RenderGeometryRootLayout layout,
                (binding.registerSpace == 5u && binding.registerIndex <= 2u && binding.count == 1u) ||
                (binding.registerSpace == 6u && binding.registerIndex <= 1u && binding.count == 1u) ||
                (binding.registerSpace == 7u &&
-                (((binding.registerIndex <= 4u || binding.registerIndex == 11u) && binding.count == 1u) ||
+                (((binding.registerIndex <= 3u || binding.registerIndex == 11u) && binding.count == 1u) ||
                  ((binding.registerIndex == 5u || binding.registerIndex == 8u) && binding.count == 3u))) ||
                MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 8u, 0u) ||
                (MatchesRenderGeometryBinding(binding, Kind::ShaderResource, 8u, 3u) &&

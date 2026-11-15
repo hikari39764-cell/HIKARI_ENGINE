@@ -17,38 +17,23 @@ namespace HIKARI::RENDER3D::RAYTRACING {
 using namespace INTERNAL;
 bool RuntimeRayTracingScene::State::DeformAndRefit(const GFX::Context& graphics,
                                                    const GPUDRIVEN::GpuDrivenSceneSource& source,
-                                                   const RuntimeRayTracingBudget& budget,
-                                                   const RuntimeRayTracingSurfaceBindings& surfaces) {
+                                                   const RuntimeRayTracingBudget& budget) {
     const auto& records = *source.surfaceRecords;
     const D3D12_GPU_VIRTUAL_ADDRESS pool = deformation.PoolAddress();
     std::vector<RuntimeRayTracingDeformJob> jobs;
     jobs.reserve(deformed.size());
-    bool skinned = false;
+    // 蒙皮は骨格が毎フレーム動きうるので、変形した面は毎回変形し直す。
     for (auto& [key, entry] : deformed) {
         const auto& record = records[entry.records.front()];
         entry.job.world = record.clusterWorldMatrix;
-        entry.job.kind = entry.terrain ? kRuntimeRayTracingDeformTerrain : kRuntimeRayTracingDeformSkinned;
-        entry.job.paletteOffsetBytes =
-            entry.terrain ? record.terrainSurfaceGpuDataIndex : record.jointPaletteOffsetBytes;
-        entry.job.paletteMatrixCount = entry.terrain ? 0u : record.jointPaletteMatrixCount;
-        std::array<float, 16> world{};
-        std::memcpy(world.data(), &record.clusterWorldMatrix, sizeof(world));
-        entry.refresh = !entry.terrain || entry.bottomLevels.empty() ||
-                        entry.builtIndices != entry.asset->geometry.indices.Get() || entry.builtPool != pool ||
-                        entry.builtOutputBase != entry.job.outputBase ||
-                        entry.builtFloatVersion != surfaces.floatVersion || entry.builtWorld != world;
-        if (!entry.refresh)
-            continue;
-        entry.builtOutputBase = entry.job.outputBase;
-        entry.builtFloatVersion = surfaces.floatVersion;
-        entry.builtWorld = world;
-        skinned = skinned || !entry.terrain;
+        entry.job.paletteOffsetBytes = record.jointPaletteOffsetBytes;
+        entry.job.paletteMatrixCount = record.jointPaletteMatrixCount;
         jobs.push_back(entry.job);
     }
     deformedRefreshed = !jobs.empty();
     const D3D12_GPU_VIRTUAL_ADDRESS palettes =
-        skinned ? GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, source.meshShaderJointPalettes) : 0;
-    if (!deformation.Dispatch(graphics, jobs, palettes, surfaces.terrainRecords, surfaces.surfaceFloats))
+        jobs.empty() ? 0 : GPUDRIVEN::UploadGpuSceneJointPaletteSnapshot(graphics, source.meshShaderJointPalettes);
+    if (!deformation.Dispatch(graphics, jobs, palettes))
         return false;
     for (auto& [key, entry] : deformed) {
         Asset& asset = *entry.asset;
@@ -57,8 +42,6 @@ bool RuntimeRayTracingScene::State::DeformAndRefit(const GFX::Context& graphics,
             entry.builtIndices = asset.geometry.indices.Get();
             entry.builtPool = pool;
         }
-        if (!entry.refresh && entry.bottomLevels.size() == asset.chunks.size())
-            continue;
         for (size_t c = 0; c < asset.chunks.size(); ++c) {
             const auto& chunk = asset.chunks[c];
             std::vector<D3D12_RAYTRACING_GEOMETRY_DESC> descriptions(chunk.ranges.size());
@@ -135,8 +118,7 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
     RuntimeRayTracingMaterialVersion currentMaterials, const RuntimeRayTracingBudget& budget,
     const RuntimeRayTracingSurfaceBindings& surfaces) {
     const auto& records = *source.surfaceRecords;
-    if (recordUses.size() != records.size() ||
-        terrainBound != (surfaces.terrainRecords != 0 && surfaces.surfaceFloats != 0))
+    if (recordUses.size() != records.size())
         return std::nullopt;
     groupStates.assign(groupUses.size(), 0);
     groupRetints.assign(groupUses.size(), 0);
@@ -204,7 +186,7 @@ std::optional<RuntimeRayTracingFrame> RuntimeRayTracingScene::State::UpdateInPla
     if (!massMoved)
         return std::nullopt;
     // 変形する面を先に refit する（TLAS はそれを含めて組み直すか refit する）。
-    if (!deformed.empty() && !DeformAndRefit(graphics, source, budget, surfaces)) {
+    if (!deformed.empty() && !DeformAndRefit(graphics, source, budget)) {
         deformationBroken = true;
         return Fail(graphics, budget, RuntimeRayTracingStatus::BuildFailed);
     }

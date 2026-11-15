@@ -51,7 +51,7 @@ bool GameProjectEditorWorkspaceUi::DrawAssetGuidField(std::string_view stableCon
     ImGui::PopID();
     if (!label.empty()) {
         ImGui::SameLine(0.0f, ImGui::GetStyle().ItemInnerSpacing.x);
-        const std::string_view shown = Shown(label);
+        const std::string_view shown = ModuleDisplayText(textOwner_, label);
         ImGui::TextUnformatted(shown.data(), shown.data() + shown.size());
     }
     ImGui::EndGroup();
@@ -102,7 +102,7 @@ void GameProjectEditorWorkspaceUi::NodeGraph(std::string_view stableGraphId,
     texts.reserve(nodes.size() * 7u + rowCount * 2u + (createItems.size() + nodeActions.size()) * 2u + 1u);
     const auto shown = [&](const char*& text) {
         if (text != nullptr) {
-            text = texts.emplace_back(Shown(text)).c_str();
+            text = texts.emplace_back(ModuleDisplayText(textOwner_, text)).c_str();
         }
     };
     for (EDITOR_PROJECT::EditorNodeGraphNode& node : nodes) {

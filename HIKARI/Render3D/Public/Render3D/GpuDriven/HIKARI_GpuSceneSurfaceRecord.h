@@ -10,7 +10,6 @@
 #include "Render3D/Runtime/HIKARI_SceneRenderCache.h"
 #include "Render3D/Runtime/HIKARI_SurfaceDrawPlan.h"
 #include "Render3D/Runtime/HIKARI_SurfaceGpuScene.h"
-#include "Render3D/Terrain/HIKARI_TerrainSurfaceRenderData.h"
 #include "Vfx/Common/HIKARI_FxTypes.h"
 
 namespace HIKARI {
@@ -53,7 +52,6 @@ struct GpuSceneResourceKey {
     bool clusterMainlineEligible = false;
     bool materialFx = false;
     bool waterMaterialFx = false;
-    bool terrainSurface = false;
     bool materialFxUsesCustomVertexShader = false;
     bool materialFxUsesCustomPixelShader = false;
     bool customVertexShader = false;
@@ -115,10 +113,6 @@ struct GpuSceneSurfaceRecord {
     bool waterSurface = false;
     RENDER3D::WATER::WaterSurfaceRenderData waterSurfaceData{};
     uint32_t waterSurfaceGpuDataIndex = 0u;
-    bool terrainSurface = false;
-    TERRAIN::TerrainSurfaceRenderData terrainSurfaceData{};
-    uint32_t terrainSurfaceGpuDataIndex = 0u;
-    TERRAIN::TerrainSurfaceFieldOffsets terrainSurfaceOffsets{};
     uint32_t waterSurfaceLiquidCoverageOffset = 0u;
 
     GpuSceneResourceKey key{};

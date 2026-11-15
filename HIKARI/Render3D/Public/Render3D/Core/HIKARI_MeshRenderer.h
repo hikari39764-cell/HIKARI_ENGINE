@@ -111,13 +111,6 @@ bool RefreshLightingProviders(const GFX::Context& graphics,
                               const RENDER3D::LIGHTING::CloudSolarVisibilityGpuData& clouds,
                               const SceneEnvironment& environment);
 RENDER3D::LIGHTING::LocalLightListGpuBindings GetLocalLightListGpuBindings();
-// 今フレームの地形の記録と高さ場の float pool（描画と同じ番地）。光線追跡の場面が地形を変形して入れるのに使う。
-struct TerrainSurfaceGpuBindings {
-    D3D12_GPU_VIRTUAL_ADDRESS records = 0;
-    D3D12_GPU_VIRTUAL_ADDRESS floats = 0;
-    uint64_t floatVersion = 0;
-};
-TerrainSurfaceGpuBindings GetTerrainSurfaceGpuBindings();
 // historyDepth があれば、前フレームの階層で隠れていた簇を描かない（RenderGeometryAuxSecondPhase で補う）。
 bool RenderGeometryAuxPass(const GFX::Context& graphics, RENDER3D::SURFACE::SceneSurfaceBuffer& surfaceBuffer,
                            D3D12_CPU_DESCRIPTOR_HANDLE sceneDsv, bool writeFeatureMask = false,

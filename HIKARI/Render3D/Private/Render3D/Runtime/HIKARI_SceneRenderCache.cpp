@@ -29,8 +29,8 @@ void TraceSceneChange(const char* what, const SceneRenderObjectDesc& desc, uint6
     if (++count > 6u) {
         return;
     }
-    std::fprintf(stderr, "[SceneCache] frame=%llu %s id=%llu model=%s visible=%d\n", static_cast<unsigned long long>(frame),
-                 what, static_cast<unsigned long long>(desc.id.value),
+    std::fprintf(stderr, "[SceneCache] frame=%llu %s id=%llu model=%s visible=%d\n",
+                 static_cast<unsigned long long>(frame), what, static_cast<unsigned long long>(desc.id.value),
                  desc.model != nullptr ? desc.model->sourcePath.c_str() : "-", desc.visible ? 1 : 0);
 }
 std::atomic<uint64_t> gNextObjectLifetimeGeneration{1u};
@@ -118,14 +118,11 @@ DirtyFlags BuildDirtyFlags(const SceneRenderObjectDesc& oldDesc, const SceneRend
         oldDesc.materialFxValuesInitialized != newDesc.materialFxValuesInitialized ||
         !EqualMaterialFxValues(oldDesc.materialFxParamValues, newDesc.materialFxParamValues) ||
         oldDesc.foliageWind != newDesc.foliageWind || oldDesc.foliageWindParams != newDesc.foliageWindParams ||
-        oldDesc.waterSurface != newDesc.waterSurface || oldDesc.terrainSurface != newDesc.terrainSurface;
+        oldDesc.waterSurface != newDesc.waterSurface;
 
-    // Feature enable/disable changes routing, but per-frame terrain payload
+    // Feature enable/disable changes routing, but per-frame water payload
     // changes only require the existing forward-data patch path.
-    flags.surfaceData = oldDesc.terrainSurfaceProjectionRevision != newDesc.terrainSurfaceProjectionRevision ||
-                        oldDesc.terrainSurfaceFields != newDesc.terrainSurfaceFields ||
-                        !WATER::WaterSurfaceRenderDataEqual(oldDesc.waterSurfaceData, newDesc.waterSurfaceData) ||
-                        !TERRAIN::TerrainSurfaceRenderDataEqual(oldDesc.terrainSurfaceData, newDesc.terrainSurfaceData);
+    flags.surfaceData = !WATER::WaterSurfaceRenderDataEqual(oldDesc.waterSurfaceData, newDesc.waterSurfaceData);
 
     const bool animationDataChanged = oldDesc.animationPoseRevision != newDesc.animationPoseRevision ||
                                       oldDesc.animationPose != newDesc.animationPose;
@@ -133,9 +130,9 @@ DirtyFlags BuildDirtyFlags(const SceneRenderObjectDesc& oldDesc, const SceneRend
     flags.routing = !EqualMaterialOverrides(oldDesc.materialOverrides, newDesc.materialOverrides, false) ||
                     oldDesc.materialFxProfileId != newDesc.materialFxProfileId ||
                     oldDesc.foliageWind != newDesc.foliageWind || oldDesc.waterSurface != newDesc.waterSurface ||
-                    oldDesc.terrainSurface != newDesc.terrainSurface || oldDesc.visible != newDesc.visible ||
-                    oldDesc.nodeVisibilityMask != newDesc.nodeVisibilityMask || oldDesc.isStatic != newDesc.isStatic ||
-                    oldDesc.castShadow != newDesc.castShadow || oldDesc.receiveShadow != newDesc.receiveShadow ||
+                    oldDesc.visible != newDesc.visible || oldDesc.nodeVisibilityMask != newDesc.nodeVisibilityMask ||
+                    oldDesc.isStatic != newDesc.isStatic || oldDesc.castShadow != newDesc.castShadow ||
+                    oldDesc.receiveShadow != newDesc.receiveShadow ||
                     oldDesc.hasRuntimeAnimation != newDesc.hasRuntimeAnimation ||
                     oldDesc.hasSpecialRenderDebug != newDesc.hasSpecialRenderDebug ||
                     oldDesc.allowStaticCachedForward != newDesc.allowStaticCachedForward;
@@ -144,18 +141,6 @@ DirtyFlags BuildDirtyFlags(const SceneRenderObjectDesc& oldDesc, const SceneRend
         flags.model || flags.transform || flags.material || flags.routing || flags.surfaceData || animationDataChanged;
 
     return flags;
-}
-
-// 地形 field の値だけが進んだ更新。格子・style・offset 配置は変わらないので、
-// float pool の該当行を同じ場所へ書き戻せる。
-bool IsTerrainContentOnlyUpdate(const SceneRenderObjectDesc& oldDesc, const SceneRenderObjectDesc& newDesc,
-                                const DirtyFlags& flags) {
-    return flags.surfaceData && !flags.model && !flags.routing && !flags.material && newDesc.terrainSurface &&
-           newDesc.terrainSurfaceFields != nullptr && oldDesc.terrainSurfaceFields == newDesc.terrainSurfaceFields &&
-           newDesc.terrainSurfaceProjectionRevision != oldDesc.terrainSurfaceProjectionRevision &&
-           newDesc.terrainSurfaceDirtyBaseRevision == oldDesc.terrainSurfaceProjectionRevision &&
-           TERRAIN::TerrainSurfaceRenderDataEqual(oldDesc.terrainSurfaceData, newDesc.terrainSurfaceData) &&
-           WATER::WaterSurfaceRenderDataEqual(oldDesc.waterSurfaceData, newDesc.waterSurfaceData);
 }
 
 bool IsInvalidStoredDesc(const SceneRenderObjectDesc& desc) {
@@ -232,11 +217,6 @@ SceneSurfaceInstance BuildSurfaceInstance(const SceneRenderObject& object, uint3
     instance.foliageWindParams = object.desc.foliageWindParams;
     instance.waterSurface = object.desc.waterSurface;
     instance.waterSurfaceData = object.desc.waterSurfaceData;
-    instance.terrainSurface = object.desc.terrainSurface;
-    instance.terrainSurfaceCoreResident = false;
-    instance.terrainSurfaceData = object.desc.terrainSurfaceData;
-    instance.terrainSurfaceFields = object.desc.terrainSurfaceFields;
-    instance.terrainSurfaceProjectionRevision = object.desc.terrainSurfaceProjectionRevision;
 
     instance.hasDrawWorldMatrix =
         ResolveRenderSurfaceDrawWorldMatrix(object.desc.worldTransform, surface, nodeGlobals, instance.drawWorldMatrix);
@@ -284,11 +264,8 @@ void SceneRenderCache::Clear() {
     surfaceRoutingDirty_ = true;
     surfaceDataDirty_ = true;
     surfaceFloatPoolDirty_ = true;
-    pendingTerrainPatches_.clear();
     surfaceFeatureFloats_.clear();
-    surfaceFloatPoolHistory_.clear();
     previousPackedSurfaceScratch_.clear();
-    sourceTerrainGridResolutionScratch_.clear();
 }
 
 void SceneRenderCache::BeginSync(uint64_t frameIndex) {
@@ -330,7 +307,6 @@ void SceneRenderCache::Upsert(const SceneRenderObjectDesc& desc) {
     object.valid = desc.model != nullptr;
 
     if (dirty.any) {
-        const bool terrainContentOnly = IsTerrainContentOnlyUpdate(object.desc, desc, dirty);
         object.desc = desc;
         object.dirty = true;
         object.transformDirty = dirty.transform;
@@ -347,11 +323,7 @@ void SceneRenderCache::Upsert(const SceneRenderObjectDesc& desc) {
                 TraceSceneChange("routing", desc, currentSyncFrame_);
             } else {
                 MarkSurfaceDataDirty();
-                if (terrainContentOnly) {
-                    pendingTerrainPatches_.push_back({desc.id, desc.terrainSurfaceDirtyRect});
-                } else {
-                    surfaceFloatPoolDirty_ = surfaceFloatPoolDirty_ || dirty.surfaceData;
-                }
+                surfaceFloatPoolDirty_ = surfaceFloatPoolDirty_ || dirty.surfaceData;
             }
         }
         ++frameStats_.updatedCount;
@@ -456,108 +428,26 @@ void SceneRenderCache::PreRenderSync() {
 
     if (repackSurfaceFloatPool) {
         RepackSurfaceFloatPool(dataVersionBeforePacking);
-    } else if (!pendingTerrainPatches_.empty() && !TryPatchTerrainSurfaceFloats()) {
-        RepackSurfaceFloatPool(dataVersionBeforePacking);
     }
-    pendingTerrainPatches_.clear();
     RefreshStats();
-}
-
-bool SceneRenderCache::TryPatchTerrainSurfaceFloats() {
-    std::vector<SceneSurfaceFloatRange> ranges{};
-    for (const PendingTerrainPatch& patch : pendingTerrainPatches_) {
-        const auto found = indexById_.find(patch.objectId.value);
-        if (found == indexById_.end() || found->second >= objectSurfaceRanges_.size()) {
-            return false;
-        }
-        const SceneRenderObject& object = objects_[found->second];
-        const ObjectSurfaceRange range = objectSurfaceRanges_[found->second];
-        if (range.begin > surfaceInstances_.size() || range.count > surfaceInstances_.size() - range.begin) {
-            return false;
-        }
-        for (size_t index = range.begin; index < range.begin + range.count; ++index) {
-            const SceneSurfaceInstance& instance = surfaceInstances_[index];
-            if (!instance.terrainSurface) {
-                continue;
-            }
-            // 縮小パックされた地形は行の対応が崩れるため全体を作り直す。
-            if (!instance.terrainSurfaceCoreResident || instance.terrainSurfaceFields == nullptr ||
-                instance.terrainSurfaceData.gridResolution != object.desc.terrainSurfaceData.gridResolution) {
-                return false;
-            }
-            SceneSurfaceTerrainFloatAllocation allocation{};
-            allocation.resident = true;
-            allocation.gridResolution = instance.terrainSurfaceData.gridResolution;
-            allocation.layerCount = instance.terrainSurfaceData.layerCount;
-            allocation.offsets = instance.terrainSurfaceOffsets;
-            if (!PatchTerrainSurfaceRows(surfaceFeatureFloats_, allocation, *instance.terrainSurfaceFields,
-                                         patch.rect.minZ, (std::min)(patch.rect.maxZ, allocation.gridResolution),
-                                         ranges)) {
-                return false;
-            }
-        }
-    }
-    PublishSurfaceFloatPoolVersion(std::move(ranges));
-    return true;
-}
-
-void SceneRenderCache::PublishSurfaceFloatPoolVersion(std::vector<SceneSurfaceFloatRange> ranges) {
-    const uint64_t baseVersion = surfaceFloatPoolVersion_;
-    surfaceFloatPoolVersion_ = AllocateSurfaceFloatPoolVersion();
-    surfaceFloatPoolHistory_.push_back({baseVersion, surfaceFloatPoolVersion_, std::move(ranges)});
-    if (surfaceFloatPoolHistory_.size() > kSceneSurfaceFloatPoolHistoryCapacity) {
-        surfaceFloatPoolHistory_.erase(surfaceFloatPoolHistory_.begin());
-    }
 }
 
 void SceneRenderCache::RepackSurfaceFloatPool(uint64_t dataVersionBeforePacking) {
     previousPackedSurfaceScratch_.resize(surfaceInstances_.size());
-    sourceTerrainGridResolutionScratch_.assign(surfaceInstances_.size(), 1u);
     for (uint32_t surfaceIndex = 0u; surfaceIndex < surfaceInstances_.size(); ++surfaceIndex) {
         SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
         previousPackedSurfaceScratch_[surfaceIndex] = CapturePackedSurfaceMetadata(instance);
 
         // 前フレームの縮退結果を authoring/runtime source へ逆流させない。
         if (instance.objectIndex < objects_.size()) {
-            const SceneRenderObjectDesc& source = objects_[instance.objectIndex].desc;
-            instance.waterSurfaceData = source.waterSurfaceData;
-            instance.terrainSurfaceData = source.terrainSurfaceData;
-            instance.terrainSurfaceFields = source.terrainSurfaceFields;
-            instance.terrainSurfaceProjectionRevision = source.terrainSurfaceProjectionRevision;
+            instance.waterSurfaceData = objects_[instance.objectIndex].desc.waterSurfaceData;
         }
-        sourceTerrainGridResolutionScratch_[surfaceIndex] = (std::max)(instance.terrainSurfaceData.gridResolution, 1u);
-        instance.terrainSurfaceOffsets = {};
         instance.waterSurfaceLiquidCoverageOffset = 0u;
-        instance.terrainSurfaceCoreResident = false;
     }
 
-    // 全 surface と water が共有する唯一の float pool を、surface 順の
-    // deterministic first-fit で構築する。地形 core (field + style) は atomic に
-    // 入り、必要なら同じ範囲を保ったまま格子だけを縮小する。最小格子さえ
-    // 収容できない surface は明示的に non-resident とし、neutral tile を公開しない。
-    SceneSurfaceFloatPoolPacker floatPool(surfaceFeatureFloats_, TERRAIN::kSurfaceFeatureFloatPoolCapacity);
-    for (uint32_t surfaceIndex = 0u; surfaceIndex < surfaceInstances_.size(); ++surfaceIndex) {
-        SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
-        if (!instance.terrainSurface) {
-            continue;
-        }
-        const SceneSurfaceTerrainFloatAllocation allocation = floatPool.PackTerrainCore({
-            sourceTerrainGridResolutionScratch_[surfaceIndex],
-            instance.terrainSurfaceData.layerCount,
-            instance.terrainSurfaceFields.get(),
-            &instance.terrainSurfaceData.layerStyles,
-        });
-        if (!allocation.resident) {
-            continue;
-        }
-        instance.terrainSurfaceCoreResident = true;
-        instance.terrainSurfaceData.gridResolution = allocation.gridResolution;
-        instance.terrainSurfaceData.layerCount = allocation.layerCount;
-        instance.terrainSurfaceOffsets = allocation.offsets;
-    }
-
-    // water coverage も同じ残量から正方形 field を確保する。
-    // 入らない場合の offset 0 は shader 契約上「全面 water」の安全 fallback。
+    // 全 surface が共有する唯一の float pool を、surface 順の deterministic first-fit で構築する。
+    // water coverage は正方形 field を確保し、入らない場合の offset 0 は shader 契約上「全面 water」の安全 fallback。
+    SceneSurfaceFloatPoolPacker floatPool(surfaceFeatureFloats_, kSurfaceFeatureFloatPoolCapacity);
     for (SceneSurfaceInstance& instance : surfaceInstances_) {
         if (!instance.waterSurface || instance.waterSurfaceData.liquidCoverage.empty()) {
             continue;
@@ -565,19 +455,6 @@ void SceneRenderCache::RepackSurfaceFloatPool(uint64_t dataVersionBeforePacking)
         floatPool.TryPackSquareField(instance.waterSurfaceData.liquidCoverage,
                                      instance.waterSurfaceData.coverageResolution,
                                      instance.waterSurfaceLiquidCoverageOffset);
-    }
-
-    // runtime 応答は高さに焼き込み済みの optional shading field。core と water
-    // coverage を優先し、残量不足時は offset 0 へ落とす。
-    for (uint32_t surfaceIndex = 0u; surfaceIndex < surfaceInstances_.size(); ++surfaceIndex) {
-        SceneSurfaceInstance& instance = surfaceInstances_[surfaceIndex];
-        if (!instance.terrainSurfaceCoreResident || !instance.terrainSurfaceData.runtimeResponse ||
-            instance.terrainSurfaceFields == nullptr) {
-            continue;
-        }
-        floatPool.TryPackSquareFieldResampled(
-            instance.terrainSurfaceFields->deformations, sourceTerrainGridResolutionScratch_[surfaceIndex],
-            instance.terrainSurfaceData.gridResolution, instance.terrainSurfaceOffsets.deformation);
     }
 
     // 先行 surface のサイズ変化は後続 offset も動かす。影響を受けた record
@@ -594,30 +471,20 @@ void SceneRenderCache::RepackSurfaceFloatPool(uint64_t dataVersionBeforePacking)
     if (packedStateChanged && surfaceDataVersion_ == dataVersionBeforePacking) {
         ++surfaceDataVersion_;
     }
-    // 全体再配置は差分履歴を持たない。GPU 側は全量を転送し直す。
-    surfaceFloatPoolHistory_.clear();
+    // GPU 側は version が変われば全量を転送し直す。
     surfaceFloatPoolVersion_ = AllocateSurfaceFloatPoolVersion();
     surfaceFloatPoolDirty_ = false;
 }
 
 SceneRenderCache::PackedSurfaceMetadata SceneRenderCache::CapturePackedSurfaceMetadata(
     const SceneSurfaceInstance& instance) {
-    return {instance.terrainSurfaceData.gridResolution,
-            instance.terrainSurfaceData.layerCount,
-            instance.terrainSurfaceOffsets,
-            instance.waterSurfaceData.coverageResolution,
-            instance.waterSurfaceLiquidCoverageOffset,
-            instance.terrainSurfaceCoreResident};
+    return {instance.waterSurfaceData.coverageResolution, instance.waterSurfaceLiquidCoverageOffset};
 }
 
 void SceneRenderCache::RestorePackedSurfaceMetadata(SceneSurfaceInstance& instance,
                                                     const PackedSurfaceMetadata& metadata) {
-    instance.terrainSurfaceData.gridResolution = metadata.terrainGridResolution;
-    instance.terrainSurfaceData.layerCount = metadata.terrainLayerCount;
-    instance.terrainSurfaceOffsets = metadata.terrainOffsets;
     instance.waterSurfaceData.coverageResolution = metadata.waterCoverageResolution;
     instance.waterSurfaceLiquidCoverageOffset = metadata.waterCoverageOffset;
-    instance.terrainSurfaceCoreResident = metadata.terrainCoreResident;
 }
 
 const SceneRenderObject* SceneRenderCache::Find(SceneRenderObjectId id) const {
@@ -636,10 +503,6 @@ const std::vector<SceneRenderObject>& SceneRenderCache::GetObjects() const { ret
 const std::vector<SceneSurfaceInstance>& SceneRenderCache::GetSurfaceInstances() const { return surfaceInstances_; }
 
 const std::vector<float>* SceneRenderCache::GetSurfaceFeatureFloats() const { return &surfaceFeatureFloats_; }
-
-std::span<const SceneSurfaceFloatPoolDelta> SceneRenderCache::GetSurfaceFeatureFloatHistory() const {
-    return surfaceFloatPoolHistory_;
-}
 
 const std::vector<uint32_t>& SceneRenderCache::GetDirtySurfaceIndices() const { return dirtySurfaceIndices_; }
 

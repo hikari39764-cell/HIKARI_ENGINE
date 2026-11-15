@@ -239,7 +239,6 @@ void BindSurfaceRecordFrameResourcesInternal(const MeshDrawContext& ctx) {
     BindSurfaceGpuSceneBuffer(ctx.binding, ctx.surfaceGpuSceneSrv);
     BindSurfaceGpuSceneControl(ctx.binding, 0u, false);
     BindSurfaceFeatureData(ctx.binding, ctx.surfaceFeatureDataAddress);
-    BindTerrainSurfaceData(ctx.binding, ctx.terrainSurfaceDataAddress);
     BindSurfaceFeatureFloats(ctx.binding, ctx.surfaceFeatureFloatsAddress);
     BindOceanSpectrumData(ctx.binding, ctx.oceanSpectrumTable, ctx.oceanSpectrumValid, ctx.oceanSpectrumResolution);
     BindShadowMap(ctx.binding);

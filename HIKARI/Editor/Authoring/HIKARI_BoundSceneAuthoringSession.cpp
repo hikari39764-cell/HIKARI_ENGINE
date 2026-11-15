@@ -15,7 +15,7 @@ public:
           previewId_{AllocateAuthoringPreviewViewId()}, capture_(previewId_) {
         for (const auto& id : source.RegisteredIds()) {
             const auto* definition = source.Find(id);
-            if (definition->workspace != "scene" && definition->workspace != "terrain_surface")
+            if (definition->workspace != "scene")
                 continue;
             if (!definition->requiresDocumentSession || id == "scene.open" || id == "scene.new" || id == "scene.load")
                 continue;
@@ -132,8 +132,7 @@ private:
 void RegisterBoundSceneAuthoringSessions(EditorAuthoringSessionHost& host, EditorOperationRegistry& operations,
                                          EditorWorkspaceHost& workspaceHost, BoundSceneAuthoringContext context) {
     for (const auto& [name, id] :
-         {std::pair{"scene", EditorWorkspaceId::Scene}, std::pair{"look_dev", EditorWorkspaceId::LookDev},
-          std::pair{"terrain_surface", EditorWorkspaceId::TerrainSurface}}) {
+         {std::pair{"scene", EditorWorkspaceId::Scene}, std::pair{"look_dev", EditorWorkspaceId::LookDev}}) {
         host.RegisterWorkspace({name, name, [&operations, &workspaceHost, context, id] {
                                     return std::make_unique<BoundSceneSession>(operations, workspaceHost, context, id);
                                 }});

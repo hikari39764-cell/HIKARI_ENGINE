@@ -1,3 +1,5 @@
+// 葉の切り抜きを uv だけで判定する（HIKARI_RuntimeRayTracingQuery.hlsli）。
+#define HIKARI_RAY_CUTOUT_UV_ONLY 1
 #include "Include/Lighting/HIKARI_RuntimeRayLighting.hlsli"
 #include "Include/Surface/HIKARI_SceneSurfaceContract.hlsli"
 #include "Include/Surface/HIKARI_ScreenSpaceGeometry.hlsli"

@@ -19,7 +19,6 @@
 #include "Scene/Components/Rendering/WorldText/HIKARI_WorldTextComponent.h"
 #include "Scene/Lighting/HIKARI_LightingAuthoringModel.h"
 #include "Scene/Document/HIKARI_DocumentSceneBase.h"
-#include "Scene/Terrain/HIKARI_TerrainSurfaceComponent.h"
 #include "Scene/Water/HIKARI_WaterSurfaceComponent.h"
 
 namespace HIKARI::EDITOR {
@@ -167,42 +166,6 @@ GameObject* CreateWaterSurfaceObject(DocumentSceneBase& scene, const CreateObjec
     waterDefaults.SetSettings(settings);
     waterDefaults.Serialize(waterProperties);
     object.components.push_back(SceneComponentData{"WaterSurfaceComponent", std::move(waterProperties)});
-
-    NormalizeSceneComponentIds(object);
-    scene.GetSceneDocument().objects.push_back(std::move(object));
-    return MaterializeCreatedObject(scene, id);
-}
-
-GameObject* CreateTerrainSurfaceObject(DocumentSceneBase& scene, const CreateObjectRequest& request) {
-    CreateObjectRequest objectRequest = request;
-    if (objectRequest.name.empty()) {
-        objectRequest.name = "Terrain";
-    }
-
-    SceneObjectData object = BuildBaseObject(scene, nullptr, objectRequest);
-    const SceneObjectId id = object.id;
-
-    object.components.push_back(SceneComponentData{
-        "ModelComponent",
-        {{"assetId", ""}, {"visible", true}, {"castShadow", false}, {"receiveShadow", true}, {"renderStatic", false}}});
-    object.components.push_back(SceneComponentData{"ProceduralMeshComponent",
-                                                   {{"kind", "GridPlane"},
-                                                    {"width", 8.0f},
-                                                    {"height", 1.0f},
-                                                    {"depth", 8.0f},
-                                                    {"segmentsX", 128u},
-                                                    {"segmentsY", 128u},
-                                                    {"segmentsZ", 1u},
-                                                    {"sphereSlices", 32u},
-                                                    {"sphereStacks", 16u},
-                                                    {"doubleSided", true},
-                                                    {"generateTangents", true}}});
-
-    TerrainSurfaceComponent terrainDefaults{};
-    terrainDefaults.ApplySolidPreset("sand");
-    nlohmann::json terrainProperties = nlohmann::json::object();
-    terrainDefaults.Serialize(terrainProperties);
-    object.components.push_back(SceneComponentData{"TerrainSurfaceComponent", std::move(terrainProperties)});
 
     NormalizeSceneComponentIds(object);
     scene.GetSceneDocument().objects.push_back(std::move(object));

@@ -5,7 +5,6 @@
 #include <cstdint>
 #include <cstring>
 #include <limits>
-#include <span>
 #include <utility>
 #include <vector>
 
@@ -19,11 +18,10 @@
 #include "Gfx/D3D12/HIKARI_D3D12BufferFactory.h"
 #include "Render3D/Runtime/HIKARI_SceneSurfaceFloatPool.h"
 
-namespace HIKARI::RENDER3D::TERRAIN {
+namespace HIKARI::RENDER3D::SURFACE {
 
-// 水/地形の sparse record と共有 float pool を所有する GPU バッファ。
-// 各提出のコピー元は不変。float pool は frame slot ごとに保持し、slot の
-// version から差分履歴が繋がる時は変わった範囲だけを転送する。
+// 面の機能の sparse record と共有 float pool を所有する GPU バッファ（水面は record、float pool の所有者は float）。
+// 各提出のコピー元は不変。float pool は frame slot ごとに保持し、slot の identity と version が同じなら転送しない。
 template <typename TRecord, typename TTraits>
 class SurfaceGpuFrameBuffer {
 public:
@@ -100,34 +98,9 @@ public:
         }
         slot->uploads.ResetForFrame(GFX::GetCurrentContext().currentFrameRetireFenceValue);
 
-        const bool sameFloatSeries = floatCount > 1u && slot->floatsResident && slot->floatCount == floatCount &&
-                                     slot->floatIdentity == floats->identity;
-        const bool floatsCurrent = sameFloatSeries && slot->floatVersion == floats->version;
-        floatRanges_.clear();
-        bool copyAllFloats = floatCount > 1u && !floatsCurrent;
-        if (copyAllFloats && sameFloatSeries &&
-            RUNTIME::CollectSceneSurfaceFloatRangesSince(floats->history, slot->floatVersion, floats->version,
-                                                         floatRanges_)) {
-            std::size_t patchedFloats = 0u;
-            bool rangesValid = true;
-            for (const RUNTIME::SceneSurfaceFloatRange& range : floatRanges_) {
-                rangesValid = rangesValid && range.count != 0u && range.first < floatCount &&
-                              range.count <= floatCount - range.first;
-                patchedFloats += range.count;
-            }
-            // 差分が大きい時は 1 回の全量コピーの方が安い。
-            copyAllFloats = !rangesValid || patchedFloats * 2u >= floatCount;
-        }
-        if (copyAllFloats) {
-            floatRanges_.assign(1u, {0u, static_cast<uint32_t>(floatCount)});
-        } else if (floatsCurrent) {
-            floatRanges_.clear();
-        }
-
-        std::size_t uploadFloats = 0u;
-        for (const RUNTIME::SceneSurfaceFloatRange& range : floatRanges_) {
-            uploadFloats += range.count;
-        }
+        const bool floatsCurrent = floatCount > 1u && slot->floatsResident && slot->floatCount == floatCount &&
+                                   slot->floatIdentity == floats->identity && slot->floatVersion == floats->version;
+        const std::size_t uploadFloats = floatCount > 1u && !floatsCurrent ? floatCount : 0u;
         const bool copyRecords = recordCount > 1u;
         const auto recordUpload =
             copyRecords ? slot->uploads.Allocate(recordCount * sizeof(TRecord)) : DX::UploadAllocation{};
@@ -142,19 +115,13 @@ public:
             std::memcpy(recordUpload.cpuAddress, &sentinel, sizeof(TRecord));
             std::memcpy(static_cast<std::byte*>(recordUpload.cpuAddress) + sizeof(TRecord), records->data() + 1u,
                         (recordCount - 1u) * sizeof(TRecord));
-            const RUNTIME::SceneSurfaceFloatRange recordRange{0u, static_cast<uint32_t>(recordCount)};
-            RecordCopies(commandList, slot->recordBuffer.Get(), slot->recordState, recordUpload,
-                         std::span(&recordRange, 1u), sizeof(TRecord));
+            RecordCopy(commandList, slot->recordBuffer.Get(), slot->recordState, recordUpload,
+                       recordCount * sizeof(TRecord));
         }
         if (uploadFloats != 0u) {
-            std::size_t packed = 0u;
-            for (const RUNTIME::SceneSurfaceFloatRange& range : floatRanges_) {
-                std::memcpy(static_cast<float*>(floatUpload.cpuAddress) + packed, values->data() + range.first,
-                            static_cast<std::size_t>(range.count) * sizeof(float));
-                packed += range.count;
-            }
-            RecordCopies(commandList, slot->floatBuffer.Get(), slot->floatState, floatUpload, floatRanges_,
-                         sizeof(float));
+            std::memcpy(floatUpload.cpuAddress, values->data(), uploadFloats * sizeof(float));
+            RecordCopy(commandList, slot->floatBuffer.Get(), slot->floatState, floatUpload,
+                       uploadFloats * sizeof(float));
         }
         slot->recordAddress = copyRecords ? slot->recordBuffer->GetGPUVirtualAddress() : NeutralRecordAddress();
         slot->floatAddress = floatCount > 1u ? slot->floatBuffer->GetGPUVirtualAddress() : NeutralFloatAddress();
@@ -189,19 +156,12 @@ private:
         bool floatsResident = false;
     };
 
-    // ranges は element 単位。upload 側は ranges を詰めて並べた順に置いてある。
-    static void RecordCopies(ID3D12GraphicsCommandList* commands, ID3D12Resource* target, D3D12_RESOURCE_STATES& state,
-                             const DX::UploadAllocation& source,
-                             std::span<const RUNTIME::SceneSurfaceFloatRange> ranges, std::size_t elementBytes) {
+    // target の先頭へ source の bytes を写す。
+    static void RecordCopy(ID3D12GraphicsCommandList* commands, ID3D12Resource* target, D3D12_RESOURCE_STATES& state,
+                           const DX::UploadAllocation& source, std::size_t bytes) {
         const auto before = CD3DX12_RESOURCE_BARRIER::Transition(target, state, D3D12_RESOURCE_STATE_COPY_DEST);
         commands->ResourceBarrier(1, &before);
-        UINT64 packedBytes = 0u;
-        for (const RUNTIME::SceneSurfaceFloatRange& range : ranges) {
-            const UINT64 bytes = static_cast<UINT64>(range.count) * elementBytes;
-            commands->CopyBufferRegion(target, static_cast<UINT64>(range.first) * elementBytes, source.resource,
-                                       source.offset + packedBytes, bytes);
-            packedBytes += bytes;
-        }
+        commands->CopyBufferRegion(target, 0u, source.resource, source.offset, static_cast<UINT64>(bytes));
         const auto after = CD3DX12_RESOURCE_BARRIER::Transition(target, D3D12_RESOURCE_STATE_COPY_DEST,
                                                                 D3D12_RESOURCE_STATE_ALL_SHADER_RESOURCE);
         commands->ResourceBarrier(1, &after);
@@ -240,11 +200,10 @@ private:
     }
 
     std::array<FrameSlot, GFX::kFrameResourceCount> slots_{};
-    std::vector<RUNTIME::SceneSurfaceFloatRange> floatRanges_{};
     Microsoft::WRL::ComPtr<ID3D12Resource> neutralBuffer_{};
     uint32_t activeSlotIndex_ = 0u;
     std::size_t recordCapacity_ = 0u;
     std::size_t floatCapacity_ = 0u;
 };
 
-} // namespace HIKARI::RENDER3D::TERRAIN
+} // namespace HIKARI::RENDER3D::SURFACE

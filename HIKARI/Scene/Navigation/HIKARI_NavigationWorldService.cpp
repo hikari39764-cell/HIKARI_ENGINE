@@ -142,11 +142,11 @@ bool NavigationWorldService::Synchronize(World& world, SynchronizationMode mode)
             return impl_->live.query != nullptr;
         }
         impl_->lastAttemptedRevision = revision;
-        if (!stamp.hasTerrain) {
+        if (!stamp.hasSources) {
             impl_->live = {};
             impl_->sourceStamp = {};
             impl_->sourceRevision = 0u;
-            impl_->diagnostic = "scene has no TerrainSurfaceComponent";
+            impl_->diagnostic = "scene has no navigation geometry source";
             return false;
         }
 
@@ -226,7 +226,7 @@ bool NavigationWorldService::Synchronize(World& world, SynchronizationMode mode)
         if (fullBuild && !GatherGeometry(sources, job->geometry, build.chunks, diagnostic))
             return impl_->Publish(*job);
 
-        // World/Terrain は所有スレッドだけで読む。Recast は独立した geometry を処理し、
+        // World とナビゲーションソースは所有スレッドだけで読む。Recast は独立した geometry を処理し、
         // 生きている navMesh/query には触れない。実行中は chunks を変更しない。
         auto work = [job = std::move(job), current = &impl_->live.chunks, grid = impl_->live.grid]() mutable {
             if (job->full)
