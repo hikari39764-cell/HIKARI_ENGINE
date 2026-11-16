@@ -106,6 +106,7 @@ bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::fil
     INTERNAL::StreamlineState& state = INTERNAL::GetState();
 #if !defined(HIKARI_WITH_STREAMLINE)
     (void)enableFrameGenerationPlugins;
+    (void)requestedLogDirectory;
     state.stats.status = StreamlineRuntimeStatus::NotCompiled;
     return false;
 #else
@@ -207,11 +208,11 @@ bool InitializeStreamlineEarly(bool enableFrameGenerationPlugins, const std::fil
 }
 
 bool AttachStreamlineDevice(ID3D12Device* device) {
-    INTERNAL::StreamlineState& state = INTERNAL::GetState();
 #if !defined(HIKARI_WITH_STREAMLINE)
     (void)device;
     return false;
 #else
+    INTERNAL::StreamlineState& state = INTERNAL::GetState();
     if (!state.stats.initialized || device == nullptr) {
         state.stats.status = StreamlineRuntimeStatus::DeviceFailed;
         return false;
@@ -256,11 +257,11 @@ bool AttachStreamlineDevice(ID3D12Device* device) {
 }
 
 bool SetStreamlineFrameGenerationFeatureLoaded(bool loaded) {
-    INTERNAL::StreamlineState& state = INTERNAL::GetState();
 #if !defined(HIKARI_WITH_STREAMLINE)
     (void)loaded;
     return false;
 #else
+    INTERNAL::StreamlineState& state = INTERNAL::GetState();
     if (!state.plugins.frameGeneration) {
         return !loaded;
     }

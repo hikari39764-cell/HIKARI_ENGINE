@@ -194,13 +194,13 @@ bool IsStreamlineDlssSuperResolutionMode(StreamlineDlssMode mode) {
 bool QueryStreamlineDlssOptimalSettings(StreamlineDlssMode mode, uint32_t outputWidth, uint32_t outputHeight,
                                         StreamlineOptimalSettings& outSettings) {
     outSettings = {};
-    INTERNAL::StreamlineState& state = INTERNAL::GetState();
 #if !defined(HIKARI_WITH_STREAMLINE)
     (void)mode;
     (void)outputWidth;
     (void)outputHeight;
     return false;
 #else
+    INTERNAL::StreamlineState& state = INTERNAL::GetState();
     if (mode == StreamlineDlssMode::Off || !IsStreamlineDlssAvailable() || outputWidth == 0 || outputHeight == 0) {
         return false;
     }

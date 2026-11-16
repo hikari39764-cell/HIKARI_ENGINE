@@ -67,10 +67,10 @@ bool ConfigureStreamlineReflex(StreamlineReflexMode mode) {
 }
 
 bool BeginStreamlineReflexFrame() {
-    INTERNAL::StreamlineState& state = INTERNAL::GetState();
 #if !defined(HIKARI_WITH_STREAMLINE)
     return false;
 #else
+    INTERNAL::StreamlineState& state = INTERNAL::GetState();
     if (state.frameToken == nullptr) {
         return false;
     }

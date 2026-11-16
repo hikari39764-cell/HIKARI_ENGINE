@@ -101,6 +101,7 @@ bool SubmitStreamlineFrameConstants(const TEMPORAL::TemporalFrameState& frame,
     state.stats.outputWidth = frame.outputWidth;
     state.stats.outputHeight = frame.outputHeight;
 #if !defined(HIKARI_WITH_STREAMLINE)
+    (void)resources;
     return false;
 #else
     if (!resources.IsValid() || resources.view.viewId != kPrimaryRenderViewId || !resources.view.Matches(frame.view) ||
