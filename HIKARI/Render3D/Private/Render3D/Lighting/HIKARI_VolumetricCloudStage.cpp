@@ -42,7 +42,8 @@ namespace {
 using Microsoft::WRL::ComPtr;
 
 constexpr DXGI_FORMAT kCloudColorFormat = DXGI_FORMAT_R16G16B16A16_FLOAT;
-constexpr DXGI_FORMAT kCloudDepthFormat = DXGI_FORMAT_R32G32_FLOAT;
+// 雲の深度は最初に当たった距離・平均距離・標本が積分した区間の終わり [m] と、履歴に溜まった標本の数。
+constexpr DXGI_FORMAT kCloudDepthFormat = DXGI_FORMAT_R32G32B32A32_FLOAT;
 // 形状と細部は 1 チャンネル、天気図は雲域・雲型・対流セル（どれも一様分布の値）。
 constexpr DXGI_FORMAT kVolumeNoiseFormat = DXGI_FORMAT_R8_UNORM;
 constexpr DXGI_FORMAT kWeatherNoiseFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
@@ -73,7 +74,7 @@ enum class NoisePass : uint32_t {
     Downsample,
     Count
 };
-constexpr uint32_t kPassSrvCount = 9u;
+constexpr uint32_t kPassSrvCount = 10u;
 // 雲の形の周期（形状・細部・天気図）[m]。形状ノイズは水平の周期で、鉛直はシェーダーが 1/2 の周期で読む
 // （HIKARI_CLOUD_SHAPE_VERTICAL_SCALE）。雲の中の塊は水平で周期の 1/4〜1/16（600〜2400m）、天気図の対流セルは
 // 6.7km・2.5km・1km。対流セルに合わせ、大きな雲が同じ大きさの小さな泡の集まりに見えず、塊が高さより幅広くなる。
@@ -521,7 +522,7 @@ bool EnsureCloudTargets(StageState& state, uint32_t renderWidth, uint32_t render
     state.stats.historyWidth = historyWidth;
     state.stats.historyHeight = historyHeight;
     state.stats.workingSetBytes =
-        uint64_t(traceWidth) * traceHeight * 16ull + uint64_t(historyWidth) * historyHeight * 32ull +
+        uint64_t(traceWidth) * traceHeight * 24ull + uint64_t(historyWidth) * historyHeight * 48ull +
         uint64_t(kShapeSize) * kShapeSize * kShapeSize * 8ull / 7ull +
         uint64_t(kDetailSize) * kDetailSize * kDetailSize * 8ull / 7ull + uint64_t(kWeatherSize) * kWeatherSize * 4ull;
     ++state.stats.resizeCount;
@@ -1000,9 +1001,9 @@ void SetCloudViewport(ID3D12GraphicsCommandList* cmd, uint32_t width, uint32_t h
     cmd->RSSetScissorRects(1u, &scissor);
 }
 
-// t3/t4 は今読む雲の色と深度、t5 は前フレームの履歴の色。使わない段は有効な記述子で埋める。
+// t3/t4 は今読む雲の色と深度、t5/t9 は前フレームの履歴の色と深度。使わない段は有効な記述子で埋める。
 void BindPassInputs(ID3D12GraphicsCommandList* cmd, const StageState& state, const CloudTexture& color,
-                    const CloudTexture& depth, const CloudTexture& historyColor,
+                    const CloudTexture& depth, const CloudTexture& historyColor, const CloudTexture& historyDepth,
                     D3D12_GPU_DESCRIPTOR_HANDLE sceneDepth) {
     const D3D12_GPU_DESCRIPTOR_HANDLE aerial = SKYRENDERER::GetAerialPerspectiveView().srv;
     const D3D12_GPU_DESCRIPTOR_HANDLE skyView = SKYRENDERER::GetSkyViewLutSrv();
@@ -1015,6 +1016,7 @@ void BindPassInputs(ID3D12GraphicsCommandList* cmd, const StageState& state, con
     cmd->SetGraphicsRootDescriptorTable(7u, sceneDepth);
     cmd->SetGraphicsRootDescriptorTable(8u, aerial.ptr != 0u ? aerial : state.shapeNoise.srv.gpu);
     cmd->SetGraphicsRootDescriptorTable(9u, skyView.ptr != 0u ? skyView : state.weatherNoise.srv.gpu);
+    cmd->SetGraphicsRootDescriptorTable(10u, historyDepth.srv.gpu);
 }
 
 void DrawFullscreen(ID3D12GraphicsCommandList* cmd) {
@@ -1026,7 +1028,7 @@ void DrawFullscreen(ID3D12GraphicsCommandList* cmd) {
 
 void DrawCloudTargets(StageState& state, ID3D12PipelineState* pso, CloudTexture& color, CloudTexture& depth,
                       const CloudTexture& inputColor, const CloudTexture& inputDepth, const CloudTexture& historyColor,
-                      D3D12_GPU_DESCRIPTOR_HANDLE sceneDepth) {
+                      const CloudTexture& historyDepth, D3D12_GPU_DESCRIPTOR_HANDLE sceneDepth) {
     // 書き込み先の大きさで描く（追跡は追跡の解像度、再構成は履歴の解像度）。
     ID3D12GraphicsCommandList* cmd = state.context.cmdList;
     TransitionTexture(cmd, color, D3D12_RESOURCE_STATE_RENDER_TARGET);
@@ -1037,7 +1039,7 @@ void DrawCloudTargets(StageState& state, ID3D12PipelineState* pso, CloudTexture&
     cmd->SetGraphicsRootSignature(state.passRoot.Get());
     cmd->SetPipelineState(pso);
     cmd->SetGraphicsRootConstantBufferView(0u, state.constantsAddress);
-    BindPassInputs(cmd, state, inputColor, inputDepth, historyColor, sceneDepth);
+    BindPassInputs(cmd, state, inputColor, inputDepth, historyColor, historyDepth, sceneDepth);
     DrawFullscreen(cmd);
     TransitionTexture(cmd, color, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
     TransitionTexture(cmd, depth, D3D12_RESOURCE_STATE_PIXEL_SHADER_RESOURCE);
@@ -1287,11 +1289,14 @@ bool ExecuteVolumetricCloudStage(const PIPELINE::RenderFrameContext& frame,
     const D3D12_GPU_DESCRIPTOR_HANDLE sceneDepth = frame.scene.depth.srv;
     const uint32_t readIndex = state.historyReadIndex;
     const uint32_t writeIndex = state.historyWriteIndex;
-    // 追跡（2x2 ごとに 1 画素）→ 履歴へ再構成して書き込み先の履歴へ → それを全解像度へ合成。
-    DrawCloudTargets(state, state.tracePso.Get(), state.currentColor, state.currentDepth, state.historyColor[readIndex],
-                     state.historyDepth[readIndex], state.historyColor[readIndex], sceneDepth);
+    // 追跡（2x2 ごとに 1 画素）→ 履歴へ再構成して書き込み先の履歴へ → それを全解像度へ合成。追跡は今の雲を
+    // 書いている最中なので、t3/t4 は前フレームの履歴で埋める（読まない）。
+    const CloudTexture& previousColor = state.historyColor[readIndex];
+    const CloudTexture& previousDepth = state.historyDepth[readIndex];
+    DrawCloudTargets(state, state.tracePso.Get(), state.currentColor, state.currentDepth, previousColor, previousDepth,
+                     previousColor, previousDepth, sceneDepth);
     DrawCloudTargets(state, state.reprojectPso.Get(), state.historyColor[writeIndex], state.historyDepth[writeIndex],
-                     state.currentColor, state.currentDepth, state.historyColor[readIndex], sceneDepth);
+                     state.currentColor, state.currentDepth, previousColor, previousDepth, sceneDepth);
     state.historyReadIndex = writeIndex;
     state.historyWriteIndex = readIndex;
 
@@ -1306,8 +1311,8 @@ bool ExecuteVolumetricCloudStage(const PIPELINE::RenderFrameContext& frame,
     cmd->SetGraphicsRootSignature(state.passRoot.Get());
     cmd->SetPipelineState(state.compositePso.Get());
     cmd->SetGraphicsRootConstantBufferView(0u, state.constantsAddress);
-    BindPassInputs(cmd, state, state.historyColor[writeIndex], state.historyDepth[writeIndex],
-                   state.historyColor[readIndex], sceneDepth);
+    BindPassInputs(cmd, state, state.historyColor[writeIndex], state.historyDepth[writeIndex], previousColor,
+                   previousDepth, sceneDepth);
     DrawFullscreen(cmd);
     frame.targetAccess.EndDepthRead();
     if (!frame.targetAccess.Rebind()) {

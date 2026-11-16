@@ -4845,11 +4845,11 @@
       ],
       "contract": {
         "engineInterfaceId": "HIKARI.CloudPass",
-        "engineInterfaceVersion": 2,
-        "engineInterfaceHash": "fb12f67b281afce3943f1a9f2175f398b24f58794b6773cc7d3937a9afff2aa4",
+        "engineInterfaceVersion": 3,
+        "engineInterfaceHash": "206c643fb5498fa70fa947be0706199c73479596d180def7725ab5ec3bcfa5a1",
         "rootLayoutId": "HIKARI.CloudPass.Root",
-        "rootLayoutVersion": 1,
-        "rootLayoutHash": "76529b302f40a6f34110a0660649772600d622a11565e1e4cc3420bd0a4b5335",
+        "rootLayoutVersion": 2,
+        "rootLayoutHash": "fbdd6eba3020fd790528b1dece33680aa8a2f8ce998be844b10002dbc785131c",
         "requiredCaps": {
           "minimumShaderModel": 60,
           "minimumRootSignatureVersion": 10,
