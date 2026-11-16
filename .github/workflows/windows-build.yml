@@ -26,7 +26,7 @@ jobs:
 
       - name: Restore cached vcpkg trees
         id: vcpkg-cache
-        uses: actions/cache@v6
+        uses: actions/cache/restore@v6
         with:
           path: |
             vcpkg_installed
@@ -46,6 +46,16 @@ jobs:
               if ($LASTEXITCODE -ne 0) { throw 'Fetching the vcpkg registry failed.' }
           }
           ./Tools/Dependencies/Restore-HikariDependencies.ps1 -VcpkgRoot $vcpkgRoot
+
+      # 後の手順が失敗してもインストール済みの依存を次回へ残すため、入れた直後に保存する。
+      - name: Save vcpkg trees
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v6
+        with:
+          path: |
+            vcpkg_installed
+            vcpkg_installed_static
+          key: ${{ steps.vcpkg-cache.outputs.cache-primary-key }}
 
       - name: Restore WinPixEventRuntime
         shell: pwsh
@@ -68,9 +78,27 @@ jobs:
         shell: pwsh
         run: ./Tools/Dependencies/Test-HikariDependencySnapshot.ps1
 
+      - name: Install CMake
+        shell: pwsh
+        run: |
+          # Editor SDK は構築に使った CMake を同梱するので、公式配布物の並び（doc/cmake/LICENSE.rst を含む）が要る。
+          # ランナー付属の CMake にはそれがないため、手元と同じ版の公式 zip を取り、公開されている SHA-256 と照合する。
+          $version = '4.3.1'
+          $sha256 = '03a610be931546474e46a442d171ef10532f4fc847de9cf76b7a8065bbef6a23'
+          $name = "cmake-$version-windows-x86_64"
+          $archive = Join-Path $env:RUNNER_TEMP "$name.zip"
+          Invoke-WebRequest "https://github.com/Kitware/CMake/releases/download/v$version/$name.zip" -OutFile $archive
+          if ((Get-FileHash -Algorithm SHA256 -LiteralPath $archive).Hash -ne $sha256) { throw "CMake $version archive hash differs." }
+          Expand-Archive -LiteralPath $archive -DestinationPath $env:RUNNER_TEMP -Force
+          $root = Join-Path $env:RUNNER_TEMP $name
+          if (-not (Test-Path -LiteralPath (Join-Path $root 'doc/cmake/LICENSE.rst'))) { throw "CMake $version archive has no doc/cmake/LICENSE.rst." }
+          Add-Content -LiteralPath $env:GITHUB_PATH -Value (Join-Path $root 'bin')
+
       - name: Configure EditorRelease
         shell: pwsh
-        run: cmake --preset editor-release
+        run: |
+          cmake --version
+          cmake --preset editor-release
 
       - name: Build editor and launcher
         shell: pwsh
