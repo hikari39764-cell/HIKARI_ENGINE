@@ -6,28 +6,24 @@
 #include <spine/Animation.h>
 namespace HIKARI {
 
-SpineActor::~SpineActor() {
-    delete state_;
-    delete stateData_;
-    delete skeleton_;
-    delete atlas_;
-}
-
 bool SpineActor::Load(const std::string& atlasPath, const std::string& jsonPath) {
     static SpineDxTextureLoader loader;
 
-    atlas_ = new spine::Atlas(atlasPath.c_str(), &loader);
-    if (!atlas_)
-        return false;
+    // 読み直すときは、古い骨格を参照する側から順に手放してからアトラスを替える。
+    state_.reset();
+    stateData_.reset();
+    skeleton_.reset();
+    skelData_.reset();
+    atlas_ = std::make_unique<spine::Atlas>(atlasPath.c_str(), &loader);
 
-    spine::SkeletonJson json(atlas_);
-    skelData_ = json.readSkeletonDataFile(jsonPath.c_str());
+    spine::SkeletonJson json(atlas_.get());
+    skelData_.reset(json.readSkeletonDataFile(jsonPath.c_str()));
     if (!skelData_)
         return false;
 
-    skeleton_ = new spine::Skeleton(skelData_);
-    stateData_ = new spine::AnimationStateData(skelData_);
-    state_ = new spine::AnimationState(stateData_);
+    skeleton_ = std::make_unique<spine::Skeleton>(skelData_.get());
+    stateData_ = std::make_unique<spine::AnimationStateData>(skelData_.get());
+    state_ = std::make_unique<spine::AnimationState>(stateData_.get());
     skeleton_->setScaleY(-1.0f);
     return true;
 }
@@ -59,10 +55,7 @@ void SpineActor::Update(float dt, bool usePhysics) {
     state_->update(dt);
     state_->apply(*skeleton_);
 
-    const auto phys = usePhysics ? spine::Physics::Physics_Update : spine::Physics::Physics_None;
-
-    const auto oneArg = static_cast<void (spine::Skeleton::*)(spine::Physics)>(&spine::Skeleton::updateWorldTransform);
-    (skeleton_->*oneArg)(phys);
+    skeleton_->updateWorldTransform(usePhysics ? spine::Physics::Physics_Update : spine::Physics::Physics_None);
 }
 
 void SpineActor::Draw() {

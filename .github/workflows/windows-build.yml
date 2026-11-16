@@ -1,0 +1,77 @@
+name: Windows build
+
+# どのブランチを push しても、きれいなチェックアウトから EditorRelease の編集器と Launcher を作る。
+# ランナーには GPU がないので、確かめるのは依存の復元・構成・コンパイルとリンクまで。
+on:
+  push:
+    branches:
+      - '**'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-build-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  editor-release:
+    name: EditorRelease (Editor + Launcher)
+    runs-on: windows-2022
+    timeout-minutes: 240
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v7
+
+      - name: Restore cached vcpkg trees
+        id: vcpkg-cache
+        uses: actions/cache@v6
+        with:
+          path: |
+            vcpkg_installed
+            vcpkg_installed_static
+          key: vcpkg-windows-2022-${{ hashFiles('vcpkg.json', 'Tools/Dependencies/vcpkg-static/vcpkg.json') }}
+
+      - name: Install vcpkg trees
+        if: steps.vcpkg-cache.outputs.cache-hit != 'true'
+        shell: pwsh
+        run: |
+          # ランナー付属の vcpkg に固定基線のコミットがなければ、オブジェクトだけ取得する（作業ツリーは変えない）。
+          $vcpkgRoot = $env:VCPKG_INSTALLATION_ROOT
+          $baseline = (Get-Content vcpkg.json -Raw | ConvertFrom-Json).'builtin-baseline'
+          git -C $vcpkgRoot cat-file -e "$baseline^{commit}" 2>$null
+          if ($LASTEXITCODE -ne 0) {
+              git -C $vcpkgRoot fetch --quiet origin
+              if ($LASTEXITCODE -ne 0) { throw 'Fetching the vcpkg registry failed.' }
+          }
+          ./Tools/Dependencies/Restore-HikariDependencies.ps1 -VcpkgRoot $vcpkgRoot
+
+      - name: Restore WinPixEventRuntime
+        shell: pwsh
+        run: |
+          # PIX の実行時ライブラリはリポジトリに入れていない。ロックと同じ版の NuGet パッケージから取り出し、
+          # 次の手順でロックのハッシュと照合する。
+          $lock = Get-Content Tools/Dependencies/HIKARI_ThirdParty.lock.json -Raw | ConvertFrom-Json
+          $version = ($lock.dependencies | Where-Object name -eq 'WinPixEventRuntime').version
+          $package = Join-Path $env:RUNNER_TEMP 'WinPixEventRuntime.zip'
+          Invoke-WebRequest "https://www.nuget.org/api/v2/package/WinPixEventRuntime/$version" -OutFile $package
+          $extracted = Join-Path $env:RUNNER_TEMP 'WinPixEventRuntime'
+          Expand-Archive -LiteralPath $package -DestinationPath $extracted -Force
+          $target = 'ThirdParty/WinPixEventRuntime/bin/x64'
+          New-Item -ItemType Directory -Force -Path $target | Out-Null
+          foreach ($name in 'WinPixEventRuntime.dll', 'WinPixEventRuntime.lib') {
+              Copy-Item -LiteralPath (Join-Path $extracted "bin/x64/$name") -Destination $target
+          }
+
+      - name: Verify dependency snapshot
+        shell: pwsh
+        run: ./Tools/Dependencies/Test-HikariDependencySnapshot.ps1
+
+      - name: Configure EditorRelease
+        shell: pwsh
+        run: cmake --preset editor-release
+
+      - name: Build editor and launcher
+        shell: pwsh
+        run: cmake --build --preset editor-release -- /m /nologo /v:minimal

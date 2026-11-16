@@ -1,5 +1,7 @@
 #include "Render2D/HIKARI_SpineTextureLoader.h"
 
+#include <memory>
+
 namespace HIKARI {
 
 void SpineDxTextureLoader::load(spine::AtlasPage& page, const spine::String& path) {
@@ -14,20 +16,19 @@ void SpineDxTextureLoader::load(spine::AtlasPage& page, const spine::String& pat
     UINT w = 0, h = 0;
     HIKARI::DXTEX::DxTextureManager::GetTextureSize(handle, w, h);
 
-    // AtlasPage に rendererObject として保持させる。
-    SpineTexture* tex = new SpineTexture{};
+    auto tex = std::make_unique<SpineTexture>();
     tex->handle = handle;
     tex->width = static_cast<int>(w);
     tex->height = static_cast<int>(h);
 
     page.width = tex->width;
     page.height = tex->height;
-    page.texture = tex;
+    // Spine の AtlasPage は void* でしか持てないので所有権を預け、unload で引き取って破棄する。
+    page.texture = tex.release();
 }
 
 void SpineDxTextureLoader::unload(void* textureObject) {
-    SpineTexture* tex = static_cast<SpineTexture*>(textureObject);
-    delete tex;
+    const std::unique_ptr<SpineTexture> owned(static_cast<SpineTexture*>(textureObject));
 }
 
 } // namespace HIKARI

@@ -7,6 +7,7 @@
 
 #include <array>
 #include <cstdint>
+#include <memory>
 
 #include "Gfx/HIKARI_GfxContext.h"
 #include "RenderCore/Resources/HIKARI_RenderTextureView.h"
@@ -91,7 +92,9 @@ struct OceanSpectrumOutputDescriptorTable {
 // material shading, and RenderFramePipeline ordering remain external.
 class OceanSpectrumRuntime final {
 public:
-    OceanSpectrumRuntime() = default;
+    // State is incomplete here, so construction and destruction of the
+    // owning pointer are defined in the implementation file.
+    OceanSpectrumRuntime();
     ~OceanSpectrumRuntime();
 
     OceanSpectrumRuntime(const OceanSpectrumRuntime&) = delete;
@@ -125,7 +128,7 @@ public:
     struct State;
 
 private:
-    State* state_ = nullptr;
+    std::unique_ptr<State> state_;
 };
 
 } // namespace HIKARI::RENDER3D::WATER::SPECTRUM

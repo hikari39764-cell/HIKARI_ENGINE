@@ -752,17 +752,13 @@ void InvalidateOutputsForFrame(OceanSpectrumRuntime::State& state, uint64_t fram
 
 } // namespace
 
-OceanSpectrumRuntime::~OceanSpectrumRuntime() {
-    if (state_ != nullptr) {
-        Shutdown(nullptr);
-        delete state_;
-        state_ = nullptr;
-    }
-}
+OceanSpectrumRuntime::OceanSpectrumRuntime() = default;
+
+OceanSpectrumRuntime::~OceanSpectrumRuntime() { Shutdown(nullptr); }
 
 bool OceanSpectrumRuntime::Initialize(const GFX::Context& context, const OceanSpectrumRuntimeConfig& config) {
     if (state_ == nullptr) {
-        state_ = new State();
+        state_ = std::make_unique<State>();
     }
     if (state_->initialized) {
         Shutdown(&context);
